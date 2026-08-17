@@ -29,12 +29,11 @@ import type {
   DiscoveryToken,
 } from '@/lib/discovery/types';
 
-const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v2';
+const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v3';
 const STORAGE_QUICKBUY_KEY = 'sentinel_quickbuy_presets_v2';
 
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
   { id: 'col_new', type: 'new', title: 'New Launches', sortBy: 'newest' },
-  { id: 'col_trending', type: 'trending', title: 'Trending Signal', sortBy: 'volume' },
   { id: 'col_migrating', type: 'migrating', title: 'Bonding Migration', sortBy: 'migration-progress' },
   { id: 'col_graduated', type: 'graduated', title: 'Graduated / Raydium', sortBy: 'market-cap' },
 ];
@@ -70,7 +69,9 @@ export function DiscoverView() {
         if (savedCols) {
           const parsed = JSON.parse(savedCols);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setColumns(parsed);
+            // Filter out any stale trending columns
+            const sanitized = parsed.filter((c: DiscoveryColumnConfig) => c.type !== 'trending');
+            setColumns(sanitized.length > 0 ? sanitized : DEFAULT_COLUMNS);
           }
         }
         const savedQB = localStorage.getItem(STORAGE_QUICKBUY_KEY);
@@ -99,7 +100,7 @@ export function DiscoverView() {
 
   // Real-time stream indicator hook
   const { isConnected: liveConnected } = useRealtimeTokenFeed({
-    section: 'trending',
+    section: 'new',
     chain: selectedChain,
   });
 

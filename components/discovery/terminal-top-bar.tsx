@@ -40,7 +40,6 @@ interface TerminalTopBarProps {
 
 const AVAILABLE_NEW_COLUMNS: { type: DiscoverySection; title: string; desc: string }[] = [
   { type: 'new', title: 'New Launches', desc: 'Tokens freshly deployed on bonding curves & DEXs' },
-  { type: 'trending', title: 'Trending Signal', desc: 'Tokens with accelerating volume & buy flow' },
   { type: 'migrating', title: 'Bonding Migration', desc: 'Tokens near 100% bonding curve completion' },
   { type: 'graduated', title: 'Graduated / Raydium', desc: 'Completed migration trading pairs' },
   { type: 'smart-money', title: 'Smart Money Inflow', desc: 'Tokens accumulated by tracked profitable wallets' },
@@ -200,7 +199,7 @@ export function TerminalTopBar({
                   className="text-2xs text-slate-400 hover:text-sky-400 font-bold flex items-center justify-center gap-1 mx-auto"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
-                  <span>Reset Default 4 Columns</span>
+                  <span>Reset Default Columns</span>
                 </button>
               </div>
             </div>
