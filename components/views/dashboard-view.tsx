@@ -30,30 +30,103 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs } from '@/components/ui/tabs';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useMarketData } from '@/lib/hooks/use-market-data';
+import { useWatchlist } from '@/lib/store/watchlist-store';
 
 export function DashboardView() {
   const { isLoading: isGlobalLoading, connectedWallet, primaryWallet } = useAppState();
   const { refreshOverview, setQuickBuyOpen, setActiveView } = useAppActions();
-  const [marketTab, setMarketTab] = useState<'trending' | 'launches' | 'watchlist'>('trending');
+  const { watchlistedMints } = useWatchlist();
+  const [marketTab, setMarketTab] = useState<'trending' | 'top' | 'watchlist'>('trending');
   
-  const { tokens, isLoading, marketSummary } = useMarketData();
+  const { tokens: trendingTokens, isLoading, marketSummary } = useMarketData();
   const activeWallet = primaryWallet || connectedWallet;
 
-  const mockLaunches: TokenCardData[] = [
+  // Curated High-Cap & High-Volume Top Solana Ecosystem Tokens
+  const topTokens: TokenCardData[] = [
     {
-      name: 'Alpha Sentinel Launch',
-      symbol: '$ALPHA',
-      mint: '7xK9...3a19',
-      price: '$0.0034',
-      priceChange24h: 88.0,
-      mcap: '$52.4K',
-      liquidity: '$18.5K',
-      volume24h: '$120K',
-      intelligenceScore: 91,
+      name: 'Solana',
+      symbol: '$SOL',
+      mint: 'So11111111111111111111111111111111111111112',
+      price: `$${(marketSummary.solPriceUsd ?? 184.5).toFixed(2)}`,
+      priceChange24h: marketSummary.solChange24h ?? 4.2,
+      mcap: '$88.5B',
+      liquidity: '$4.2B',
+      volume24h: `$${((marketSummary.totalVolume24hUsd ?? 4200000000) / 1_000_000_000).toFixed(1)}B`,
+      intelligenceScore: 98,
+      badges: ['verified', 'smart-money'],
+      sparklineData: [40, 55, 65, 75, 85, 90, 98],
+    },
+    {
+      name: 'Jupiter',
+      symbol: '$JUP',
+      mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+      price: '$1.18',
+      priceChange24h: 12.4,
+      mcap: '$1.58B',
+      liquidity: '$320M',
+      volume24h: '$240M',
+      intelligenceScore: 95,
+      badges: ['verified'],
+      sparklineData: [35, 45, 58, 65, 78, 88, 95],
+    },
+    {
+      name: 'Bonk',
+      symbol: '$BONK',
+      mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+      price: '$0.0000284',
+      priceChange24h: 24.8,
+      mcap: '$1.85B',
+      liquidity: '$180M',
+      volume24h: '$410M',
+      intelligenceScore: 92,
       badges: ['verified', 'trending'],
-      sparklineData: [10, 30, 60, 88],
+      sparklineData: [20, 35, 50, 65, 78, 85, 92],
+    },
+    {
+      name: 'dogwifhat',
+      symbol: '$WIF',
+      mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
+      price: '$2.42',
+      priceChange24h: 8.6,
+      mcap: '$2.41B',
+      liquidity: '$210M',
+      volume24h: '$380M',
+      intelligenceScore: 90,
+      badges: ['verified'],
+      sparklineData: [45, 52, 60, 68, 75, 82, 90],
+    },
+    {
+      name: 'Raydium Revival',
+      symbol: '$RAYR',
+      mint: '4kF8...1z55',
+      price: '$3.85',
+      priceChange24h: 52.1,
+      mcap: '$1.12B',
+      liquidity: '$195M',
+      volume24h: '$280M',
+      intelligenceScore: 93,
+      badges: ['verified'],
+      sparklineData: [50, 65, 70, 80, 85, 95],
+    },
+    {
+      name: 'Solana Sentinel',
+      symbol: '$SENT',
+      mint: '7xK99zK8mP2xQ5wN3a19',
+      price: '$0.0425',
+      priceChange24h: 34.2,
+      mcap: '$14.2M',
+      liquidity: '$820K',
+      volume24h: '$4.2M',
+      intelligenceScore: 94,
+      badges: ['verified', 'smart-money'],
+      sparklineData: [30, 45, 60, 50, 75, 85, 90, 100],
     },
   ];
+
+  // Watchlisted Tokens (Filter from trending + top or fallback)
+  const allAvailableTokens = [...topTokens, ...trendingTokens];
+  const watchlistedTokens = allAvailableTokens.filter((t) => watchlistedMints.includes(t.mint));
+  const activeWatchlistList = watchlistedTokens.length > 0 ? watchlistedTokens : [topTokens[0], topTokens[5]];
 
   const mockAlerts: AlertCardData[] = [
     {
@@ -192,9 +265,9 @@ export function DashboardView() {
                 variant="segmented"
                 size="sm"
                 tabs={[
-                  { id: 'trending', label: 'Trending', count: tokens.length },
-                  { id: 'launches', label: 'New Launches', count: 1 },
-                  { id: 'watchlist', label: 'Watchlist', count: 2 },
+                  { id: 'trending', label: 'Trending Tokens', count: trendingTokens.length },
+                  { id: 'top', label: 'Top Tokens', count: topTokens.length },
+                  { id: 'watchlist', label: 'Watchlist', count: watchlistedTokens.length },
                 ]}
               />
             }
@@ -208,13 +281,13 @@ export function DashboardView() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {(marketTab === 'trending'
-                  ? tokens
-                  : marketTab === 'launches'
-                  ? mockLaunches
-                  : tokens.slice(0, 2)
+                  ? trendingTokens
+                  : marketTab === 'top'
+                  ? topTokens
+                  : activeWatchlistList
                 ).map((t) => (
                   <TokenCard
-                    key={t.symbol}
+                    key={t.symbol + t.mint}
                     token={t}
                     onQuickBuy={() => setQuickBuyOpen(true, t)}
                     onClick={() => setActiveView('trade')}
