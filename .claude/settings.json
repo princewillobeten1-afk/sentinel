@@ -83,7 +83,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
       "Bash(curl -s -o /dev/null -w \"before: %{http_code}\\\\n\" http://localhost:3000/api/v1/health)",
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
-      "Bash(python -)"
+      "Bash(python -)",
+      "Bash(docker exec scaletrader-db-1 psql -U sentinel -d sentinel -t -c ' *)",
+      "Bash(docker exec *)"
     ]
   }
 }

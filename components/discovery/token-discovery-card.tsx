@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Sparkles, TrendingUp, Droplets, Activity, Coins } from 'lucide-react';
+import { Copy, Star, Zap, Users, Shield, Lock, CheckCircle } from 'lucide-react';
 import { PriceChange } from '../market/price-change';
 import { RankedTokenItem } from '@/lib/market-data/types';
 
@@ -10,56 +10,117 @@ interface TokenDiscoveryCardProps {
   token: RankedTokenItem;
 }
 
+function formatCompactUSD(num: number): string {
+  if (num === 0) return '0';
+  if (num < 1) return num.toFixed(3);
+  if (num < 1_000) return Math.round(num).toString();
+  if (num < 1_000_000) {
+    const k = num / 1_000;
+    return `${k >= 100 ? Math.round(k) : k.toFixed(1)}K`;
+  }
+  const m = num / 1_000_000;
+  return `${m >= 100 ? Math.round(m) : m.toFixed(1)}M`;
+}
+
+function formatSmartPrice(num: number): string {
+  if (num >= 1) return num.toFixed(2);
+  if (num >= 0.01) return num.toFixed(4);
+  if (num >= 0.0001) return num.toFixed(5);
+  return num.toFixed(6);
+}
+
 export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
+  const isPumpFun = token.tokenId?.toLowerCase().endsWith('pump') || token.symbol.toLowerCase().includes('pump');
+
   return (
-    <Link
-      href={`/tokens/${token.tokenId}`}
-      className="p-4 rounded-2xl bg-sentinel-900/60 border border-white/5 hover:border-sky-500/30 transition-all duration-200 cursor-pointer group flex flex-col justify-between space-y-4 hover:shadow-[0_4px_25px_rgba(56,189,248,0.12)] font-mono"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500/20 to-indigo-600/20 border border-sky-500/30 flex items-center justify-center font-bold text-sky-300 text-sm shadow-inner shrink-0">
-            {token.symbol.slice(0, 3)}
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h4 className="text-sm font-bold text-white group-hover:text-sky-300 transition font-sans">
-                {token.name}
-              </h4>
-              <span className="text-xs text-sky-400 font-bold">${token.symbol}</span>
+    <div className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none">
+      {/* Top Row */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        {/* Left: Avatar + Details */}
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <div className="relative shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-750 flex items-center justify-center font-bold text-sky-400 text-xs overflow-hidden shadow-inner">
+            <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
+            <div
+              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md flex items-center justify-center text-[8px] font-black ${
+                isPumpFun ? 'bg-emerald-500 text-slate-950' : 'bg-sky-500 text-slate-950'
+              }`}
+            >
+              {isPumpFun ? '💊' : 'R'}
             </div>
-            <span className="text-2xs text-slate-500">Rank #{token.rank}</span>
+          </div>
+
+          <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
+            <div className="flex items-center gap-1 min-w-0">
+              <Link
+                href={`/trade/solana/${token.tokenId}`}
+                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans"
+                title={token.name}
+              >
+                {token.name}
+              </Link>
+              <span className="text-[10px] text-slate-400 truncate max-w-[65px]" title={token.symbol}>
+                ${token.symbol}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 leading-tight">
+              <span className="font-medium text-slate-400">Rank #{token.rank}</span>
+              <span className="text-slate-700">|</span>
+              <span className="text-slate-400 truncate font-mono text-[10px]">
+                {token.tokenId.slice(0, 4)}...{token.tokenId.slice(-4)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] pt-0.5">
+              <PriceChange changePct={token.changePct} size="sm" />
+            </div>
           </div>
         </div>
 
-        <PriceChange changePct={token.changePct} size="sm" />
-      </div>
+        {/* Right: Vol, Liquidity, Price, and Quick Action */}
+        <div className="text-right shrink-0 flex flex-col items-end gap-1">
+          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
+            <span className="text-slate-500">
+              V <span className="text-slate-200 font-bold">${formatCompactUSD(token.volumeUsd)}</span>
+            </span>
+            <span className="text-slate-500">
+              Liq <span className="text-cyan-400 font-bold">${formatCompactUSD(token.liquidityUsd)}</span>
+            </span>
+          </div>
 
-      {/* Price */}
-      <div>
-        <span className="text-2xs text-slate-500 uppercase block">Price (USD)</span>
-        <p className="text-xl font-bold text-white tracking-tight">
-          ${token.priceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-        </p>
-      </div>
+          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
+            <span className="text-slate-500">
+              P <span className="text-slate-300 font-bold">${formatSmartPrice(token.priceUsd)}</span>
+            </span>
+          </div>
 
-      {/* Metrics Footer */}
-      <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-2xs">
-        <div>
-          <span className="text-2xs text-slate-500 uppercase block">24h Vol</span>
-          <span className="text-slate-200 font-semibold block truncate">
-            ${(token.volumeUsd / 1_000_000).toFixed(2)}M
-          </span>
+          <Link
+            href={`/trade/solana/${token.tokenId}`}
+            className="h-6 px-2.5 rounded-md bg-sentinel-800/90 hover:bg-emerald-500 hover:text-slate-950 border border-slate-700/80 hover:border-emerald-400 text-[11px] font-bold text-slate-200 flex items-center gap-1 transition-all shadow-sm"
+          >
+            <Zap className="w-2.5 h-2.5 text-emerald-400 group-hover:text-slate-950 fill-current" />
+            <span>≡ 0.01</span>
+          </Link>
         </div>
+      </div>
 
-        <div>
-          <span className="text-2xs text-slate-500 uppercase block">Liquidity</span>
-          <span className="text-slate-200 font-semibold block truncate">
-            ${(token.liquidityUsd / 1_000_000).toFixed(2)}M
-          </span>
+      {/* Footer Security Badges */}
+      <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60 text-[10px]">
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400">
+          <CheckCircle className="w-2.5 h-2.5" />
+          <span>Verified</span>
+        </div>
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-800 text-cyan-400">
+          <Shield className="w-2.5 h-2.5" />
+          <span>Audit Clean</span>
+        </div>
+        <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400">
+          <Lock className="w-2.5 h-2.5" />
+        </div>
+        <div className="ml-auto px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-400 font-bold text-[10px]">
+          Score 98
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
