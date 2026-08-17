@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+dist/
+build/
+
+# Environment secrets — never commit real credentials.
+# .env.local.example is a safe placeholder template and stays tracked.
+.env
+.env.local
+.env.*.local
+!.env.local.example
+!.env.example
+
+# Test/build artifacts
+coverage/
+*.tsbuildinfo
+
+# Editor/OS noise
+.vscode/
+.DS_Store
+
+# Logs
+npm-debug.log*
+
+# Deployment
+.vercel/

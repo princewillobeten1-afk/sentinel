@@ -1,0 +1,26 @@
+{
+  "name": "@sentinel/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for the Project Sentinel API (Sprint 28 — not published to a registry yet).",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "ws": "^8.21.3"
+  },
+  "peerDependenciesMeta": {
+    "ws": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "20.14.5",
+    "@types/ws": "^8.18.1",
+    "typescript": "5.4.5"
+  }
+}

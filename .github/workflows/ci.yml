@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run build
+        run: npm run build 2>&1 | tee build-output.txt
+
+      - name: Check bundle size regression
+        run: node scripts/check-bundle-size.mjs build-output.txt
+
+      - name: Run tests
+        run: npm test
+
+      - name: Scan tracked files for committed secrets
+        run: node scripts/scan-secrets.mjs
+
+      - name: Dependency vulnerability audit (informational)
+        # Non-blocking for now: the current baseline already has known high/critical
+        # findings in next@14.2.5 itself (fixed in next@14.2.35, a same-major-version
+        # patch — see docs/security/README.md) that predate this workflow change.
+        # Making this blocking today would fail every CI run on that pre-existing
+        # baseline rather than catching newly introduced regressions. Revisit once
+        # the baseline is clean, then flip this to a hard failure.
+        run: npm audit --audit-level=high || true

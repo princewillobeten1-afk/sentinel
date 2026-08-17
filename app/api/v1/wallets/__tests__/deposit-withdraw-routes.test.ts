@@ -1,0 +1,96 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { GET as getDeposit, POST as postDeposit } from '../deposit/route';
+import { POST as postWithdraw } from '../withdraw/route';
+import { GET as getTransactions } from '../transactions/route';
+import { transferService } from '@/lib/wallet/transfer-service';
+import { adminEmergencyEngine } from '@/lib/admin/emergency';
+
+describe('Wallet Deposit & Withdraw API Routes', () => {
+  const walletAddress = '7xK99zK8mP2xQ5wN3a19';
+  const destinationAddress = '8wJ33nN9pQ4xV6bM2c18';
+
+  beforeEach(() => {
+    transferService.reset();
+    adminEmergencyEngine.reset();
+  });
+
+  it('GET /api/v1/wallets/deposit returns deposit instructions and QR payload', async () => {
+    const req = new Request(`http://localhost/api/v1/wallets/deposit?address=${walletAddress}&network=solana&asset=SOL`);
+    const res = await getDeposit(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.walletAddress).toBe(walletAddress);
+    expect(json.data.qrPayload).toBe(`solana:${walletAddress}`);
+    expect(json.data.minimumDeposit).toBe(0.01);
+  });
+
+  it('POST /api/v1/wallets/deposit credits funds and creates a deposit transaction', async () => {
+    const req = new Request('http://localhost/api/v1/wallets/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        walletId: 'w_001',
+        walletAddress,
+        asset: 'SOL',
+        amount: 10.0,
+        network: 'solana',
+      }),
+    });
+
+    const res = await postDeposit(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.direction).toBe('DEPOSIT');
+    expect(json.data.amount).toBe(10.0);
+    expect(json.data.status).toBe('CONFIRMED');
+  });
+
+  it('POST /api/v1/wallets/withdraw executes withdrawal successfully', async () => {
+    transferService.setBalance('user_001', walletAddress, 'SOL', 20.0);
+
+    const req = new Request('http://localhost/api/v1/wallets/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        walletId: 'w_001',
+        walletAddress,
+        destinationAddress,
+        asset: 'SOL',
+        amount: 3.5,
+        network: 'solana',
+        priorityFeeTier: 'turbo',
+      }),
+    });
+
+    const res = await postWithdraw(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.success).toBe(true);
+    expect(json.data.grossAmount).toBe(3.5);
+    expect(json.data.fee).toBe(0.00015);
+    expect(json.data.signature).toBeDefined();
+  });
+
+  it('GET /api/v1/wallets/transactions retrieves the transaction history', async () => {
+    transferService.setBalance('user_001', walletAddress, 'SOL', 20.0);
+
+    await transferService.simulateDeposit('user_001', {
+      walletId: 'w_001',
+      walletAddress,
+      asset: 'SOL',
+      amount: 4.0,
+      network: 'solana',
+    });
+
+    const req = new Request('http://localhost/api/v1/wallets/transactions?walletId=w_001');
+    const res = await getTransactions(req);
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.count).toBeGreaterThan(0);
+    expect(json.data.transactions[0].direction).toBe('DEPOSIT');
+  });
+});

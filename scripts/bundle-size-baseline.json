@@ -1,0 +1,20 @@
+{
+  "/_not-found": 90624,
+  "/ai": 117760,
+  "/alerts": 117760,
+  "/analytics": 117760,
+  "/discover": 117760,
+  "/help": 117760,
+  "/intelligence": 149504,
+  "/intelligence/[chain]/[token]": 168960,
+  "/launchpad": 117760,
+  "/m": 89907,
+  "/portfolio": 117760,
+  "/portfolio/risk": 121856,
+  "/settings": 117760,
+  "/terminal": 117760,
+  "/trade": 184320,
+  "/trade/[chain]/[token]": 184320,
+  "/wallet/[chain]/[address]": 91955,
+  "/watchlist": 117760
+}

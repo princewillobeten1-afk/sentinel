@@ -1,0 +1,31 @@
+version: '3.9'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_VERSION=v1
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    # Published to the host so `node server.js` and `npm run db:migrate`
+    # (both run outside Docker) can reach it. Host port 5433, not 5432 —
+    # 5432 is commonly already taken by another project's Postgres.
+    ports:
+      - '5433:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
