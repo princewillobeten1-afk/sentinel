@@ -20,6 +20,8 @@ export interface QuickBuyTokenData {
   mint: string;
   price: string;
   mcap: string;
+  customAmountSol?: number;
+  customAmountUsd?: number;
 }
 
 export type WalletTab = 'overview' | 'deposit' | 'withdraw' | 'history' | 'wallets';

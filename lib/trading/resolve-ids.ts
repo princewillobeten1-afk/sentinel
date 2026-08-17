@@ -80,8 +80,13 @@ export async function resolveTokenId(symbolOrAddress: string, chain = 'solana'):
   const needle = symbolOrAddress.trim();
   if (!needle) throw new ResolutionError('No token specified.', 'TOKEN_NOT_FOUND');
 
+  // Deliberately *not* sent as a `chain=` query param. The registry's
+  // `tokens.chain_id` is a foreign key to `chains.id`, whose values look like
+  // `chain_solana` — so filtering on the human name 'solana' matches nothing
+  // and a token that plainly exists is reported as unregistered. Chain is
+  // matched below against both spellings instead of guessing the key format.
   const res = await fetch(
-    apiUrl(endpoints.tokens.registry, { search: needle, chain, limit: 25 }),
+    apiUrl(endpoints.tokens.registry, { search: needle, limit: 25 }),
     { credentials: 'include' },
   );
   if (!res.ok) {
@@ -91,7 +96,16 @@ export async function resolveTokenId(symbolOrAddress: string, chain = 'solana'):
   const body = await res.json().catch(() => null);
   // `{ success, data: { data: [...] } }` — the registry's own payload key is
   // also `data`, so this unwraps the envelope then the page.
-  const tokens: TokenDto[] = body?.data?.data ?? body?.data ?? [];
+  const all: TokenDto[] = body?.data?.data ?? body?.data ?? [];
+
+  const wanted = chain.trim().toLowerCase();
+  const tokens = wanted
+    ? all.filter((t) => {
+        const id = (t.chainId ?? '').toLowerCase();
+        return id === wanted || id === `chain_${wanted}` || id.replace(/^chain_/, '') === wanted;
+      })
+    : all;
+
   if (tokens.length === 0) {
     throw new ResolutionError(`${needle} is not in the token registry.`, 'TOKEN_NOT_FOUND');
   }

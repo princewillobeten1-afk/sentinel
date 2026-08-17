@@ -24,7 +24,7 @@ export interface LiquidityChangeResult {
  * Liquidity Change Detector — Detects additions, contractions, and rapid liquidity withdrawals.
  */
 export function detectLiquidityChanges(input: LiquidityChangeInput): LiquidityChangeResult {
-  const changePct = input.liquidityChange1hPct;
+  const changePct = input?.liquidityChange1hPct ?? 0;
 
   let eventType: LiquidityEventType = 'STABLE';
   let riskSeverity: LiquidityChangeResult['riskSeverity'] = 'low';

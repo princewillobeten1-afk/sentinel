@@ -85,7 +85,14 @@
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
       "Bash(python -)",
       "Bash(docker exec scaletrader-db-1 psql -U sentinel -d sentinel -t -c ' *)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(export DATABASE_URL=\"postgresql://sentinel:sentinel@localhost:5433/sentinel\")",
+      "Bash(export AUTH_JWT_SECRET=\"route-verification-stable-secret-0123456789abcdef\")",
+      "Bash(export MARKET_STREAM_ENABLED=false)",
+      "Bash(nohup npm run dev)",
+      "Bash(echo \"launched pid=$!\")",
+      "Bash(export PORT=3100)"
     ]
   }
 }

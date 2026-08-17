@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import Link from 'next/link';
 import {
   Copy,
@@ -11,76 +11,68 @@ import {
   Shield,
   Lock,
   CheckCircle,
-  Globe,
-  Send,
+  ExternalLink,
   Twitter,
   Search,
-  ExternalLink,
+  ChevronRight,
+  TrendingUp,
+  Flame,
+  Info,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { DiscoveryToken } from '@/lib/discovery/types';
 import { Decimal } from '@/lib/math/decimal';
+import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase } from '@/lib/discovery/format';
 
 interface TokenDiscoveryCardProps {
   token: DiscoveryToken;
   variant?: 'compact' | 'expanded';
+  quickBuyPresets?: number[]; // In SOL or USD
+  quickBuyMode?: 'sol' | 'usd';
+  onQuickBuy?: (token: DiscoveryToken, amount: number) => void;
 }
 
-function formatCompactUSD(val: number | string | undefined): string {
-  if (val === undefined || val === null) return '0';
-  const num = typeof val === 'string' ? parseFloat(val) : val;
-  if (isNaN(num) || num === 0) return '0';
-  if (num < 1) {
-    return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
-  }
-  if (num < 1_000) {
-    return Math.round(num).toString();
-  }
-  if (num < 1_000_000) {
-    const k = num / 1_000;
-    return `${k >= 100 ? Math.round(k) : k.toFixed(k < 10 ? 2 : 1)}K`;
-  }
-  const m = num / 1_000_000;
-  return `${m >= 100 ? Math.round(m) : m.toFixed(m < 10 ? 2 : 1)}M`;
+/**
+ * Display formatters.
+ *
+ * These delegate to `lib/discovery/format.ts`, which is the single tested
+ * implementation. Three near-identical copies had drifted across this file,
+ * `token-discovery-card.tsx` and the feed views, and the copies disagreed:
+ * this one rendered an unknown holder count as `1` (`if (!num) return '1'`),
+ * so a token with no holder data showed one holder, and its subscript table
+ * only covered zero-runs of 3–9, falling back to `_12_` outside that range.
+ *
+ * The `$` prefix stays here because that is a presentation choice of this card,
+ * not of the number.
+ */
+export function formatCompactUSD(val: number | string | undefined): string {
+  const out = formatCompactUsd(val);
+  return out === '—' ? '—' : `$${out}`;
 }
 
-function formatSmartPrice(val: number | string | undefined): string {
-  if (!val) return '0.00';
-  const num = typeof val === 'string' ? parseFloat(val) : val;
-  if (isNaN(num)) return '0.00';
-  if (num >= 1) return num.toFixed(2);
-  if (num >= 0.01) return num.toFixed(4);
-  if (num >= 0.0001) return num.toFixed(5);
-  // Very small decimals
-  const str = num.toFixed(9);
-  const match = str.match(/^0\.(0+)(\d+)$/);
-  if (match) {
-    const zeroCount = match[1].length;
-    const sigDigits = match[2].slice(0, 3);
-    const subscriptDigits: Record<string, string> = {
-      '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈'
-    };
-    const sub = subscriptDigits[String(zeroCount)] || `_${zeroCount}_`;
-    return `0.0${sub}${sigDigits}`;
-  }
-  return num.toFixed(6);
+export function formatSmartPrice(val: number | string | undefined): string {
+  const out = formatTokenPrice(val);
+  return out === '—' ? '—' : `$${out}`;
 }
 
-function formatCount(num: number | undefined): string {
-  if (!num) return '1';
-  if (num < 1_000) return num.toString();
-  if (num < 1_000_000) return `${(num / 1_000).toFixed(num < 10_000 ? 1 : 0)}K`;
-  return `${(num / 1_000_000).toFixed(1)}M`;
-}
+export const formatCount = formatCountBase;
 
-export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
+export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
+  token,
+  variant = 'compact',
+  quickBuyPresets = [0.05, 0.1, 0.5, 1.0],
+  quickBuyMode = 'sol',
+  onQuickBuy,
+}: TokenDiscoveryCardProps) {
   const { setQuickBuyOpen } = useAppActions();
   const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
 
   const [copied, setCopied] = useState(false);
-  const isWatchlisted = checkWatchlisted(token.mint);
+  const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
+  const isWatchlisted = checkWatchlisted(token.mint);
   const priceDec = useMemo(() => new Decimal(token.priceUsd || '0'), [token.priceUsd]);
   const mcapDec = useMemo(() => new Decimal(token.marketCapUsd || '0'), [token.marketCapUsd]);
 
@@ -98,9 +90,13 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
     toggleWatchlist(token.mint);
   };
 
-  const handleQuickBuy = (e: React.MouseEvent) => {
+  const handleTriggerBuy = (e: React.MouseEvent, amount?: number) => {
     e.preventDefault();
     e.stopPropagation();
+    if (onQuickBuy && amount) {
+      onQuickBuy(token, amount);
+      return;
+    }
     setQuickBuyOpen(true, {
       name: token.name,
       symbol: token.symbol,
@@ -119,60 +115,90 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
     return `${token.mint.slice(0, 4)}...${token.mint.slice(-4)}`;
   }, [token.mint, token.source]);
 
-  // Derived security / token metrics
-  const top10Concentration = useMemo(() => {
-    const raw = Math.round(100 - (token.buyPressureRatio || 0.5) * 60);
-    return Math.min(96, Math.max(12, raw));
-  }, [token.buyPressureRatio]);
-
-  const devHoldingsPct = useMemo(() => {
-    const raw = Math.round((token.buyPressureRatio || 0.3) * 35);
-    return Math.min(45, Math.max(0, raw));
-  }, [token.buyPressureRatio]);
-
-  const score = token.discoveryScore?.totalScore ?? 95;
+  // Derived metrics
   const isPumpFun = token.source === 'Pump.fun' || token.mint?.toLowerCase().endsWith('pump');
+  const isMeteora = token.source === 'Meteora';
+  const isRaydium = token.source === 'Raydium';
+
+  const dexBadgeLetter = isPumpFun ? '💊' : isMeteora ? 'M' : isRaydium ? 'R' : 'O';
+  const dexBadgeColor = isPumpFun
+    ? 'bg-emerald-500 text-slate-950'
+    : isMeteora
+    ? 'bg-purple-500 text-white'
+    : 'bg-sky-500 text-slate-950';
+
+  /**
+   * Safety and distribution figures are shown only when they are real.
+   *
+   * These previously fell back to invented values when the field was missing:
+   * top-10 concentration and developer holdings were both derived from
+   * `buyPressureRatio` — a completely unrelated measure of recent trade
+   * direction — and an unknown risk score defaulted to 88, which renders as a
+   * green "LOW" risk badge. A token nobody has analysed would therefore display
+   * as one that had been analysed and cleared.
+   *
+   * On a screen people use to decide what to buy, an absent measurement has to
+   * look absent. `null` here renders as "—" below.
+   */
+  const buyRatio = token.buyPressureRatio ?? null;
+  const buyPct = buyRatio !== null ? Math.round(buyRatio * 100) : null;
+  const sellPct = buyPct !== null ? 100 - buyPct : null;
+
+  const top10 = token.top10HoldingsPct ?? null;
+  const devHoldings = token.devHoldingsPct ?? null;
+  const riskScore = token.riskScore ?? token.discoveryScore?.totalScore ?? null;
+  const riskTier =
+    token.riskTier ??
+    (riskScore === null ? null : riskScore >= 80 ? 'low' : riskScore >= 50 ? 'medium' : 'high');
+
+  const migrationPct = token.migrationProgress ?? null;
+  const isMigrating = isPumpFun && migrationPct !== null && migrationPct > 0 && migrationPct < 100;
+
+  const priceChange = token.priceChange15m || token.priceChange1h || token.priceChange24h || 0;
+  const isPositive = priceChange >= 0;
 
   return (
-    <div className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none">
-      {/* Top Main Row */}
+    <div className="group relative bg-[#0b0e14]/95 hover:bg-[#111722] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none hover:shadow-md">
+      {/* 1. Header Row: Logo, Name, Ticker, Price & % Change */}
       <div className="flex items-start justify-between gap-2 min-w-0">
-        {/* Left Column: Avatar + Identity + Socials */}
-        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+        {/* Left: Avatar + Title & Meta */}
+        <div className="flex items-start gap-2 min-w-0 flex-1">
           {/* Avatar Thumbnail with DEX Badge */}
-          <div className="relative shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-750 flex items-center justify-center font-bold text-sky-400 text-xs overflow-hidden shadow-inner">
-            <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
-            {/* DEX Badge Pill at bottom right */}
+          <div className="relative shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-750 flex items-center justify-center font-bold text-sky-400 text-xs overflow-hidden shadow-inner">
+            {token.logoURI ? (
+              <img src={token.logoURI} alt={token.name} className="w-full h-full object-cover" />
+            ) : (
+              <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
+            )}
+            {/* DEX Badge at bottom right */}
             <div
-              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md flex items-center justify-center text-[8px] font-black ${
-                isPumpFun
-                  ? 'bg-emerald-500 text-slate-950'
-                  : 'bg-sky-500 text-slate-950'
-              }`}
+              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md flex items-center justify-center text-2xs font-black ${dexBadgeColor}`}
               title={token.source || 'Solana DEX'}
             >
-              {isPumpFun ? '💊' : 'R'}
+              {dexBadgeLetter}
             </div>
           </div>
 
           {/* Identity Stack */}
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
-            {/* Line 1: Name + Symbol + Copy + Star */}
+            {/* Line 1: Name + Symbol + Open + Copy + Star */}
             <div className="flex items-center gap-1 min-w-0">
               <Link
                 href={`/trade/solana/${token.mint}`}
-                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans"
+                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans flex items-center gap-0.5"
                 title={token.name}
               >
-                {token.name}
+                <span>{token.name}</span>
+                <ChevronRight className="w-2.5 h-2.5 text-slate-500 group-hover:text-sky-400 shrink-0" />
               </Link>
-              <span className="text-[10px] text-slate-400 truncate max-w-[65px]" title={token.symbol}>
-                {token.symbol}
+              <span className="text-2xs text-slate-400 truncate max-w-[55px]" title={token.symbol}>
+                ${token.symbol}
               </span>
               <button
                 onClick={handleCopyAddress}
-                className="text-slate-500 hover:text-slate-200 transition-colors p-0.5 shrink-0 ml-0.5"
-                title={copied ? 'Copied!' : 'Copy Mint Address'}
+                className="text-slate-500 hover:text-slate-200 transition-colors p-0.5 shrink-0 ml-auto"
+                title={copied ? 'Copied CA!' : 'Copy Contract Address (CA)'}
+                aria-label="Copy contract address"
               >
                 {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
               </button>
@@ -182,144 +208,232 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
                   isWatchlisted ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'
                 }`}
                 title={isWatchlisted ? 'In Watchlist' : 'Add to Watchlist'}
+                aria-label="Toggle Watchlist"
               >
                 <Star className={`w-2.5 h-2.5 ${isWatchlisted ? 'fill-current' : ''}`} />
               </button>
             </div>
 
-            {/* Line 2: Age | Truncated Mint */}
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 leading-tight">
+            {/* Line 2: Age | Truncated Mint | Holders */}
+            <div className="flex items-center gap-1.5 text-2xs text-slate-400 leading-tight">
               <span className="font-medium text-slate-400">{token.ageFormatted || '1m'}</span>
               <span className="text-slate-700">|</span>
               <button
                 onClick={handleCopyAddress}
-                className="text-slate-400 hover:text-sky-300 transition-colors truncate font-mono text-[10px]"
+                className="text-slate-400 hover:text-sky-300 transition-colors truncate font-mono text-2xs"
                 title="Click to copy full address"
               >
                 {shortMint}
               </button>
-            </div>
-
-            {/* Line 3: Socials & Quick Icons */}
-            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] pt-0.5">
-              <span className="flex items-center gap-0.5 text-sky-400/90 font-semibold" title="Holders">
+              <span className="text-slate-700">|</span>
+              <span className="flex items-center gap-0.5 text-sky-400" title="Total Holders">
                 <Users className="w-2.5 h-2.5" />
-                <span>{formatCount(token.holdersCount || 1)}</span>
+                <span>{formatCount(token.holdersCount)}</span>
               </span>
-              <Link
-                href={`https://x.com/search?q=${encodeURIComponent(token.symbol)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-slate-300 transition-colors"
-                title="Twitter/X Search"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Twitter className="w-2.5 h-2.5" />
-              </Link>
-              <Link
-                href={`https://solscan.io/token/${token.mint}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-slate-300 transition-colors"
-                title="Solscan Explorer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Search className="w-2.5 h-2.5" />
-              </Link>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Volume, MC, Price, TX, and Quick Buy */}
-        <div className="text-right shrink-0 flex flex-col items-end gap-1">
-          {/* Vol & Market Cap */}
-          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
-            <span className="text-slate-500">
-              V <span className="text-slate-200 font-bold">${formatCompactUSD(token.volume24hUsd || token.volume1hUsd)}</span>
-            </span>
-            <span className="text-slate-500">
-              MC <span className="text-amber-400 font-bold">${formatCompactUSD(token.marketCapUsd)}</span>
-            </span>
-          </div>
-
-          {/* Price & TX count */}
-          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
-            <span className="text-slate-500">
-              P <span className="text-slate-300 font-bold">${formatSmartPrice(token.priceUsd)}</span>
-            </span>
-            <span className="text-slate-500">
-              TX <span className="text-slate-400 font-medium">{token.txCount1h || (token.buysCount + token.sellsCount) || 1}</span>
-            </span>
-          </div>
-
-          {/* Quick Buy Pill Button */}
-          <button
-            onClick={handleQuickBuy}
-            className="h-6 px-2.5 rounded-md bg-sentinel-800/90 hover:bg-emerald-500 hover:text-slate-950 border border-slate-700/80 hover:border-emerald-400 text-[11px] font-bold text-slate-200 flex items-center gap-1 transition-all shadow-sm group-hover:border-slate-600"
-            title="Instant Quick Swap"
+        {/* Right: Price & % Change */}
+        <div className="text-right shrink-0 flex flex-col items-end gap-0.5">
+          <span className="font-bold text-slate-100 text-xs tracking-tight">
+            {formatSmartPrice(token.priceUsd)}
+          </span>
+          <span
+            className={`text-2xs font-bold px-1 py-0.2 rounded ${
+              isPositive ? 'text-emerald-400 bg-emerald-950/40' : 'text-rose-400 bg-rose-950/40'
+            }`}
           >
-            <Zap className="w-2.5 h-2.5 text-emerald-400 group-hover:text-slate-950 fill-current" />
-            <span>≡ 0.01</span>
-          </button>
+            {isPositive ? '+' : ''}{priceChange.toFixed(1)}%
+          </span>
         </div>
       </div>
 
-      {/* Bottom Footer: Security & Safety Pills */}
-      <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60 text-[10px]">
-        {/* Top 10 Holders % */}
+      {/* 2. Market & Activity Grid (MC, LIQ, VOL, TX, BUY/SELL) */}
+      <div className="grid grid-cols-2 gap-1.5 bg-slate-950/60 rounded-lg p-1.5 border border-slate-800/60 text-2xs leading-tight">
+        {/* Market Cap & Liquidity */}
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">MC</span>
+            <span className="text-amber-400 font-bold">{formatCompactUSD(token.marketCapUsd)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">LIQ</span>
+            <span className="text-cyan-400 font-bold">{formatCompactUSD(token.liquidityUsd)}</span>
+          </div>
+        </div>
+
+        {/* Volume & TX / Buy Pressure */}
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">VOL</span>
+            <span className="text-slate-200 font-bold">{formatCompactUSD(token.volume24hUsd || token.volume1hUsd)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">TX</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-300 font-medium">
+                {formatCount(token.txCount1h || (token.buysCount + token.sellsCount))}
+              </span>
+              {/* Buy share of recent trades. Omitted entirely when there is no
+                  pressure reading — "%B" with no number is worse than nothing. */}
+              {buyPct !== null && (
+                <span className="text-2xs text-emerald-400 font-bold" title={`${buyPct}% buys / ${sellPct}% sells`}>
+                  {buyPct}%B
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Migration / Bonding Progress Bar (if applicable) */}
+      {isMigrating && (
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center justify-between text-2xs text-slate-400 leading-none">
+            <span className="flex items-center gap-0.5 text-amber-400 font-medium">
+              <Flame className="w-2.5 h-2.5" /> Bonding Curve
+            </span>
+            <span className="font-bold text-slate-200">{migrationPct}%</span>
+          </div>
+          <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(2, migrationPct))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 4. Safety & Distribution Micro-Badges Bar */}
+      <div className="flex items-center justify-between gap-1 text-2xs leading-none pt-0.5">
+        {/* Top 10 Concentration. Neutral styling when unmeasured — a grey "—"
+            reads as "not known", where a green badge would read as "safe". */}
         <div
-          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded border ${
-            top10Concentration > 70
+          className={`flex items-center gap-0.5 px-1 py-0.5 rounded border ${
+            top10 === null
+              ? 'bg-slate-900/80 border-slate-800 text-slate-500'
+              : top10 > 60
               ? 'bg-rose-950/40 border-rose-900/50 text-rose-400'
-              : top10Concentration > 40
+              : top10 > 30
               ? 'bg-amber-950/40 border-amber-900/50 text-amber-400'
               : 'bg-emerald-950/40 border-emerald-900/50 text-emerald-400'
           }`}
-          title="Top 10 Holders Concentration"
+          title={
+            top10 === null
+              ? 'Top 10 holder concentration has not been measured for this token'
+              : `Top 10 holders own ${top10}% of total supply`
+          }
         >
-          <Users className="w-2.5 h-2.5" />
-          <span>{top10Concentration}%</span>
+          <span className="text-2xs text-slate-500">T10:</span>
+          <span className="font-semibold">{top10 === null ? '—' : `${top10}%`}</span>
         </div>
 
-        {/* Dev / Bonding Curve Share */}
+        {/* Dev Holdings */}
         <div
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-800 text-cyan-400 font-medium"
-          title="Dev / Insider Share"
+          className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-900/80 border border-slate-800 text-slate-300"
+          title={
+            devHoldings === null
+              ? 'Developer holdings have not been measured for this token'
+              : `Developer owns ${devHoldings}%`
+          }
+        >
+          <span className="text-2xs text-slate-500">DEV:</span>
+          <span className={`font-semibold ${devHoldings === null ? 'text-slate-500' : 'text-cyan-400'}`}>
+            {devHoldings === null ? '—' : `${devHoldings}%`}
+          </span>
+        </div>
+
+        {/* Safety Score. An unscored token is explicitly unscored, never "low risk". */}
+        <div
+          className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded border font-semibold ${
+            riskTier === null
+              ? 'bg-slate-900/80 border-slate-800 text-slate-500'
+              : riskTier === 'low'
+              ? 'bg-emerald-950/40 border-emerald-900/50 text-emerald-400'
+              : riskTier === 'medium'
+              ? 'bg-amber-950/40 border-amber-900/50 text-amber-400'
+              : 'bg-rose-950/40 border-rose-900/50 text-rose-400'
+          }`}
+          title={
+            riskScore === null
+              ? 'This token has not been scored yet'
+              : `Safety score ${riskScore}/100: ${String(riskTier).toUpperCase()} risk`
+          }
         >
           <Shield className="w-2.5 h-2.5" />
-          <span>{devHoldingsPct}%</span>
+          <span>{riskScore === null ? '—' : riskScore}</span>
         </div>
 
-        {/* Mint Authority Renounced */}
-        <div
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400"
-          title="Mint Authority Renounced"
-        >
-          <CheckCircle className="w-2.5 h-2.5" />
+        {/* AI Signal Badge */}
+        {token.aiSignalScore !== undefined && (
+          <div
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-950/50 border border-sky-800/50 text-sky-400 font-bold ml-auto"
+            title={`AI Signal: ${token.aiSignalLabel || 'Bullish'} (${token.aiSignalReason || 'Signal active'})`}
+          >
+            <Zap className="w-2.5 h-2.5 text-sky-400 fill-current" />
+            <span>{token.aiSignalScore}</span>
+          </div>
+        )}
+      </div>
+
+      {/* 5. Quick Buy Action Bar (Requirement 15 & 16) */}
+      <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800/60">
+        {/* Social / Contract Quick Icons */}
+        <div className="flex items-center gap-1 text-slate-500">
+          <button
+            onClick={handleCopyAddress}
+            className="px-1 py-0.5 rounded hover:bg-slate-800 text-2xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
+            title="Copy Contract Address"
+          >
+            CA
+          </button>
+          <Link
+            href={`https://x.com/search?q=${encodeURIComponent(token.symbol)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="p-1 hover:text-slate-300 transition-colors"
+            title="Twitter/X Search"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Twitter className="w-2.5 h-2.5" />
+          </Link>
+          <Link
+            href={`https://solscan.io/token/${token.mint}`}
+            target="_blank"
+            rel="noreferrer"
+            className="p-1 hover:text-slate-300 transition-colors"
+            title="Solscan Explorer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Search className="w-2.5 h-2.5" />
+          </Link>
         </div>
 
-        {/* Liquidity Locked */}
-        <div
-          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400"
-          title="Liquidity Locked"
-        >
-          <Lock className="w-2.5 h-2.5" />
-        </div>
+        {/* Quick Buy Preset Pills */}
+        <div className="flex items-center gap-1 ml-auto">
+          {quickBuyPresets.slice(0, 3).map((amt) => (
+            <button
+              key={amt}
+              onClick={(e) => handleTriggerBuy(e, amt)}
+              className="h-5 px-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-2xs font-bold text-slate-300 hover:text-white transition-colors"
+              title={`Quick Buy with ${quickBuyMode === 'sol' ? `${amt} SOL` : `$${amt}`}`}
+            >
+              {quickBuyMode === 'sol' ? `≡${amt}` : `$${amt}`}
+            </button>
+          ))}
 
-        {/* Sentinel Discovery Score Pill */}
-        <div
-          className={`ml-auto px-1.5 py-0.5 rounded border font-bold text-[10px] ${
-            score >= 80
-              ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
-              : score >= 60
-              ? 'bg-sky-950/60 border-sky-800/60 text-sky-400'
-              : 'bg-amber-950/60 border-amber-800/60 text-amber-400'
-          }`}
-          title="Sentinel Signal Score (0 - 100)"
-        >
-          ⚡ {score}
+          {/* Master Quick Buy Button */}
+          <button
+            onClick={(e) => handleTriggerBuy(e)}
+            className="h-5 px-2 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/40 hover:border-emerald-400 text-2xs font-bold flex items-center gap-0.5 transition-all shadow-sm"
+            title="Open Instant Swap Execution"
+          >
+            <Zap className="w-2.5 h-2.5 fill-current" />
+            <span>BUY</span>
+          </button>
         </div>
       </div>
     </div>
   );
-}
+});

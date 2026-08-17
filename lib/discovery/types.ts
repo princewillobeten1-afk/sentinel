@@ -3,11 +3,17 @@ export type TimeWindow = '1m' | '5m' | '15m' | '1h' | '4h' | '24h';
 export type DiscoverySection =
   | 'trending'
   | 'new'
+  | 'migrating'
+  | 'graduated'
   | 'momentum'
   | 'volume'
   | 'liquidity'
   | 'movers'
   | 'watchlist'
+  | 'smart-money'
+  | 'ai-picks'
+  | 'top-gainers'
+  | 'top-losers'
   | 'personalized';
 
 export interface SignalResult {
@@ -60,6 +66,7 @@ export interface DiscoveryToken {
   mint: string;
   chain: string;
   source: 'Pump.fun' | 'Raydium' | 'Meteora' | 'Orca';
+  logoURI?: string;
   ageMinutes: number;
   ageFormatted: string;
   priceUsd: string;
@@ -86,6 +93,30 @@ export interface DiscoveryToken {
   holdersCount: number;
   holderGrowth1hPct: number;
   discoveryScore: DiscoveryScore;
+
+  // Pro-Terminal & Trenches Metrics
+  migrationProgress?: number; // 0 - 100 (%)
+  bondingStatus?: 'bonding' | 'migrating' | 'graduated';
+  devHoldingsPct?: number;
+  top10HoldingsPct?: number;
+  insiderHoldingsPct?: number;
+  sniperPercentage?: number;
+  bundlerPercentage?: number;
+  riskScore?: number; // 0 - 100
+  riskTier?: 'low' | 'medium' | 'high' | 'critical';
+  isMintRenounced?: boolean;
+  isLiquidityLocked?: boolean;
+  isFreezeDisabled?: boolean;
+  aiSignalScore?: number; // 0 - 100
+  aiSignalLabel?: 'Bullish' | 'Neutral' | 'Bearish' | 'Breakout';
+  aiSignalReason?: string;
+  smartMoneyCount?: number;
+  smartMoneyNetFlowUsd?: number;
+  twitterUrl?: string;
+  telegramUrl?: string;
+  websiteUrl?: string;
+  userPositionSol?: number;
+  userPositionTokens?: number;
 }
 
 export interface DiscoveryFilter {
@@ -96,7 +127,7 @@ export interface DiscoveryFilter {
   minLiquidityUsd?: number;
   minVolumeUsd?: number;
 
-  // Range Filters (Section 24)
+  // Range Filters
   marketCapMin?: number;
   marketCapMax?: number;
   liquidityMin?: number;
@@ -114,11 +145,21 @@ export interface DiscoveryFilter {
   discoveryScoreMin?: number;
   discoveryScoreMax?: number;
 
-  // Sprint 7 Activity Intelligence Filters
+  // Distribution & Safety Filters
+  top10HoldingsMax?: number;
+  devHoldingsMax?: number;
+  snipersMax?: number;
+  insidersMax?: number;
+  minRiskScore?: number;
+  mintRenouncedOnly?: boolean;
+  liquidityLockedOnly?: boolean;
+  launchpads?: string[];
+
+  // Activity Intelligence Filters
   organicVolumeMin?: number;     // 0 - 100
   top5VolumeShareMax?: number;  // 0.0 - 1.0
   noCoordinatedSignals?: boolean;
-  creatorReputation?: number;  // Future: 0 - 100
+  creatorReputation?: number;  // 0 - 100
   insiderRisk?: number;       // 0 - 100
   ownershipConcentration?: number; // 0 - 100
   organicVolume?: number;     // 0 - 100
@@ -127,4 +168,36 @@ export interface DiscoveryFilter {
   contractRisk?: number;      // 0 - 100
 }
 
+export type ColumnSortOption =
+  | 'newest'
+  | 'oldest'
+  | 'volume'
+  | 'volume-accel'
+  | 'liquidity'
+  | 'market-cap'
+  | 'price-change'
+  | 'tx-count'
+  | 'buy-pressure'
+  | 'migration-progress'
+  | 'score'
+  | 'risk';
 
+export interface DiscoveryColumnConfig {
+  id: string;
+  type: DiscoverySection;
+  title: string;
+  icon?: string;
+  sortBy?: ColumnSortOption;
+  sortDirection?: 'asc' | 'desc';
+  filters?: Partial<DiscoveryFilter>;
+  customQuickBuySol?: number;
+  isCollapsed?: boolean;
+}
+
+export interface QuickBuySettings {
+  presetsSol: number[]; // e.g. [0.05, 0.1, 0.5, 1.0]
+  presetsUsd: number[]; // e.g. [10, 25, 50, 100]
+  mode: 'sol' | 'usd';
+  defaultSlippageBps: number; // e.g. 100 (1%)
+  autoApproveSmallTrades: boolean;
+}

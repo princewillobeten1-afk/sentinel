@@ -12,11 +12,17 @@ export interface RealtimeTokenFeedState {
 }
 
 export function useRealtimeTokenFeed(
-  section: DiscoverySection = 'trending',
-  timeWindow: TimeWindow = '24h',
-  filter: Partial<DiscoveryFilter> = {},
-  chain = 'solana'
+  sectionOrOptions: DiscoverySection | { section?: DiscoverySection; timeWindow?: TimeWindow; filter?: Partial<DiscoveryFilter>; chain?: string } = 'trending',
+  timeWindowArg: TimeWindow = '24h',
+  filterArg: Partial<DiscoveryFilter> = {},
+  chainArg = 'solana'
 ) {
+  const isObject = typeof sectionOrOptions === 'object';
+  const section: DiscoverySection = isObject ? sectionOrOptions.section || 'trending' : sectionOrOptions;
+  const timeWindow: TimeWindow = isObject ? sectionOrOptions.timeWindow || '24h' : timeWindowArg;
+  const filter: Partial<DiscoveryFilter> = isObject ? sectionOrOptions.filter || {} : filterArg;
+  const chain: string = isObject ? sectionOrOptions.chain || 'solana' : chainArg;
+
   const [tokens, setTokens] = useState<DiscoveryToken[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -312,6 +318,7 @@ export function useRealtimeTokenFeed(
     updatedAt,
     isLoading,
     connected,
+    isConnected: connected,
     error,
     refresh: fetchInitialTokens,
   };

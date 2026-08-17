@@ -29,6 +29,7 @@ import { TokenSocials } from '@/components/ui/token-socials';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData } from '@/lib/api/response';
 import { resolveWalletId, resolveTokenId } from '@/lib/trading/resolve-ids';
+import { toDecimalString, percentToDecimalString } from '@/lib/trading/decimal-input';
 
 /** The chain's native asset — what a market buy is denominated in. */
 const BASE_SYMBOL = 'SOL';
@@ -53,7 +54,7 @@ export function TradeView() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [pendingQuote, setPendingQuote] = useState<{ expectedOut: number; priceImpactPct: number; networkFeeUsd: number } | null>(null);
   /** Resolved database ids, held between the preview and the confirmed submit. */
-  const [pendingOrder, setPendingOrder] = useState<{ walletId: string; tokenId: string; quantity: number } | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<{ walletId: string; tokenId: string; quantity: string } | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showLimitBuilder, setShowLimitBuilder] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
@@ -143,7 +144,14 @@ export function TradeView() {
         resolveWalletId(walletId),
         resolveTokenId(quoteSymbol),
       ]);
-      setPendingOrder({ walletId: resolvedWalletId, tokenId: resolvedTokenId, quantity: amountVal });
+      // Sent as the decimal string the user typed: the order API validates
+      // against /^\d+(\.\d+)?$/ and stores NUMERIC, so a float would both fail
+      // validation and lose precision.
+      setPendingOrder({
+        walletId: resolvedWalletId,
+        tokenId: resolvedTokenId,
+        quantity: toDecimalString(solAmount),
+      });
 
       setShowPreviewModal(true);
     } catch (err: any) {
@@ -177,7 +185,7 @@ export function TradeView() {
           orderType: executionMode === 'limit' ? 'LIMIT' : 'MARKET',
           side: orderType === 'buy' ? 'BUY' : 'SELL',
           quantity: pendingOrder.quantity,
-          slippageLimit: parseFloat(slippage) / 100,
+          slippageLimit: percentToDecimalString(slippage),
           idempotencyKey: idempotencyKeyRef.current ?? undefined,
         }),
       });
