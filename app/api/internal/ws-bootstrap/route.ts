@@ -26,13 +26,25 @@ export async function POST() {
     return jsonResponse({ webSocketAttached: false, reason: 'No WebSocketServer published on globalThis (not running under server.js).' });
   }
 
-  const [{ attachWebSocketServer }, { wsBroadcaster }] = await Promise.all([
+  const [{ attachWebSocketServer }, { wsBroadcaster }, { eventBus }] = await Promise.all([
     import('@/lib/ws/server'),
     import('@/lib/ws/broadcaster'),
+    import('@/lib/server/events/event-bus'),
   ]);
 
   attachWebSocketServer(wss);
   wsBroadcaster.start();
 
-  return jsonResponse({ webSocketAttached: true });
+  // Subscribe to events ingested by *other* server instances. Without this a
+  // client connected to instance B never sees a token detected by instance A.
+  // Awaited but non-fatal: with no Redis configured this resolves immediately
+  // and the bus stays local-only, which is correct for a single instance.
+  let redisFanout = false;
+  try {
+    redisFanout = await eventBus.subscribeToRemote();
+  } catch {
+    // Degraded to local-only delivery; ingestion and local WS are unaffected.
+  }
+
+  return jsonResponse({ webSocketAttached: true, redisFanout });
 }

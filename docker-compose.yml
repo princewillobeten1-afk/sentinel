@@ -12,6 +12,23 @@ services:
       - '3000:3000'
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    # Host port 6380, not 6379 — 6379 is commonly already taken by another
+    # project's Redis, exactly as with Postgres on 5433 below.
+    ports:
+      - '6380:6379'
+    # Real-time events are re-derivable from the chain and every key is
+    # short-TTL, so persistence buys nothing here; disabling it removes the
+    # fork-and-write pause that would otherwise stall the event bus.
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory-policy', 'allkeys-lru']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   db:
     image: postgres:15-alpine

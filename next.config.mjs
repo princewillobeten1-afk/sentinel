@@ -12,7 +12,11 @@ const nextConfig = {
     // resolution ("bufferUtil.mask is not a function"). Marking it external
     // makes Next hand off to Node's own require() instead, which resolves
     // ws's pure-JS fallback correctly.
-    serverComponentsExternalPackages: ['ws'],
+    // `ioredis` is Node-only CJS with dynamic requires; bundling it into the
+    // RSC server graph produced "Cannot read properties of undefined (reading
+    // 'call')" the moment the event bus imported it, which took down the
+    // WebSocket bootstrap route. Same treatment as `ws` above.
+    serverComponentsExternalPackages: ['ws', 'ioredis'],
   },
   async headers() {
     // Sprint 30 — Tier 6. A first pass, not final: `'unsafe-inline'` on

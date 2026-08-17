@@ -48,14 +48,14 @@ export class RealtimeRepository {
 
     try {
       await dbPool.query(
-        `INSERT INTO tokens (mint, name, symbol, decimals, image_url, platform, pool_address, first_seen_slot, first_signature, price_usd, liquidity_usd, market_cap_usd, volume_24h_usd)
+        `INSERT INTO realtime_tokens (mint, name, symbol, decimals, image_url, platform, pool_address, first_seen_slot, first_signature, price_usd, liquidity_usd, market_cap_usd, volume_24h_usd)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (mint) DO UPDATE SET
-           name = COALESCE(EXCLUDED.name, tokens.name),
-           symbol = COALESCE(EXCLUDED.symbol, tokens.symbol),
-           pool_address = COALESCE(EXCLUDED.pool_address, tokens.pool_address),
-           price_usd = COALESCE(EXCLUDED.price_usd, tokens.price_usd),
-           liquidity_usd = COALESCE(EXCLUDED.liquidity_usd, tokens.liquidity_usd),
+           name = COALESCE(EXCLUDED.name, realtime_tokens.name),
+           symbol = COALESCE(EXCLUDED.symbol, realtime_tokens.symbol),
+           pool_address = COALESCE(EXCLUDED.pool_address, realtime_tokens.pool_address),
+           price_usd = COALESCE(EXCLUDED.price_usd, realtime_tokens.price_usd),
+           liquidity_usd = COALESCE(EXCLUDED.liquidity_usd, realtime_tokens.liquidity_usd),
            updated_at = NOW()`,
         [
           token.mint,
@@ -87,7 +87,7 @@ export class RealtimeRepository {
 
     try {
       await dbPool.query(
-        `UPDATE tokens
+        `UPDATE realtime_tokens
          SET price_usd = COALESCE($2, price_usd),
              liquidity_usd = COALESCE($3, liquidity_usd),
              market_cap_usd = COALESCE($4, market_cap_usd),
@@ -112,7 +112,7 @@ export class RealtimeRepository {
 
     try {
       await dbPool.query(
-        `INSERT INTO trades (signature, mint, wallet, side, amount, amount_sol, price_usd, slot, timestamp)
+        `INSERT INTO realtime_trades (signature, mint, wallet, side, amount, amount_sol, price_usd, slot, timestamp)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, NOW()))
          ON CONFLICT (signature, mint, side) DO NOTHING`,
         [
@@ -137,7 +137,7 @@ export class RealtimeRepository {
    */
   public async getTokens(limit = 50, since?: string): Promise<TokenRecord[]> {
     try {
-      let query = `SELECT mint, name, symbol, decimals, image_url as "imageUrl", platform, pool_address as "poolAddress", first_seen_at as "firstSeenAt", first_seen_slot as "firstSeenSlot", price_usd as "priceUsd", liquidity_usd as "liquidityUsd", market_cap_usd as "marketCapUsd", volume_24h_usd as "volume24hUsd", updated_at as "updatedAt" FROM tokens`;
+      let query = `SELECT mint, name, symbol, decimals, image_url as "imageUrl", platform, pool_address as "poolAddress", first_seen_at as "firstSeenAt", first_seen_slot as "firstSeenSlot", price_usd as "priceUsd", liquidity_usd as "liquidityUsd", market_cap_usd as "marketCapUsd", volume_24h_usd as "volume24hUsd", updated_at as "updatedAt" FROM realtime_tokens`;
       const params: unknown[] = [];
 
       if (since) {
@@ -167,7 +167,7 @@ export class RealtimeRepository {
     try {
       const res = await dbPool.query<TokenRecord>(
         `SELECT mint, name, symbol, decimals, image_url as "imageUrl", platform, pool_address as "poolAddress", first_seen_at as "firstSeenAt", first_seen_slot as "firstSeenSlot", price_usd as "priceUsd", liquidity_usd as "liquidityUsd", market_cap_usd as "marketCapUsd", volume_24h_usd as "volume24hUsd", updated_at as "updatedAt"
-         FROM tokens WHERE mint = $1 LIMIT 1`,
+         FROM realtime_tokens WHERE mint = $1 LIMIT 1`,
         [mint]
       );
       if (res.rows[0]) return res.rows[0];
@@ -184,7 +184,7 @@ export class RealtimeRepository {
     try {
       const res = await dbPool.query<TradeRecord>(
         `SELECT signature, mint, wallet, side, amount, amount_sol as "amountSol", price_usd as "priceUsd", slot, timestamp
-         FROM trades WHERE mint = $1 ORDER BY timestamp DESC LIMIT $2`,
+         FROM realtime_trades WHERE mint = $1 ORDER BY timestamp DESC LIMIT $2`,
         [mint, limit]
       );
       if (res.rows.length > 0) return res.rows;

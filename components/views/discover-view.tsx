@@ -255,3 +255,6 @@ export function DiscoverView() {
     </div>
   );
 }
+
+export default DiscoverView;
+

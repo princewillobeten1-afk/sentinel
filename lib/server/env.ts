@@ -34,7 +34,11 @@ export const env = {
   HELIUS_GRPC_URL: process.env.HELIUS_GRPC_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',
   HELIUS_GRPC_TOKEN: process.env.HELIUS_GRPC_TOKEN ?? '',
   HELIUS_LASERSTREAM_URL: process.env.HELIUS_LASERSTREAM_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',
-  REDIS_URL: process.env.REDIS_URL ?? 'redis://default:gIl3owPoeJpneYZTmMQOYkw82jwfpEYr@gold-letter-velvet-61093.db.redis.io:13958',
+  // No default. This previously fell back to a hardcoded Redis Cloud URL with
+  // its password inline — so an unconfigured deployment silently connected to
+  // someone else's instance, using a credential that is in committed git
+  // history. Empty means "no Redis", which the client degrades to cleanly.
+  REDIS_URL: process.env.REDIS_URL ?? '',
   BIRDEYE_WS_URL: process.env.BIRDEYE_WS_URL ?? 'wss://public-api.birdeye.so/socket/solana',
   MARKET_STREAM_TRACKED_MINTS: process.env.MARKET_STREAM_TRACKED_MINTS ?? '',
   MARKET_STREAM_PROGRAM_IDS: process.env.MARKET_STREAM_PROGRAM_IDS ?? '',

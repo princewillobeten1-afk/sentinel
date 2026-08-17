@@ -41,8 +41,9 @@ export class RealtimeEventProcessor {
     // 1. Normalize
     const event = EventNormalizer.normalize(decoded, source, receivedTimestamp);
 
-    // 2. Deduplication check
-    const isNew = eventBus.claimEvent(event.id);
+    // 2. Deduplication check — shared across instances, so two servers
+    // receiving the same Helius message emit it to clients exactly once.
+    const isNew = await eventBus.claimEventShared(event.id);
     if (!isNew) {
       return; // Skip duplicate event
     }

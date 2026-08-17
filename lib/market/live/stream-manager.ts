@@ -6,7 +6,6 @@ import { marketEventPipeline, type RawMarketEvent } from '@/lib/market/event-pip
 import { signalProcessor } from '@/lib/discovery/signal-processor';
 import { BirdeyeClient } from './birdeye-client';
 import { HeliusClient } from './helius-client';
-import { HeliusLaserstreamClient } from './helius-laserstream';
 import { liveMarketCache } from './live-cache';
 import { persistMarketEventFireAndForget } from './persistence';
 import { resolveTrackedMints, resolveTrackedProgramIds } from './subscription-set';
@@ -16,7 +15,6 @@ import type { ConnectionHealth } from './types';
 export interface StreamManagerHealth {
   birdeye: ConnectionHealth;
   helius: ConnectionHealth;
-  laserstream: ConnectionHealth;
   trackedMintCount: number;
   trackedProgramCount: number;
   recentEventCount: number;
@@ -24,19 +22,40 @@ export interface StreamManagerHealth {
 }
 
 /**
- * Orchestrates the Birdeye, Helius WebSocket, and Helius Laserstream clients,
- * wiring all into the existing `MarketEventPipeline` → live cache →
- * `SignalProcessor` → `market_events` persistence path.
+ * Orchestrates the Birdeye and Helius WebSocket clients, wiring both into the
+ * existing `MarketEventPipeline` → live cache → `SignalProcessor` →
+ * `market_events` persistence path, and onward to the realtime fast path.
+ *
+ * A third client, `HeliusLaserstreamClient`, was removed rather than kept: it
+ * performed a single `fetch` to a `/health` URL, set `isConnected = true`
+ * regardless of the outcome, and logged "connected to Helius Laserstream
+ * engine". It had no subscription and no read loop, and the one method that
+ * could emit an event had no callers anywhere in the repository — so it
+ * produced nothing while reporting itself healthy. Real gRPC LaserStream is a
+ * genuine option, but it has to be built, not simulated.
  */
 class StreamManager {
   private birdeye: BirdeyeClient | null = null;
   private helius: HeliusClient | null = null;
-  private laserstream: HeliusLaserstreamClient | null = null;
   private started = false;
   private startedAt: string | null = null;
 
   start(): void {
     if (this.started) return;
+
+    // The mock generator is checked *before* the enable flag, deliberately.
+    // It exists so the real-time frontend can be developed without touching
+    // Helius or Birdeye (brief §32) — gating it behind the switch that turns
+    // those paid connections on would defeat its entire purpose, and left the
+    // only offline development path unreachable.
+    if (process.env.MOCK_REALTIME === 'true') {
+      if (process.env.NODE_ENV === 'production') {
+        logger.error('[market-live] MOCK_REALTIME=true ignored in production — refusing to emit synthetic events.');
+      } else {
+        logger.warn('[market-live] MOCK_REALTIME=true — emitting synthetic events, not live chain data.');
+        realtimeProcessor.startMockGenerator();
+      }
+    }
 
     if (process.env.MARKET_STREAM_ENABLED === 'false') {
       logger.info('[market-live] stream manager disabled via MARKET_STREAM_ENABLED=false — not connecting.');
@@ -49,10 +68,9 @@ class StreamManager {
     const mints = resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS);
     const programIds = resolveTrackedProgramIds(env.MARKET_STREAM_PROGRAM_IDS);
 
-    logger.info('[market-live] starting stream manager with Helius Laserstream', {
+    logger.info('[market-live] starting stream manager', {
       mintCount: mints.length,
       programCount: Object.keys(programIds).length,
-      heliusGrpcUrl: env.HELIUS_GRPC_URL,
     });
 
     // 1. Birdeye Stream
@@ -69,22 +87,8 @@ class StreamManager {
       });
     }
 
-    // 2. Helius Laserstream Engine (Yellowstone / Geyser High-Speed Stream)
-    try {
-      this.laserstream = new HeliusLaserstreamClient({
-        mints,
-        programIds,
-        onRawEvent: (event) => this.handleRawEvent(event),
-        onDegraded: (reason) => marketEventPipeline.triggerFailover(`Helius Laserstream: ${reason}`),
-      });
-      this.laserstream.connect();
-    } catch (err) {
-      logger.error('[market-live] failed to start Helius Laserstream client', {
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
 
-    // 3. Helius WebSocket Stream
+    // 2. Helius WebSocket stream (logsSubscribe) — the real ingestion path.
     try {
       this.helius = new HeliusClient({
         programIds,
@@ -97,15 +101,10 @@ class StreamManager {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-    // 4. Start mock generator in development mode if requested
-    if (process.env.MOCK_REALTIME === 'true') {
-      realtimeProcessor.startMockGenerator();
-    }
   }
 
   stop(): void {
     this.birdeye?.stop();
-    this.laserstream?.stop();
     this.helius?.stop();
     this.started = false;
   }
@@ -114,7 +113,6 @@ class StreamManager {
     return {
       birdeye: this.birdeye?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
       helius: this.helius?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
-      laserstream: this.laserstream?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
       trackedMintCount: resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS).length,
       trackedProgramCount: Object.keys(resolveTrackedProgramIds(env.MARKET_STREAM_PROGRAM_IDS)).length,
       recentEventCount: liveMarketCache.getRecentEvents(Number.MAX_SAFE_INTEGER).length,
