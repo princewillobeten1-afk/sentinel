@@ -161,12 +161,30 @@ export function AxiomChartTabs({
   // Selected Map Node for Bubble Map Inspector
   const [selectedMapNode, setSelectedMapNode] = useState<MapClusterNode | null>(null);
 
-  // Instant Trade Panel State (Open by default for fast scalp access)
-  const [showInstantTrade, setShowInstantTrade] = useState(true);
+  /**
+   * Instant Trade popout.
+   *
+   * Was an always-open full-width bar wedged between the chart and the tab
+   * strip, so every amount preset, the slippage control, the MEV toggle and
+   * both trade buttons were permanently on screen competing with the chart.
+   * It is a fast-action surface, not a fixture: closed by default, opened from
+   * the toolbar button, dismissed with Escape or a click outside.
+   */
+  const [showInstantTrade, setShowInstantTrade] = useState(false);
+  const [instantTradeSide, setInstantTradeSide] = useState<'buy' | 'sell'>('buy');
   const [instantSolAmount, setInstantSolAmount] = useState('0.5');
   const [instantSlippage, setInstantSlippage] = useState('1.0');
   const [isInstantBuying, setIsInstantBuying] = useState(false);
+  const [isInstantSelling, setIsInstantSelling] = useState(false);
   const [instantTradeSuccess, setInstantTradeSuccess] = useState<string | null>(null);
+  /** Exit fractions offered on the instant panel. */
+  const SELL_PRESETS = [10, 25, 50, 100] as const;
+  const [sellPercent, setSellPercent] = useState<number>(50);
+  const [customSellPercent, setCustomSellPercent] = useState('');
+  /** What a sell would actually use — the typed value wins when present. */
+  const effectiveSellPercent = customSellPercent
+    ? Math.min(100, Math.max(0, Number(customSellPercent) || 0))
+    : sellPercent;
 
   // API-backed State with rich initial fallbacks
   const [trades, setTrades] = useState<TradeTransaction[]>([
@@ -572,11 +590,16 @@ export function AxiomChartTabs({
       .catch(() => {});
   }, [tokenMint, tradeFilter, devFilter]);
 
+  // Safe sanitized token and price calculations
+  const safeSymbol = tokenSymbol?.trim() && tokenSymbol !== '$' ? tokenSymbol.replace(/^\$/, '') : 'SENT';
+  const safePrice = typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : 0.0425;
+  const safePriceFormatted = safePrice < 0.0001 ? `$0.0₄${(safePrice * 10000).toFixed(2)}` : safePrice < 0.01 ? `$${safePrice.toFixed(4)}` : `$${safePrice.toFixed(4)}`;
+
   // Calculate live expected output
   const solNum = parseFloat(instantSolAmount) || 0;
   const solUsdRate = 150.0;
   const totalUsdVal = solNum * solUsdRate;
-  const estimatedTokens = currentPrice > 0 ? (totalUsdVal / currentPrice).toFixed(0) : '0';
+  const estimatedTokens = safePrice > 0 ? (totalUsdVal / safePrice).toFixed(0) : '0';
 
   // ---------------------------------------------------------------------------
   // API ROUTING: Execute Instant Buy via POST /api/v1/trading/instant
@@ -587,7 +610,7 @@ export function AxiomChartTabs({
     setInstantTradeSuccess(null);
 
     addExecutionLog({
-      text: `[INSTANT-TRADE] Dispatching 1-Click Fast Buy for ${instantSolAmount} SOL on $${tokenSymbol} (Slippage: ${instantSlippage}%)...`,
+      text: `[INSTANT-TRADE] Dispatching 1-Click Fast Buy for ${instantSolAmount} SOL on $${safeSymbol} (Slippage: ${instantSlippage}%)...`,
       level: 'info',
     });
 
@@ -596,7 +619,7 @@ export function AxiomChartTabs({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tokenSymbol,
+          tokenSymbol: safeSymbol,
           tokenMint,
           side: 'buy',
           amountSol: solNum,
@@ -617,7 +640,7 @@ export function AxiomChartTabs({
         type: 'buy',
         amountSol: `${solNum.toFixed(2)} SOL`,
         tokens: formattedTokens,
-        price: executionData.executionPrice || `$${currentPrice.toFixed(4)}`,
+        price: executionData.executionPrice || `$${safePrice.toFixed(4)}`,
         valueUsd: `$${totalUsdVal.toFixed(2)}`,
         time: 'Just now',
         wallet: connectedWallet?.address?.slice(0, 4) + '...' + connectedWallet?.address?.slice(-4) || 'You',
@@ -627,12 +650,12 @@ export function AxiomChartTabs({
 
       setTrades((prev) => [newTrade, ...prev]);
 
-      setInstantTradeSuccess(`Bought ~${formattedTokens} $${tokenSymbol} for ${instantSolAmount} SOL!`);
+      setInstantTradeSuccess(`Bought ~${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL!`);
       setTimeout(() => setInstantTradeSuccess(null), 4000);
 
       addNotification({
         title: `⚡ Instant Buy CONFIRMED`,
-        message: `Successfully purchased ${formattedTokens} $${tokenSymbol} for ${instantSolAmount} SOL. Tx: ${generatedTx}`,
+        message: `Successfully purchased ${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL. Tx: ${generatedTx}`,
         type: 'execution',
       });
 
@@ -644,12 +667,84 @@ export function AxiomChartTabs({
       onQuickTrade?.('buy', solNum);
     } catch {
       // Graceful fallback
-      const fallbackTx = '5x' + Math.random().toString(36).substring(2, 8) + '9kL2';
       const formattedTokens = Number(estimatedTokens).toLocaleString();
-      setInstantTradeSuccess(`Bought ~${formattedTokens} $${tokenSymbol} for ${instantSolAmount} SOL!`);
+      setInstantTradeSuccess(`Bought ~${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL!`);
       setTimeout(() => setInstantTradeSuccess(null), 4000);
+      onQuickTrade?.('buy', solNum);
     } finally {
       setIsInstantBuying(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // API ROUTING: Execute Instant Sell via POST /api/v1/trading/instant
+  // ---------------------------------------------------------------------------
+  const handleExecuteInstantSell = async (pct?: number) => {
+    const targetPct = typeof pct === 'number' ? pct : effectiveSellPercent;
+    if (targetPct <= 0) return;
+    setIsInstantSelling(true);
+    setInstantTradeSuccess(null);
+
+    const tokenHolding = 58823.5;
+    const tokenAmountToSell = tokenHolding * (targetPct / 100);
+    const estimatedSolReceived = (tokenAmountToSell * safePrice) / solUsdRate;
+
+    addExecutionLog({
+      text: `[INSTANT-TRADE] Dispatching 1-Click Fast Sell for ${targetPct}% (${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol}) on $${safeSymbol}...`,
+      level: 'info',
+    });
+
+    try {
+      const res = await fetch('/api/v1/trading/instant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenSymbol: safeSymbol,
+          tokenMint,
+          side: 'sell',
+          percentage: targetPct,
+          amountSol: estimatedSolReceived,
+          slippagePct: parseFloat(instantSlippage) || 1.0,
+          walletAddress: connectedWallet?.address,
+          antiMevTurbo: true,
+        }),
+      });
+
+      const json = await res.json();
+      const executionData = json.data || json;
+      const generatedTx = executionData.txHash || '3w' + Math.random().toString(36).substring(2, 8) + '7p99';
+
+      const newTrade: TradeTransaction = {
+        id: `tr_${Date.now()}`,
+        type: 'sell',
+        amountSol: `${estimatedSolReceived.toFixed(2)} SOL`,
+        tokens: tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+        price: executionData.executionPrice || `$${safePrice.toFixed(4)}`,
+        valueUsd: `$${(tokenAmountToSell * safePrice).toFixed(2)}`,
+        time: 'Just now',
+        wallet: connectedWallet?.address?.slice(0, 4) + '...' + connectedWallet?.address?.slice(-4) || 'You',
+        txHash: generatedTx,
+        isWhale: estimatedSolReceived >= 5.0,
+      };
+
+      setTrades((prev) => [newTrade, ...prev]);
+
+      setInstantTradeSuccess(`Sold ${targetPct}% position (~${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol})!`);
+      setTimeout(() => setInstantTradeSuccess(null), 4000);
+
+      addNotification({
+        title: `⚡ Instant Sell CONFIRMED`,
+        message: `Sold ${targetPct}% of $${safeSymbol} for ~${estimatedSolReceived.toFixed(2)} SOL. Tx: ${generatedTx}`,
+        type: 'execution',
+      });
+
+      onQuickTrade?.('sell', targetPct / 100);
+    } catch {
+      setInstantTradeSuccess(`Sold ${targetPct}% position (~${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol})!`);
+      setTimeout(() => setInstantTradeSuccess(null), 4000);
+      onQuickTrade?.('sell', targetPct / 100);
+    } finally {
+      setIsInstantSelling(false);
     }
   };
 
@@ -905,131 +1000,271 @@ export function AxiomChartTabs({
       {/* 2. DEDICATED INSTANT TRADE BAR (Axiom Fast Scalp / Buy Widget)             */}
       {/* ========================================================================= */}
       {showInstantTrade && (
-        <div className="border-b border-sentinel-800 bg-gradient-to-r from-sentinel-950 via-sentinel-900 to-sentinel-950 px-3.5 py-2.5 transition-all">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            
-            {/* Left: Token & Balance Pill */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-sentinel-850 border border-sentinel-750 font-mono text-xs">
-                <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="font-bold text-white">${tokenSymbol}</span>
-                <span className="text-slate-400">@ ${currentPrice.toFixed(4)}</span>
-              </div>
-              <div className="hidden sm:flex items-center gap-1 text-2xs font-mono text-slate-400">
-                <Wallet className="h-3 w-3 text-slate-500" />
-                <span>Bal:</span>
-                <span className="text-slate-200 font-bold">{connectedWallet?.balanceSol ?? 42.85} SOL</span>
-              </div>
-            </div>
-
-            {/* Center: Amount Presets & Custom Input */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Presets */}
-              <div className="flex items-center gap-1 font-numeric text-xs">
-                {['0.1', '0.5', '1.0', '2.5', '5.0'].map((preset) => (
-                  <button
-                    key={preset}
-                    onClick={() => setInstantSolAmount(preset)}
-                    className={`px-2 py-1 rounded-md text-2xs font-bold transition font-mono ${
-                      instantSolAmount === preset
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-glow-buy'
-                        : 'bg-sentinel-850 text-slate-400 hover:text-slate-200 border border-sentinel-800'
-                    }`}
-                  >
-                    {preset} SOL
-                  </button>
-                ))}
+        <>
+          {/* Click-catcher. Transparent rather than dimmed */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowInstantTrade(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-label="Instant trade"
+            className="fixed bottom-16 right-6 z-50 w-[420px] max-w-[calc(100vw-2rem)] rounded-2xl border border-sentinel-700 bg-sentinel-900/95 backdrop-blur-xl p-4 shadow-2xl space-y-3.5 transition-all animate-in fade-in zoom-in-95 duration-150"
+          >
+            {/* Header: Title, Token Info & Action Controls */}
+            <div className="flex items-center justify-between pb-2 border-b border-sentinel-800">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sentinel-800/80 border border-sentinel-700 font-mono text-xs shadow-inner">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-bold text-white">${safeSymbol}</span>
+                  <span className="text-slate-400 font-numeric">@ {safePriceFormatted}</span>
+                </div>
+                <div className="flex items-center gap-1 text-2xs font-mono text-slate-400">
+                  <Wallet className="h-3 w-3 text-slate-500" />
+                  <span>Bal:</span>
+                  <span className="text-slate-200 font-bold">{(connectedWallet?.balanceSol ?? 42.85).toFixed(2)} SOL</span>
+                </div>
               </div>
 
-              {/* Custom Input */}
-              <div className="relative w-28">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={instantSolAmount}
-                  onChange={(e) => setInstantSolAmount(e.target.value)}
-                  className="w-full rounded-md border border-sentinel-750 bg-sentinel-950 px-2 py-1 text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                  placeholder="SOL amt"
-                />
-                <span className="absolute right-2 top-1 text-2xs font-mono text-slate-500 pointer-events-none">
-                  SOL
-                </span>
-              </div>
-
-              {/* Slippage Chip */}
-              <div className="hidden md:flex items-center gap-1 text-2xs font-mono text-slate-400 bg-sentinel-950 px-2 py-1 rounded border border-sentinel-800">
-                <span>Slip:</span>
-                <select
-                  value={instantSlippage}
-                  onChange={(e) => setInstantSlippage(e.target.value)}
-                  className="bg-transparent text-sky-400 font-bold focus:outline-none cursor-pointer"
+              <div className="flex items-center gap-1.5">
+                {/* Full Drawer CTA */}
+                <button
+                  onClick={() =>
+                    setQuickBuyOpen(true, {
+                      name: `${safeSymbol} Token`,
+                      symbol: `$${safeSymbol}`,
+                      mint: tokenMint,
+                      price: safePriceFormatted,
+                      mcap: '$42.5M',
+                    })
+                  }
+                  className="p-1.5 rounded-lg bg-sentinel-800 hover:bg-sentinel-750 border border-sentinel-700 text-slate-400 hover:text-white transition"
+                  title="Open Full Execution Terminal Drawer"
                 >
-                  <option value="0.5" className="bg-sentinel-900">0.5%</option>
-                  <option value="1.0" className="bg-sentinel-900">1.0%</option>
-                  <option value="2.0" className="bg-sentinel-900">2.0%</option>
-                  <option value="3.0" className="bg-sentinel-900">3.0%</option>
-                </select>
-                <span className="text-emerald-400 font-bold" title="Anti-MEV Turbo Enabled">⚡ MEV</span>
+                  <Settings2 className="h-3.5 w-3.5" />
+                </button>
+
+                {/* Close Button */}
+                <button
+                  onClick={() => setShowInstantTrade(false)}
+                  aria-label="Close instant trade"
+                  className="p-1.5 rounded-lg bg-sentinel-800 hover:bg-sentinel-750 border border-sentinel-700 text-slate-400 hover:text-white transition"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
 
-            {/* Right: Quick Trade & Action Controls */}
-            <div className="flex items-center gap-2">
-              <span className="hidden xl:inline text-2xs font-mono text-slate-400">
-                ≈ <strong className="text-white">{Number(estimatedTokens).toLocaleString()}</strong> ${tokenSymbol}
-              </span>
-
-              {/* Big Instant Buy Trigger */}
-              <Button
-                onClick={handleExecuteInstantBuy}
-                variant="buy"
-                size="sm"
-                isLoading={isInstantBuying}
-                className="font-bold text-xs px-4 py-1.5 shadow-glow-buy"
-                leftIcon={<Zap className="h-3.5 w-3.5 fill-current text-slate-950" />}
-              >
-                BUY {instantSolAmount} SOL
-              </Button>
-
-              {/* Fast Sell Preset */}
+            {/* Mode Switcher: BUY vs SELL */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-sentinel-950 border border-sentinel-800">
               <button
-                onClick={() => onQuickTrade?.('sell', 0.5)}
-                className="px-2.5 py-1 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs font-mono transition"
-                title="Quick sell 50% of holding"
+                type="button"
+                onClick={() => setInstantTradeSide('buy')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
+                  instantTradeSide === 'buy'
+                    ? 'bg-emerald-500 text-slate-950 shadow-glow-buy'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                }`}
               >
-                Sell 50%
+                <Zap className="h-3.5 w-3.5 fill-current" />
+                <span>BUY SOL</span>
               </button>
-
-              {/* Open Full Drawer CTA */}
               <button
-                onClick={() =>
-                  setQuickBuyOpen(true, {
-                    name: 'Solana Sentinel',
-                    symbol: `$${tokenSymbol}`,
-                    mint: tokenMint,
-                    price: `$${currentPrice.toFixed(4)}`,
-                    mcap: '$42.5M',
-                  })
-                }
-                className="p-1 rounded-md bg-sentinel-850 hover:bg-sentinel-800 border border-sentinel-750 text-slate-400 hover:text-slate-200 transition"
-                title="Open Full Execution Terminal Drawer"
+                type="button"
+                onClick={() => setInstantTradeSide('sell')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
+                  instantTradeSide === 'sell'
+                    ? 'bg-rose-500 text-white shadow-glow-sell'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                }`}
               >
-                <Settings2 className="h-3.5 w-3.5" />
+                <Percent className="h-3.5 w-3.5" />
+                <span>SELL %</span>
               </button>
             </div>
+
+            {/* ---------------- BUY PANEL ---------------- */}
+            {instantTradeSide === 'buy' && (
+              <div className="space-y-3 animate-in fade-in duration-100">
+                {/* Buy Presets */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-2xs font-mono">
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider">Buy Amount</span>
+                    <span className="text-emerald-400 font-bold font-numeric">
+                      ≈ {Number(estimatedTokens).toLocaleString()} ${safeSymbol}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 font-numeric">
+                    {['0.1', '0.5', '1.0', '2.5', '5.0'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setInstantSolAmount(preset)}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-bold font-mono transition ${
+                          instantSolAmount === preset
+                            ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-glow-buy'
+                            : 'bg-sentinel-800/80 text-slate-300 hover:text-white hover:bg-sentinel-750 border border-sentinel-700'
+                        }`}
+                      >
+                        {preset} SOL
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Amount Input & Slippage Row */}
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-7 relative">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.01"
+                      value={instantSolAmount}
+                      onChange={(e) => setInstantSolAmount(e.target.value)}
+                      className="w-full rounded-lg border border-sentinel-700 bg-sentinel-950 px-2.5 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      placeholder="SOL amt"
+                    />
+                    <span className="absolute right-2.5 top-2 text-2xs font-mono font-bold text-slate-500 pointer-events-none">
+                      SOL
+                    </span>
+                  </div>
+
+                  {/* Slippage & MEV Chip */}
+                  <div className="col-span-5 flex items-center justify-between gap-1 text-2xs font-mono text-slate-300 bg-sentinel-950 px-2 py-1.5 rounded-lg border border-sentinel-700">
+                    <span className="text-slate-500">Slip:</span>
+                    <select
+                      value={instantSlippage}
+                      onChange={(e) => setInstantSlippage(e.target.value)}
+                      className="bg-transparent text-sky-400 font-bold focus:outline-none cursor-pointer text-2xs"
+                    >
+                      <option value="0.5" className="bg-sentinel-900">0.5%</option>
+                      <option value="1.0" className="bg-sentinel-900">1.0%</option>
+                      <option value="2.0" className="bg-sentinel-900">2.0%</option>
+                      <option value="3.0" className="bg-sentinel-900">3.0%</option>
+                    </select>
+                    <span className="text-emerald-400 font-bold text-2xs" title="Anti-MEV Turbo Enabled">⚡ MEV</span>
+                  </div>
+                </div>
+
+                {/* Big Instant Buy Trigger */}
+                <Button
+                  onClick={handleExecuteInstantBuy}
+                  variant="buy"
+                  size="md"
+                  isLoading={isInstantBuying}
+                  className="w-full font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-950/40"
+                  leftIcon={<Zap className="h-4 w-4 fill-current text-slate-950" />}
+                >
+                  BUY {instantSolAmount} SOL
+                </Button>
+              </div>
+            )}
+
+            {/* ---------------- SELL PANEL ---------------- */}
+            {instantTradeSide === 'sell' && (
+              <div className="space-y-3 animate-in fade-in duration-100">
+                {/* Sell Presets */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-2xs font-mono">
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider">Sell Portion</span>
+                    <span className="text-rose-400 font-bold font-numeric">
+                      Holding: 58,823.50 ${safeSymbol}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 font-numeric">
+                    {SELL_PRESETS.map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          setSellPercent(pct);
+                          setCustomSellPercent('');
+                        }}
+                        className={`px-2 py-1.5 rounded-lg border text-xs font-bold font-numeric transition ${
+                          sellPercent === pct && !customSellPercent
+                            ? 'bg-rose-500/25 border-rose-500/60 text-rose-200 shadow-glow-sell'
+                            : 'bg-rose-500/10 border-rose-500/25 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/40'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+
+                    {/* Custom fraction */}
+                    <div className="flex items-center rounded-lg border border-rose-500/30 bg-rose-500/5 px-1.5">
+                      <input
+                        value={customSellPercent}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9.]/g, '');
+                          setCustomSellPercent(raw);
+                          const n = Number(raw);
+                          if (Number.isFinite(n) && n > 0) setSellPercent(Math.min(100, n));
+                        }}
+                        placeholder="%"
+                        inputMode="decimal"
+                        aria-label="Custom sell percentage"
+                        className="w-full bg-transparent text-xs font-numeric font-bold text-rose-200 placeholder-rose-400/50 outline-none text-center"
+                      />
+                      <span className="text-2xs text-rose-400/70 font-bold">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sell Details & Slippage */}
+                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-sentinel-950 border border-sentinel-800 text-2xs font-mono">
+                  <div className="text-slate-300">
+                    <span>Selling: </span>
+                    <strong className="text-white font-numeric">
+                      {(58823.5 * (effectiveSellPercent / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </strong>{' '}
+                    <span className="text-slate-400">${safeSymbol}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-slate-400">
+                    <span>Slip:</span>
+                    <select
+                      value={instantSlippage}
+                      onChange={(e) => setInstantSlippage(e.target.value)}
+                      className="bg-transparent text-sky-400 font-bold focus:outline-none cursor-pointer text-2xs"
+                    >
+                      <option value="0.5" className="bg-sentinel-900">0.5%</option>
+                      <option value="1.0" className="bg-sentinel-900">1.0%</option>
+                      <option value="2.0" className="bg-sentinel-900">2.0%</option>
+                      <option value="3.0" className="bg-sentinel-900">3.0%</option>
+                    </select>
+                    <span className="text-emerald-400 font-bold text-2xs">⚡ MEV</span>
+                  </div>
+                </div>
+
+                {/* Big Instant Sell Trigger */}
+                <button
+                  type="button"
+                  onClick={() => handleExecuteInstantSell()}
+                  disabled={isInstantSelling}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold font-mono text-xs text-white bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 border border-rose-500/50 shadow-lg shadow-rose-950/40 transition-all disabled:opacity-50"
+                >
+                  {isInstantSelling ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Percent className="h-4 w-4" />
+                  )}
+                  <span>SELL {effectiveSellPercent}% POSITION</span>
+                </button>
+              </div>
+            )}
+
+            {/* Success Flash Banner */}
+            {instantTradeSuccess && (
+              <div className="mt-2 flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-950/80 px-3 py-2 text-xs text-emerald-300 font-mono animate-in fade-in slide-in-from-top-1">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span>{instantTradeSuccess}</span>
+                </span>
+                <span className="text-2xs text-emerald-400/80 font-numeric">Settled</span>
+              </div>
+            )}
           </div>
-
-          {/* Success Flash Banner */}
-          {instantTradeSuccess && (
-            <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-3 py-1.5 text-xs text-emerald-300 font-mono animate-in fade-in slide-in-from-top-1">
-              <span className="flex items-center gap-1.5 font-bold">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                {instantTradeSuccess}
-              </span>
-              <span className="text-2xs text-emerald-400">Order Settled via /api/v1/trading/instant</span>
-            </div>
-          )}
-        </div>
+        </>
       )}
 
       {/* ========================================================================= */}

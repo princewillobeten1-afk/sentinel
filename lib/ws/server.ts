@@ -373,8 +373,29 @@ export function broadcastRealtimeEvent(event: any): void {
 
 let eventBusAttached = false;
 
-/** Wires `ws`'s connection event; called from the custom server entrypoint. */
+/**
+ * Tracks which `WebSocketServer` instances already have a connection listener.
+ *
+ * `attachWebSocketServer` is documented as idempotent and is genuinely called
+ * more than once — `server.js` POSTs the bootstrap route on boot, and anything
+ * else that hits that route calls it again. Without this guard each call added
+ * another `'connection'` listener, so one socket was registered N times: the
+ * client received N `welcome` messages and, more seriously, **N copies of every
+ * event**. That defeats the deduplication the ingestion side works to
+ * guarantee, at the last hop before the browser.
+ *
+ * Held on `globalThis` for the same reason the event bus is: this module can be
+ * evaluated in more than one webpack graph, and a module-local flag would not
+ * be shared between them.
+ */
+const globalForWsAttach = globalThis as unknown as { sentinelWssAttached?: WeakSet<WebSocketServer> };
+const attachedServers = (globalForWsAttach.sentinelWssAttached ??= new WeakSet<WebSocketServer>());
+
+/** Wires `ws`'s connection event; called from the custom server entrypoint. Idempotent. */
 export function attachWebSocketServer(wss: WebSocketServer): void {
+  if (attachedServers.has(wss)) return;
+  attachedServers.add(wss);
+
   wss.on('connection', (socket: WebSocket, request: IncomingMessage) => {
     void authenticateUpgrade(request).then((auth) => {
       if (!auth) {
