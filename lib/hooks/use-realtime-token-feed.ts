@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DiscoveryToken, DiscoverySection, DiscoveryFilter, TimeWindow } from '@/lib/discovery/types';
 import { filterToQueryParams } from '@/lib/discovery/query-model';
 
+/**
+ * Deadline for the initial discovery fetch.
+ *
+ * Warm, these endpoints answer in ~40ms; cold-compiling one in dev has been
+ * seen to exceed 8s. 10s is comfortably past a legitimate cold start and well
+ * short of the user concluding the app is broken.
+ */
+const FETCH_TIMEOUT_MS = 10_000;
+
 export interface RealtimeTokenFeedState {
   tokens: DiscoveryToken[];
   updatedAt: string;
@@ -34,9 +43,29 @@ export function useRealtimeTokenFeed(
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryDelayRef = useRef<number>(1000);
   const isMountedRef = useRef<boolean>(true);
+  /** In-flight discovery request, so a superseded one can be aborted. */
+  const abortRef = useRef<AbortController | null>(null);
 
   // 1. Initial HTTP Data Load (Section 13)
+  const filterKey = JSON.stringify(filter);
+
   const fetchInitialTokens = useCallback(async () => {
+    // A request that never settles is the difference between "loading" and
+    // "hung". Without a deadline the `finally` below never runs, `isLoading`
+    // stays true forever, and the Discover columns pulse skeletons
+    // indefinitely — indistinguishable from a feed that is genuinely empty.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    // Superseded in-flight requests are dropped, so a fast filter change cannot
+    // have an older response overwrite a newer one.
+    abortRef.current?.abort();
+    abortRef.current = controller;
+
+    // Set here rather than only in the mount effect, so the Refresh button's
+    // spinner actually spins — `refresh` is this function.
+    if (isMountedRef.current) setIsLoading(true);
+
     try {
       const url = new URL(`/api/v1/discovery/${section}`, window.location.origin);
       const queryParams = filterToQueryParams({ ...filter, chain, timeWindow });
@@ -45,7 +74,7 @@ export function useRealtimeTokenFeed(
       });
       url.searchParams.set('limit', '50');
 
-      const res = await fetch(url.toString(), { cache: 'no-store' });
+      const res = await fetch(url.toString(), { cache: 'no-store', signal: controller.signal });
       const payload = await res.json();
 
       if (!res.ok) {
@@ -62,15 +91,30 @@ export function useRealtimeTokenFeed(
         setError(null);
       }
     } catch (err) {
+      // A supersede-abort is not a failure — a newer request is already in
+      // flight and will set the state. Surfacing it would flash an error
+      // every time the user changes a filter.
+      const aborted = err instanceof DOMException && err.name === 'AbortError';
+      const supersededByNewer = aborted && abortRef.current !== controller;
+      if (supersededByNewer) return;
+
       if (isMountedRef.current) {
-        setError(err instanceof Error ? err.message : 'Discovery feed failed');
+        setError(
+          aborted
+            ? `Feed timed out after ${Math.round(FETCH_TIMEOUT_MS / 1000)}s.`
+            : err instanceof Error
+              ? err.message
+              : 'Discovery feed failed',
+        );
       }
     } finally {
+      clearTimeout(timeout);
+      if (abortRef.current === controller) abortRef.current = null;
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [section, chain, timeWindow, JSON.stringify(filter)]);
+  }, [section, chain, timeWindow, filterKey]);
 
   // 2. Incremental Real-time Event Handler (Section 12 & Section 17)
   const handleRealtimeEvent = useCallback((event: any) => {
