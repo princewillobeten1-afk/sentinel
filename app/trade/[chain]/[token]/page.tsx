@@ -15,10 +15,8 @@ import { CompactActivityIndicator } from '@/components/trade/compact-activity-in
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { Decimal } from '@/lib/math/decimal';
 import { formatPercent } from '@/lib/discovery/format';
-import { fetchTokenOverview, fetchTokenSecurity } from '@/lib/actions/birdeye';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import type { TokenOverview } from '@/lib/api/birdeye/stats';
-import type { TokenSecurityData } from '@/lib/api/birdeye/security';
 
 export default function DynamicTokenPage() {
   const params = useParams();
@@ -46,9 +44,35 @@ export default function DynamicTokenPage() {
     setIsOverviewLoading(true);
     setOverviewError(null);
     try {
-      const data = await fetchTokenOverview(tokenMint);
-      setTokenOverview(data);
-      if (!data) setOverviewError('Market data provider returned no data for this token.');
+      const res = await fetch(`/api/v1/tokens/${chain}/${tokenMint}`);
+      if (!res.ok) {
+        throw new Error(`Failed to load token: ${res.statusText}`);
+      }
+      const json = await res.json();
+      const token = json.data?.token || json.token || json;
+      if (token) {
+        setTokenOverview({
+          address: token.mint || tokenMint,
+          decimals: token.decimals || 9,
+          symbol: token.symbol || tokenMint.slice(0, 4).toUpperCase(),
+          name: token.name || `Token ${tokenMint.slice(0, 4)}`,
+          marketCap: Number(token.marketCapUsd) || 0,
+          fdv: Number(token.marketCapUsd) || 0,
+          totalSupply: Number(token.totalSupply) || 1000000000,
+          circulatingSupply: Number(token.circulatingSupply) || 1000000000,
+          logoURI: token.logoUrl || token.logoURI || '',
+          liquidity: Number(token.liquidityUsd) || 0,
+          lastTradeUnixTime: Date.now(),
+          lastTradeHumanTime: 'Just now',
+          price: Number(token.priceUsd) || 0,
+          holder: token.holderCount || 0,
+          numberMarkets: 1,
+          priceChange24hPercent: Number(token.priceChange24h) || 0,
+          v24hUSD: Number(token.volume24hUsd) || 0,
+        });
+      } else {
+        setOverviewError('Market data provider returned no data for this token.');
+      }
     } catch (err) {
       setOverviewError(
         err instanceof Error ? err.message : 'Market data provider is unavailable.',
@@ -56,7 +80,7 @@ export default function DynamicTokenPage() {
     } finally {
       setIsOverviewLoading(false);
     }
-  }, [tokenMint]);
+  }, [tokenMint, chain]);
 
   React.useEffect(() => {
     void loadOverview();

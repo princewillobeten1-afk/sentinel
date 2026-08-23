@@ -12,7 +12,10 @@ export type ApiResponse<T> = {
 };
 
 export function jsonResponse<T>(data: T, status = 200, headers?: Record<string, string>) {
-  return new Response(JSON.stringify({ success: true, data }), {
+  const body = JSON.stringify({ success: true, data }, (_, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
+  return new Response(body, {
     status,
     headers: { 'Content-Type': 'application/json', ...headers },
   });
@@ -23,14 +26,17 @@ export function errorResponse(error: ApiError | Error) {
     logger.warn('API error response', { statusCode: error.statusCode, code: error.code, message: error.message });
 
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: {
-          message: error.message,
-          code: error.code,
-          details: error.details,
+      JSON.stringify(
+        {
+          success: false,
+          error: {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+          },
         },
-      }),
+        (_, value) => (typeof value === 'bigint' ? value.toString() : value),
+      ),
       {
         status: error.statusCode,
         headers: { 'Content-Type': 'application/json' },
