@@ -21,7 +21,8 @@ export function PortfolioView() {
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [selectedProtectionPosition, setSelectedProtectionPosition] = useState<PortfolioPosition | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Only "loading" if there is a wallet to load for.
+  const [isLoading, setIsLoading] = useState(Boolean(address));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [limitations, setLimitations] = useState<string[]>([]);
 
@@ -113,15 +114,9 @@ export function PortfolioView() {
 
   const activeSummary = summary || defaultSummary;
 
-  if (isLoading && !summary) {
-    return (
-      <div className="p-12 text-center text-slate-400 font-mono">
-        <div className="inline-block animate-spin h-6 w-6 border-2 border-sky-400 border-t-transparent rounded-full mb-3" />
-        <p>Loading Portfolio Intelligence...</p>
-      </div>
-    );
-  }
-
+  // Checked BEFORE the spinner: with no wallet there is nothing to load, so the
+  // spinner guard sitting above this meant the empty state could never paint on
+  // first render and a signed-out user saw a spinner that resolved to nothing.
   // A portfolio is wallet-scoped, so with no wallet linked there is nothing to
   // read — say so and offer the action, rather than rendering a table of zeros
   // that looks like a real empty portfolio.
@@ -139,6 +134,16 @@ export function PortfolioView() {
       </div>
     );
   }
+
+  if (isLoading && !summary) {
+    return (
+      <div className="p-12 text-center text-slate-400 font-mono">
+        <div className="inline-block animate-spin h-6 w-6 border-2 border-sky-400 border-t-transparent rounded-full mb-3" />
+        <p>Loading Portfolio Intelligence...</p>
+      </div>
+    );
+  }
+
 
   if (loadError) {
     return (

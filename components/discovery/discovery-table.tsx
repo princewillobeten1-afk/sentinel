@@ -11,9 +11,9 @@ import { useAppActions } from '@/lib/store';
 import type { DiscoveryToken } from '@/lib/discovery/types';
 import { Decimal } from '@/lib/math/decimal';
 import { detectAnomalies, getAnomalyIcon } from '@/lib/discovery/anomaly-detector';
-import { useBirdeyeWS } from '@/lib/hooks/use-birdeye-ws';
+import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import { useDebouncedValue } from '@/lib/hooks/use-debounce';
-import type { WsResponse, WsPriceDataResponse } from '@/lib/api/birdeye/ws';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 
 export interface ColumnDefinition {
   id: string;
@@ -68,7 +68,6 @@ interface DiscoveryTableProps {
 
 export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
   const { setQuickBuyOpen } = useAppActions();
-  const { client, isReady } = useBirdeyeWS();
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -160,46 +159,20 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
   });
   const virtualRows = rowVirtualizer.getVirtualItems();
 
-  // Only subscribe to live prices for the mints actually rendered right now
-  // (Sprint 31 — Item 11 follow-on) — with hundreds of discovery results,
-  // subscribing to every one regardless of scroll position wastes both the
-  // WS subscription cap and the upstream Birdeye feed. Debounced so rapid
-  // scrolling doesn't fire a subscribe/unsubscribe cycle every frame.
-  const visibleMintsKey = useMemo(
-    () => virtualRows.map((row) => sortedTokens[row.index]?.mint).filter(Boolean).join(','),
-    [virtualRows, sortedTokens],
+  // Dynamically subscribe to live prices for the mints actually rendered right now
+  const visiblePriceTopics = useMemo(
+    () => virtualRows.map((row) => sortedTokens[row.index]?.mint ? `token.price:${sortedTokens[row.index]?.mint}` : '').filter(Boolean),
+    [virtualRows, sortedTokens]
   );
-  const debouncedVisibleMintsKey = useDebouncedValue(visibleMintsKey, 300);
 
-  useEffect(() => {
-    if (!isReady || !client || !debouncedVisibleMintsKey) return;
-
-    const subscribePayload = {
-      type: 'SUBSCRIBE_PRICE' as const,
-      data: { queryType: 'complex' as const, query: debouncedVisibleMintsKey, currency: 'usd' as const, chartType: '1m' }
-    };
-
-    client.subscribe(subscribePayload);
-
-    const handler = (data: WsResponse) => {
-      if (data.type === 'PRICE_DATA') {
-        const payload = data as WsPriceDataResponse;
-        if (payload.data.address && payload.data.c) {
-          setLivePrices(prev => ({
-            ...prev,
-            [payload.data.address!]: payload.data.c!
-          }));
-        }
-      }
-    };
-
-    client.addHandler(handler);
-
-    return () => {
-      client.removeHandler(handler);
-      client.unsubscribe(subscribePayload);
-    };
-  }, [client, isReady, debouncedVisibleMintsKey]);
+  useSentinelWS(visiblePriceTopics, (data) => {
+    if (data?.mint && data?.priceUsd !== undefined) {
+      setLivePrices((prev) => ({
+        ...prev,
+        [data.mint]: Number(data.priceUsd),
+      }));
+    }
+  });
 
   const getSortAria = (field: SortField) => {
     if (sortField !== field) return 'none';
@@ -465,9 +438,14 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
                   {visibleColumns.token && (
                     <td style={{ width: COLUMN_WIDTHS.token, flexShrink: 0 }} className="p-3 overflow-hidden">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sentinel-800 font-bold text-sky-400 border border-sentinel-700 text-xs shrink-0">
-                          {token.symbol.slice(0, 2)}
-                        </div>
+                        <TokenAvatar
+                          src={token.logoURI}
+                          symbol={token.symbol}
+                          name={token.name}
+                          mint={token.mint}
+                          size="sm"
+                          dexBadge={token.source}
+                        />
                         <div className="min-w-0">
                           <Link
                             href={`/trade/solana/${token.mint}`}

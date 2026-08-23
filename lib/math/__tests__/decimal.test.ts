@@ -64,3 +64,28 @@ describe('Decimal.toBaseUnits', () => {
     expect(Decimal.toBaseUnits('1.5', 9)).toBe(1_500_000_000n);
   });
 });
+
+describe('Decimal scientific notation handling', () => {
+  it('correctly parses scientific notation from string without BigInt conversion errors', () => {
+    const d = new Decimal('3.2618825722274056e-7');
+    expect(d.toString(10)).toBe('0.0000003261');
+    expect(d.raw).toBe(326188257222n);
+  });
+
+  it('handles small numbers passed as float numbers', () => {
+    const d = new Decimal(0.0000000326);
+    expect(d.toString(8)).toBe('0.00000003');
+  });
+
+  it('handles positive exponents', () => {
+    const d = new Decimal('1.5e4');
+    expect(d.toString(2)).toBe('15000.00');
+    expect(d.toNumber()).toBe(15000);
+  });
+
+  it('handles negative scientific notation', () => {
+    const d = new Decimal('-2.5e-3');
+    expect(d.toString(4)).toBe('-0.0025');
+  });
+});
+

@@ -42,7 +42,7 @@ export function DataTable<T>({
   return (
     <div className={clsx('w-full overflow-x-auto rounded-xl border border-white/[0.08] bg-sentinel-900/70 shadow-card backdrop-blur-xl', className)}>
       <table className="w-full text-left text-xs border-collapse">
-        <thead className="sticky top-0 z-10 bg-sentinel-950/95 uppercase text-slate-400 font-mono text-[10px] tracking-wider border-b border-white/[0.08] backdrop-blur-md">
+        <thead className="sticky top-0 z-10 bg-sentinel-950/95 uppercase text-slate-400 font-mono text-2xs tracking-wider border-b border-white/[0.08] backdrop-blur-md">
           <tr>
             {columns.map((col) => {
               const isSorted = sortColumn === col.key;

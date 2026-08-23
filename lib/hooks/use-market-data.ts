@@ -9,28 +9,52 @@ import type { MarketSummary } from '@/lib/market/types';
 
 const LIVE_POLL_INTERVAL_MS = 3500;
 
+/**
+ * Mock data is only ever a *demo* aid, never a failure fallback.
+ *
+ * This hook used to substitute `mockMarketSummary` whenever the upstream call
+ * threw, then overwrite `freshness` with `'fresh'` and `updatedAt` with the
+ * current time — so the green "Market Freshness: fresh" chip was guaranteed
+ * even when every request had failed. `isLoading` was declared and never set;
+ * `error` was only ever assigned `null`. The Overview page reported a healthy
+ * live market that did not exist.
+ */
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
 export function useMarketData() {
-  const [data, setData] = useState<MarketSummary>(mockMarketSummary);
-  const [tokens, setTokens] = useState<TokenCardData[]>(mockTokenCards);
-  const [isLoading, setIsLoading] = useState(false);
+  const [data, setData] = useState<MarketSummary | null>(DEMO_MODE ? mockMarketSummary : null);
+  const [tokens, setTokens] = useState<TokenCardData[]>(DEMO_MODE ? mockTokenCards : []);
+  const [isLoading, setIsLoading] = useState(!DEMO_MODE);
   const [error, setError] = useState<string | null>(null);
   const [lastTick, setLastTick] = useState<number>(Date.now());
   const socketRef = useRef<WebSocket | null>(null);
 
   const refetch = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const [summary, liveTokens] = await Promise.all([
-        fetchLiveMarketSummary().catch(() => mockMarketSummary),
-        fetchLiveTrendingTokens().catch(() => []),
+      // Settled, not caught-and-substituted: a failing summary must not be
+      // replaced by mock data, and a failing token list must not hide the
+      // summary that did succeed.
+      const [summaryResult, tokensResult] = await Promise.allSettled([
+        fetchLiveMarketSummary(),
+        fetchLiveTrendingTokens(),
       ]);
 
-      if (summary) {
-        setData((prev) => ({
-          ...summary,
-          updatedAt: new Date().toISOString(),
-          freshness: 'fresh',
-        }));
+      if (summaryResult.status === 'fulfilled' && summaryResult.value) {
+        // `freshness` and `updatedAt` come from the source. Overwriting them
+        // here is what made a stale or failed read look live.
+        setData(summaryResult.value);
+        setError(null);
+      } else if (summaryResult.status === 'rejected') {
+        setError(
+          summaryResult.reason instanceof Error
+            ? summaryResult.reason.message
+            : 'Market data provider is unavailable.',
+        );
+        if (!DEMO_MODE) setData(null);
       }
+
+      const liveTokens = tokensResult.status === 'fulfilled' ? tokensResult.value : [];
 
       if (liveTokens && liveTokens.length > 0) {
         setTokens(
@@ -43,21 +67,22 @@ export function useMarketData() {
             mcap: `$${(t.marketCapUsd / 1_000_000).toFixed(1)}M`,
             liquidity: `$${(t.liquidityUsd / 1000).toFixed(0)}K`,
             volume24h: `$${(t.volume24hUsd / 1_000_000).toFixed(1)}M`,
-            intelligenceScore: 80 + ((idx * 7) % 18),
-            badges: idx === 0 ? ['verified', 'trending', 'smart-money'] : ['trending'],
-            sparklineData: [
-              Math.max(10, t.priceChange24h * 0.8 + 40),
-              Math.max(10, t.priceChange24h * 0.9 + 45),
-              Math.max(10, t.priceChange24h + 50),
-              Math.max(10, t.priceChange24h * 1.1 + 55),
-              Math.max(10, t.priceChange24h * 1.2 + 60),
-            ],
+            // Was `80 + ((idx * 7) % 18)` — an intelligence score invented from
+            // the token's position in the array, rendered beside real metrics as
+            // if it were measured. Until the ranking engine supplies one, there
+            // is no score.
+            intelligenceScore: (t as { intelligenceScore?: number }).intelligenceScore ?? 0,
+            badges: [],
+            // Sparklines need price history, not five points extrapolated from a
+            // single 24h change figure.
+            sparklineData: undefined,
           }))
         );
       }
-      setError(null);
     } catch (err) {
-      console.warn('Market summary fetch fallback', err);
+      setError(err instanceof Error ? err.message : 'Failed to load market data.');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -126,23 +151,15 @@ export function useMarketData() {
     return () => clearInterval(interval);
   }, [refetch]);
 
-  // 3. Live micro-fluctuations on active ticks to keep the numbers alive
-  useEffect(() => {
-    const tickInterval = setInterval(() => {
-      setData((prev) => {
-        const microNoise = (Math.random() - 0.48) * 0.04;
-        const newSolPrice = Math.max(10, prev.solPriceUsd + microNoise);
-        return {
-          ...prev,
-          solPriceUsd: newSolPrice,
-          updatedAt: new Date().toISOString(),
-          freshness: 'fresh',
-        };
-      });
-    }, 1800);
-
-    return () => clearInterval(tickInterval);
-  }, []);
+  /*
+   * Removed: a 1.8s interval that added `(Math.random() - 0.48) * 0.04` to the
+   * SOL price and re-stamped `freshness: 'fresh'` with a current timestamp.
+   *
+   * The number on screen visibly ticked, so the page looked live — but the
+   * movement was noise, unrelated to the market, and it overwrote the real
+   * freshness state on every tick. Prices now move only when a real update
+   * arrives, from the WebSocket above or the poll.
+   */
 
   return {
     marketSummary: data,

@@ -98,39 +98,68 @@ const WalletActionsContext = createContext<WalletActions | undefined>(undefined)
 
 const STORAGE_KEY_TOKEN = 'sentinel_session_token';
 
+/**
+ * Demo seeding.
+ *
+ * This store used to boot unconditionally as `authenticated`, with two invented
+ * wallets, a `'demo-token'` session and a fabricated `user_001` identity. That
+ * made the whole app look signed in to a user who did not exist, and — because
+ * `usePrimaryWallet()` reads this store while `useAuth()` reads the real
+ * `/api/v1/auth/me` source — every wallet-scoped API call went out with a
+ * stranger's address. `7xK99zK8mP2xQ5wN3a19` is not even a valid Solana address
+ * (see lib/wallet/__tests__/validation.test.ts), so those calls could only ever
+ * 403 or 404.
+ *
+ * The seed is still useful for demos and screenshots, so it is kept — but only
+ * when explicitly asked for, and never by default.
+ */
+const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+
+const DEMO_WALLETS: LinkedWallet[] = [
+  {
+    id: 'w_001',
+    address: '7xK99zK8mP2xQ5wN3a19',
+    network: 'solana',
+    label: 'Phantom Primary',
+    isPrimary: true,
+    balanceSol: 42.85,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'w_002',
+    address: '3mR88xK1pQ99zW5a71b2',
+    network: 'solana',
+    label: 'Solflare Trading',
+    isPrimary: false,
+    balanceSol: 18.4,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 export function WalletStoreProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<ConnectionStatus>('authenticated');
+  const [status, setStatus] = useState<ConnectionStatus>(DEMO_MODE ? 'authenticated' : 'disconnected');
   const [adapters] = useState<WalletAdapter[]>(() => getAvailableSolanaAdapters());
-  const [selectedAdapter, setSelectedAdapter] = useState<WalletAdapter | null>(adapters[4]); // Sentinel Embedded Key
-  const [activePublicKey, setActivePublicKey] = useState<string | null>('7xK99zK8mP2xQ5wN3a19');
+  /**
+   * No adapter until the user picks one.
+   *
+   * This defaulted to `adapters[4]` — the embedded stub, which returns a
+   * hardcoded address and a forged signature. So the app booted "holding" a
+   * wallet nobody connected, and the first real connect attempt was competing
+   * with a selection the user never made.
+   */
+  const [selectedAdapter, setSelectedAdapter] = useState<WalletAdapter | null>(null);
+  const [activePublicKey, setActivePublicKey] = useState<string | null>(DEMO_MODE ? DEMO_WALLETS[0].address : null);
   const [activeChallenge, setActiveChallenge] = useState<SIWSChallenge | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>('demo-token');
+  const [sessionToken, setSessionToken] = useState<string | null>(DEMO_MODE ? 'demo-token' : null);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [linkedWallets, setLinkedWallets] = useState<LinkedWallet[]>([
-    {
-      id: 'w_001',
-      address: '7xK99zK8mP2xQ5wN3a19',
-      network: 'solana',
-      label: 'Phantom Primary',
-      isPrimary: true,
-      balanceSol: 42.85,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'w_002',
-      address: '3mR88xK1pQ99zW5a71b2',
-      network: 'solana',
-      label: 'Solflare Trading',
-      isPrimary: false,
-      balanceSol: 18.4,
-      status: 'active',
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  const [linkedWallets, setLinkedWallets] = useState<LinkedWallet[]>(DEMO_MODE ? DEMO_WALLETS : []);
 
-  const [authenticatedIdentity, setAuthenticatedIdentity] = useState<AuthenticatedIdentity | null>({
+  const [authenticatedIdentity, setAuthenticatedIdentity] = useState<AuthenticatedIdentity | null>(
+    DEMO_MODE
+      ? {
     userId: 'user_001',
     displayName: 'Sentinel Alpha Trader',
     email: 'trader@sentinel.local',
@@ -162,7 +191,9 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       },
     },
     authenticatedAt: new Date().toISOString(),
-  });
+  }
+      : null,
+  );
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [activeWalletTab, setActiveWalletTab] = useState<WalletTab>('overview');
@@ -249,7 +280,14 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
     async (adapterId: WalletProviderId) => {
       setAuthError(null);
       setStatus('connecting');
-      const adapter = adapters.find((a) => a.id === adapterId) || adapters[4]; // Fallback embedded key
+      // No silent fallback: connecting to a wallet other than the one the user
+      // chose is never the right recovery.
+      const adapter = adapters.find((a) => a.id === adapterId);
+      if (!adapter) {
+        setStatus('error');
+        setAuthError(`${adapterId} is not available in this browser.`);
+        return;
+      }
       setSelectedAdapter(adapter);
 
       try {
@@ -264,9 +302,16 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           body: JSON.stringify({ publicKey, network: 'solana:mainnet' }),
         });
 
-        if (!res.ok) throw new Error('Failed to request authentication challenge.');
-        const challengeData = await res.json();
-        setActiveChallenge(challengeData.challenge);
+        const challengeBody = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(
+            challengeBody?.error?.message || 'Failed to request an authentication challenge.',
+          );
+        }
+        // The API answers through the `{ success, data }` envelope.
+        const challenge = challengeBody?.data?.challenge ?? challengeBody?.challenge;
+        if (!challenge) throw new Error('Server returned no authentication challenge.');
+        setActiveChallenge(challenge);
       } catch (err: any) {
         setStatus('error');
         setAuthError(err.message || 'Failed to connect wallet.');

@@ -111,7 +111,7 @@ export function AdvancedFilterDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden font-mono">
+    <div className="fixed inset-0 z-50 overflow-hidden">
       {/* Backdrop */}
       <div
         onClick={onClose}

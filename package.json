@@ -10,7 +10,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "db:migrate": "node db/migrate.js",
-    "db:seed": "node db/seed.js"
+    "db:seed": "node db/seed.js",
+    "db:backfill": "node db/backfill-token-enrichment.js"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
@@ -52,6 +53,7 @@
     "eslint-plugin-react": "7.33.2",
     "eslint-plugin-react-hooks": "7.1.1",
     "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
     "typescript": "5.4.5",
     "vitest": "^4.1.10"
   }

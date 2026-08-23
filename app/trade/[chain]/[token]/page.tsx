@@ -12,79 +12,89 @@ import { TradingPanel } from '@/components/trading/trading-panel';
 import { AxiomChartTabs } from '@/components/trading/axiom-chart-tabs';
 import { TokenSocials } from '@/components/ui/token-socials';
 import { CompactActivityIndicator } from '@/components/trade/compact-activity-indicator';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 import { Decimal } from '@/lib/math/decimal';
+import { formatPercent } from '@/lib/discovery/format';
 import { fetchTokenOverview, fetchTokenSecurity } from '@/lib/actions/birdeye';
-import { useBirdeyeWS } from '@/lib/hooks/use-birdeye-ws';
-import type { WsResponse, WsTxsDataResponse, WsPriceDataResponse } from '@/lib/api/birdeye/ws';
+import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import type { TokenOverview } from '@/lib/api/birdeye/stats';
 import type { TokenSecurityData } from '@/lib/api/birdeye/security';
 
 export default function DynamicTokenPage() {
   const params = useParams();
   const chain = (params?.chain as string) || 'solana';
-  const tokenMint = (params?.token as string) || '7xK99zK8mP2xQ5wN3a19';
+  // No invalid fallback. `/trade` redirects here with a real mint, so an empty
+  // param now means a genuinely malformed URL and should read as one rather
+  // than silently substituting a 20-character string that is not a Solana
+  // address and can never resolve.
+  const tokenMint = (params?.token as string) || '';
 
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [tokenOverview, setTokenOverview] = useState<TokenOverview | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
+  const [isOverviewLoading, setIsOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
-  const { client, isReady } = useBirdeyeWS();
-
-  React.useEffect(() => {
-    fetchTokenOverview(tokenMint).then(setTokenOverview).catch(console.error);
+  const loadOverview = React.useCallback(async () => {
+    if (!tokenMint) {
+      setOverviewError('No token specified in the URL.');
+      setIsOverviewLoading(false);
+      return;
+    }
+    setIsOverviewLoading(true);
+    setOverviewError(null);
+    try {
+      const data = await fetchTokenOverview(tokenMint);
+      setTokenOverview(data);
+      if (!data) setOverviewError('Market data provider returned no data for this token.');
+    } catch (err) {
+      setOverviewError(
+        err instanceof Error ? err.message : 'Market data provider is unavailable.',
+      );
+    } finally {
+      setIsOverviewLoading(false);
+    }
   }, [tokenMint]);
 
   React.useEffect(() => {
-    if (!isReady || !client) return;
-    
-    const txSub = {
-      type: 'SUBSCRIBE_TXS' as const,
-      data: { queryType: 'simple' as const, address: tokenMint, txsType: 'swap' as const }
-    };
-    
-    const priceSub = {
-      type: 'SUBSCRIBE_PRICE' as const,
-      data: { queryType: 'simple' as const, address: tokenMint, currency: 'usd' as const, chartType: '1m' }
-    };
+    void loadOverview();
+  }, [loadOverview]);
 
-    client.subscribe(txSub);
-    client.subscribe(priceSub);
+  // Real-time market streaming via internal Node.js WebSocket gateway
+  const wsTopics = React.useMemo(
+    () => (tokenMint ? [`token.price:${tokenMint}`, `token.trade:${tokenMint}`] : []),
+    [tokenMint]
+  );
 
-    const handler = (data: WsResponse) => {
-      if (data.type === 'TXS_DATA') {
-        const payload = data as WsTxsDataResponse;
-        if (payload.data.side && payload.data.volumeUSD) {
-          setRecentTrades(prev => [
-            {
-              id: payload.data.txHash,
-              side: payload.data.side,
-              amount: `${(payload.data.volumeUSD! / (payload.data.pricePair || 1)).toFixed(2)} ${tokenOverview?.symbol || 'Tokens'}`,
-              valueUsd: `$${payload.data.volumeUSD!.toFixed(2)}`,
-              time: 'Just now',
-              tx: payload.data.txHash.substring(0, 8) + '...'
-            },
-            ...prev
-          ].slice(0, 10));
-        }
-      } else if (data.type === 'PRICE_DATA') {
-        const payload = data as WsPriceDataResponse;
-        if (payload.data.c) setLivePrice(payload.data.c);
+  useSentinelWS(wsTopics, (data, msg) => {
+    if (msg.topic === `token.price:${tokenMint}`) {
+      if (data?.priceUsd !== undefined) {
+        setLivePrice(Number(data.priceUsd));
       }
-    };
-    client.addHandler(handler);
-
-    return () => {
-      client.removeHandler(handler);
-      client.unsubscribe(txSub);
-      client.unsubscribe(priceSub);
-    };
-  }, [client, isReady, tokenMint, tokenOverview?.symbol]);
+    } else if (msg.topic === `token.trade:${tokenMint}`) {
+      const volUsd = data.priceUsd && data.amount ? Number(data.priceUsd) * Number(data.amount) : undefined;
+      setRecentTrades((prev) => [
+        {
+          id: data.signature || `tx_${Date.now()}_${Math.random()}`,
+          side: data.side ? data.side.toLowerCase() : 'buy',
+          amount: `${data.amount ? Number(data.amount).toFixed(2) : '1.00'} ${tokenOverview?.symbol || 'Tokens'}`,
+          valueUsd: volUsd ? `$${volUsd.toFixed(2)}` : data.priceUsd ? `$${Number(data.priceUsd).toFixed(2)}` : '$0.00',
+          time: 'Just now',
+          tx: data.signature ? `${data.signature.slice(0, 8)}...` : 'tx...',
+        },
+        ...prev,
+      ].slice(0, 10));
+    }
+  });
 
   const tokenData = {
-    name: tokenOverview?.name || 'Loading...',
-    symbol: tokenOverview?.symbol || '...',
+    // Falls back to the mint rather than 'Loading...'/'...'. Those strings were
+    // shown indefinitely on failure, and worse, propagated into the trading
+    // panel as the literal buy/sell token ("BUY ...") and into the quote request.
+    name: tokenOverview?.name || (isOverviewLoading ? 'Loading…' : `${tokenMint.slice(0, 4)}…${tokenMint.slice(-4)}`),
+    symbol: tokenOverview?.symbol || (isOverviewLoading ? '' : tokenMint.slice(0, 4).toUpperCase()),
     mint: tokenMint,
     chain: chain.toUpperCase(),
     priceUsd: new Decimal(livePrice || tokenOverview?.price || 0),
@@ -104,81 +114,117 @@ export default function DynamicTokenPage() {
 
   return (
     <AppShell initialView="trade">
-      <div className="space-y-5 p-4 max-w-7xl mx-auto">
-        {/* Token Header Bar */}
-        <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-4 shadow-card flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sentinel-750 font-bold text-sky-400 text-lg border border-sentinel-600">
-              {tokenData.symbol.slice(0, 2)}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-slate-100">{tokenData.name}</h1>
-                <span className="text-xs font-mono text-slate-400">${tokenData.symbol}</span>
-                <Badge variant="mono" size="sm" className="font-mono">{tokenData.chain}</Badge>
+      <div className="space-y-6 p-6 max-w-7xl mx-auto">
+        {/*
+          Token header.
+
+          Identity and statistics sit directly on the page ground, grouped by
+          alignment and a single hairline rather than in bordered tiles —
+          borders are boundaries, not decoration (lib/design/system.md rule 1).
+          The price is the one primary-tier element on this screen.
+        */}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <TokenAvatar
+              src={tokenOverview?.logoURI}
+              symbol={tokenData.symbol}
+              name={tokenData.name}
+              mint={tokenMint}
+              size="lg"
+            />
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <h1 className="text-xl font-bold text-slate-100 truncate">{tokenData.name}</h1>
+                <span className="text-sm font-numeric text-slate-400 shrink-0">${tokenData.symbol}</span>
+                <span className="label-micro shrink-0">{tokenData.chain}</span>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-400 mt-1">
-                <span className="flex items-center gap-1">
-                  Mint: {tokenMint.slice(0, 6)}...{tokenMint.slice(-6)}
-                  <button onClick={handleCopyAddress} className="hover:text-slate-200">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
+                <span className="flex items-center gap-1 font-numeric">
+                  {tokenMint.slice(0, 6)}…{tokenMint.slice(-6)}
+                  <button
+                    onClick={handleCopyAddress}
+                    aria-label="Copy mint address"
+                    className="hover:text-slate-200 transition-colors"
+                  >
                     <Copy className="h-3.5 w-3.5" />
                   </button>
+                  {copied && <span className="text-emerald-400">Copied</span>}
                 </span>
-                {copied && <span className="text-emerald-400 text-2xs">Copied!</span>}
-                <a href={tokenData.explorerUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-sky-400">
+                <a
+                  href={tokenData.explorerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 hover:text-sky-400 transition-colors"
+                >
                   <ExternalLink className="h-3.5 w-3.5" /> Explorer
                 </a>
-                {/* Clickable Social Media Handles */}
-                <TokenSocials symbol={tokenData.symbol} showHandles={true} size="xs" />
+                <TokenSocials symbol={tokenData.symbol} showHandles={false} size="xs" />
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 font-mono">
+          <div className="flex items-center gap-3 shrink-0">
             <CompactActivityIndicator />
             <Button
-              variant={isWatchlisted ? 'secondary' : 'outline'}
+              variant="outline"
               size="sm"
               onClick={() => setIsWatchlisted(!isWatchlisted)}
               leftIcon={<Star className={`h-4 w-4 ${isWatchlisted ? 'fill-amber-400 text-amber-400' : ''}`} />}
             >
-              {isWatchlisted ? 'Watchlisted' : 'Add to Watchlist'}
+              {isWatchlisted ? 'Watchlisted' : 'Watchlist'}
             </Button>
           </div>
-        </div>
+        </header>
 
-        {/* Market Stats Bar */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 font-mono">
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-900/80 p-3">
-            <p className="text-2xs text-slate-400 uppercase">PRICE</p>
-            <p className="text-base font-bold text-slate-100">{tokenData.priceUsd.formatUSD(4)}</p>
-            <p className="text-xs font-bold text-emerald-400">+{tokenData.priceChange24h.toFixed(2)}% 24h</p>
+        {/* Provider failure is stated, not hidden behind zeros. */}
+        {overviewError && !isOverviewLoading && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 flex items-start gap-3">
+            <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-bold text-amber-300">Market data unavailable</h4>
+              <p className="text-2xs text-slate-300 mt-0.5 break-words">{overviewError}</p>
+              <p className="text-2xs text-slate-500 mt-1">
+                Figures below are unavailable rather than zero.
+              </p>
+            </div>
+            <Button variant="outline" size="xs" onClick={() => void loadOverview()}>
+              Retry
+            </Button>
           </div>
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-900/80 p-3">
-            <p className="text-2xs text-slate-400 uppercase">MARKET CAP</p>
-            <p className="text-base font-bold text-slate-100">{tokenData.marketCapUsd.formatUSD(0)}</p>
-          </div>
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-900/80 p-3">
-            <p className="text-2xs text-slate-400 uppercase">LIQUIDITY</p>
-            <p className="text-base font-bold text-slate-100">{tokenData.liquidityUsd.formatUSD(0)}</p>
-          </div>
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-900/80 p-3">
-            <p className="text-2xs text-slate-400 uppercase">24H VOLUME</p>
-            <p className="text-base font-bold text-slate-100">{tokenData.volume24hUsd.formatUSD(0)}</p>
-          </div>
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-900/80 p-3 col-span-2 md:col-span-1">
-            <p className="text-2xs text-slate-400 uppercase">HOLDERS</p>
-            <p className="text-base font-bold text-slate-100">{tokenData.holders.toLocaleString()}</p>
-          </div>
-        </div>
+        )}
 
-        {/* Main Grid: Left Chart & Activity | Right Trading Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Chart & Recent Activity Column */}
-          <div className="lg:col-span-2 space-y-5">
-            <CandlestickChart initialTimeframe="15m" />
+        {/* Statistics. One aligned row, no tiles. */}
+        <section className="flex flex-wrap items-end gap-x-8 gap-y-4 border-t border-sentinel-800/80 pt-4">
+          <div>
+            <p className="label-micro">Price</p>
+            <p className="text-3xl font-bold text-slate-100 font-numeric leading-tight">
+              {tokenData.priceUsd.formatUSD(4)}
+            </p>
+            <p
+              className={`text-xs font-semibold font-numeric ${
+                tokenData.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}
+            >
+              {formatPercent(tokenData.priceChange24h)} 24h
+            </p>
+          </div>
 
-            {/* Axiom-Style Multi-Tab Navigation Bar (Trades, Positions, Orders, Sentinel Intelligence Audit, Holders, Top Traders, Dev Tokens) */}
+          {[
+            { label: 'Market Cap', value: tokenData.marketCapUsd.formatUSD(0) },
+            { label: 'Liquidity', value: tokenData.liquidityUsd.formatUSD(0) },
+            { label: '24h Volume', value: tokenData.volume24hUsd.formatUSD(0) },
+            { label: 'Holders', value: tokenData.holders.toLocaleString() },
+          ].map((stat) => (
+            <div key={stat.label}>
+              <p className="label-micro">{stat.label}</p>
+              <p className="text-base font-semibold text-slate-200 font-numeric">{stat.value}</p>
+            </div>
+          ))}
+        </section>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <CandlestickChart initialTimeframe="15m" symbol={tokenMint} chain={chain} />
             <AxiomChartTabs
               currentPrice={livePrice || tokenData.priceUsd.toNumber()}
               tokenSymbol={tokenData.symbol}
@@ -186,7 +232,6 @@ export default function DynamicTokenPage() {
             />
           </div>
 
-          {/* Right Column: Authoritative Trading Panel */}
           <div>
             <TradingPanel
               tokenSymbol={tokenData.symbol}

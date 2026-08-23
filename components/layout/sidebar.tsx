@@ -125,7 +125,7 @@ export function Sidebar() {
             </div>
             {!isSidebarCollapsed && (
               <div>
-                <p className="text-[9px] uppercase font-bold tracking-[0.25em] text-slate-400">PROJECT</p>
+                <p className="text-2xs uppercase font-bold tracking-[0.14em] text-slate-400 whitespace-nowrap">PROJECT</p>
                 <h1 className="text-sm font-extrabold text-white tracking-wider">SENTINEL</h1>
               </div>
             )}
@@ -142,7 +142,7 @@ export function Sidebar() {
         {/* Main Navigation Items */}
         <div className="space-y-0.5 flex-1">
           {!isSidebarCollapsed && (
-            <p className="px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 font-mono">
+            <p className="px-2.5 py-1 label-micro whitespace-nowrap">
               Main Terminal
             </p>
           )}
@@ -152,7 +152,7 @@ export function Sidebar() {
         {/* Lower Section (Settings & Help) */}
         <div className="pt-2.5 mt-2 border-t border-sentinel-800/80 space-y-0.5">
           {!isSidebarCollapsed && (
-            <p className="px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 font-mono">
+            <p className="px-2.5 py-1 label-micro whitespace-nowrap">
               Preferences & Docs
             </p>
           )}
@@ -162,10 +162,13 @@ export function Sidebar() {
         {/* Wallet Account Status Box */}
         {!isSidebarCollapsed && (
           <div className="mt-3 rounded-xl border border-white/[0.08] bg-sentinel-900/80 p-2.5 text-slate-300 backdrop-blur-md">
-            <div className="flex items-center justify-between text-[10px] uppercase font-mono text-slate-400 mb-1">
-              <span>Network</span>
-              <span className="text-emerald-400 flex items-center gap-1 font-bold">
-                <CheckCircle2 className="h-3 w-3" /> Solana Mainnet
+            {/* min-w-0 + truncate: without them the two labels wrapped into
+                each other once the type was raised to the 11px floor. */}
+            <div className="flex items-center justify-between gap-2 text-2xs uppercase font-mono text-slate-400 mb-1">
+              <span className="shrink-0">Network</span>
+              <span className="text-emerald-400 flex items-center gap-1 font-bold min-w-0">
+                <CheckCircle2 className="h-3 w-3 shrink-0" />
+                <span className="truncate">Solana Mainnet</span>
               </span>
             </div>
             {activeWallet ? (
@@ -196,7 +199,7 @@ export function Sidebar() {
       >
         <div className="space-y-4">
           <div className="space-y-1">
-            <p className="px-2 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 font-mono">
+            <p className="px-2 py-1 label-micro whitespace-nowrap">
               Main Terminal
             </p>
             {mainNavItems.map((item) => {
@@ -224,7 +227,7 @@ export function Sidebar() {
           </div>
 
           <div className="pt-2 border-t border-sentinel-800 space-y-1">
-            <p className="px-2 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 font-mono">
+            <p className="px-2 py-1 label-micro whitespace-nowrap">
               System
             </p>
             {lowerNavItems.map((item) => (

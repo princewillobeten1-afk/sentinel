@@ -1,4 +1,4 @@
--- Migration 024: Blockchain Ingestion Engine, Normalization & Discovery (Sprint 44)
+-- Migration 029: Blockchain Ingestion Engine, Normalization & Discovery (Sprint 44)
 
 -- 1. Indexer Cursor State
 CREATE TABLE IF NOT EXISTS indexer_state (

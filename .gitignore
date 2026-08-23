@@ -12,6 +12,9 @@ build/
 .env
 .env.local
 .env.*.local
+.env.backup
+.env*.backup
+*.env.backup
 !.env.local.example
 !.env.example
 

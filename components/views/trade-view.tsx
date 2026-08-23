@@ -26,6 +26,7 @@ import { TransactionPreviewModal } from '@/components/ui/transaction-preview-mod
 import { LimitOrderBuilder } from '@/components/limit-orders/limit-order-builder';
 import { AxiomChartTabs } from '@/components/trading/axiom-chart-tabs';
 import { TokenSocials } from '@/components/ui/token-socials';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData } from '@/lib/api/response';
 import { resolveWalletId, resolveTokenId } from '@/lib/trading/resolve-ids';
@@ -39,6 +40,22 @@ const DynamicCandlestickChart = dynamic(() => import('@/components/trading/candl
   loading: () => <SkeletonChart />,
   ssr: false,
 });
+
+/**
+ * Market values are genuinely absent when the provider is down.
+ *
+ * `useMarketData` no longer substitutes mock numbers on failure, so these
+ * render `—` rather than a plausible-looking figure. `n()` is for the few
+ * places a number is structurally required (a chart input, a progress value);
+ * it must never be used for a displayed figure.
+ */
+const dash = '—';
+const money = (v: number | undefined, digits = 2, suffix = '') =>
+  v === undefined || !Number.isFinite(v) ? dash : `$${v.toLocaleString(undefined, { maximumFractionDigits: digits })}${suffix}`;
+const pct = (v: number | undefined, digits = 2) =>
+  v === undefined || !Number.isFinite(v) ? dash : `${v.toFixed(digits)}%`;
+const n = (v: number | undefined, fallback = 0) =>
+  v === undefined || !Number.isFinite(v) ? fallback : v;
 
 export function TradeView() {
   const { connectedWallet, primaryWallet } = useAppState();
@@ -230,9 +247,12 @@ export function TradeView() {
       {/* Top Token Information Header */}
       <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3 sm:p-3.5 shadow-card flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sentinel-750 font-bold text-sky-400 text-sm border border-sentinel-600">
-            SE
-          </div>
+          <TokenAvatar
+            symbol="SENT"
+            name="Solana Sentinel"
+            mint="7xK99zK8mP2xQ5wN3a19"
+            size="md"
+          />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-bold text-white">Solana Sentinel</h2>
@@ -253,43 +273,28 @@ export function TradeView() {
         <div className="flex flex-wrap items-center gap-3 sm:gap-4 font-numeric">
           <div className="min-w-[130px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Price</p>
-            <p className="text-base sm:text-lg font-bold text-white">${marketSummary.solPriceUsd.toFixed(4)} <span className="text-xs text-emerald-400 font-bold">{marketSummary.solChange24h.toFixed(2)}%</span></p>
+            <p className="text-base sm:text-lg font-bold text-white">{money(marketSummary?.solPriceUsd, 4)} <span className="text-xs text-emerald-400 font-bold">{pct(marketSummary?.solChange24h)}</span></p>
           </div>
 
           <div className="min-w-[130px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">24h Organic Vol</p>
-            <p className="text-xs sm:text-sm font-bold text-emerald-400">${(marketSummary.totalVolume24hUsd * 0.87).toLocaleString(undefined, { maximumFractionDigits: 0 })} <span className="text-2xs text-slate-500 font-normal">(Raw ${marketSummary.totalVolume24hUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })})</span></p>
+            <p className="text-xs sm:text-sm font-bold text-slate-200">
+              {money(marketSummary?.totalVolume24hUsd, 0)}
+              {/* Was `raw * 0.87`, presented as an organic figure. MarketSummary
+                  carries no organic field; wire /api/v1/analytics/market before
+                  showing a split. */}
+              <span className="text-2xs text-slate-500 font-normal"> reported</span>
+            </p>
           </div>
 
           <div className="min-w-[120px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Liquidity</p>
-            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary.totalLiquidityUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary?.totalLiquidityUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
           </div>
 
           <div className="min-w-[120px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Market Cap</p>
-            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary.totalMarketCapUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-          </div>
-
-          <div className="min-w-[150px] rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-2 text-2xs text-slate-400">
-            <div className="flex items-center justify-between gap-2">
-              <span>Market Freshness</span>
-              <span className={`rounded-full px-2 py-0.5 font-mono uppercase ${
-                marketSummary.freshness === 'fresh'
-                  ? 'bg-emerald-500/15 text-emerald-300'
-                  : marketSummary.freshness === 'delayed'
-                  ? 'bg-amber-500/15 text-amber-300'
-                  : marketSummary.freshness === 'stale'
-                  ? 'bg-rose-500/15 text-rose-300'
-                  : 'bg-slate-700/70 text-slate-300'
-              }`}>
-                {marketSummary.freshness}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 pt-1.5">
-              <span>Last update</span>
-              <span className="font-mono text-slate-300 text-2xs">{new Date(marketSummary.updatedAt).toLocaleTimeString()}</span>
-            </div>
+            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary?.totalMarketCapUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
           </div>
         </div>
       </div>
@@ -308,7 +313,7 @@ export function TradeView() {
 
           {/* Axiom-Style Navigation Tabs (Trades, Positions, Orders, Sentinel Intelligence Audit, Holders, Top Traders, Dev Tokens) */}
           <AxiomChartTabs
-            currentPrice={marketSummary.solPriceUsd}
+            currentPrice={n(marketSummary?.solPriceUsd)}
             tokenSymbol="SENT"
             tokenMint="7xK99zK8mP2xQ5wN3a19"
             onOpenLimitBuilder={() => setShowLimitBuilder(true)}
@@ -361,7 +366,7 @@ export function TradeView() {
               </div>
 
               {/* Market vs Limit */}
-              <div className="flex gap-2 text-xs font-mono">
+              <div className="flex gap-2 text-xs">
                 <button
                   onClick={() => setExecutionMode('market')}
                   className={`flex-1 py-1 rounded transition uppercase ${
@@ -444,7 +449,7 @@ export function TradeView() {
               </div>
 
               {executionError && (
-                <div className="p-2 rounded-lg border border-rose-500/30 bg-rose-950/40 text-xs text-rose-300 font-mono">
+                <div className="p-2 rounded-lg border border-rose-500/30 bg-rose-950/40 text-xs text-rose-300">
                   {executionError}
                 </div>
               )}
@@ -483,7 +488,7 @@ export function TradeView() {
           walletId={activeWalletAddress}
           tokenId={quoteSymbol}
           action={orderType === 'buy' ? 'BUY' : 'SELL'}
-          amountUsd={parseFloat(solAmount) * marketSummary.solPriceUsd}
+          amountUsd={parseFloat(solAmount) * n(marketSummary?.solPriceUsd)}
           // The quote already fetched from /api/v1/trading/quote, so the figures
           // the user confirms are the ones they were quoted.
           simulation={
@@ -498,7 +503,7 @@ export function TradeView() {
                   expectedReceiveUsd: Math.max(
                     0,
                     parseFloat(solAmount) *
-                      marketSummary.solPriceUsd *
+                      n(marketSummary?.solPriceUsd) *
                       (1 - pendingQuote.priceImpactPct / 100) -
                       pendingQuote.networkFeeUsd,
                   ),
@@ -521,7 +526,7 @@ export function TradeView() {
       {/* Intelligent Limit Order Builder Modal (Sprint 21) */}
       {showLimitBuilder && (
         <LimitOrderBuilder
-          currentPrice={marketSummary.solPriceUsd}
+          currentPrice={n(marketSummary?.solPriceUsd)}
           walletBalanceSol={activeBalance}
           onClose={() => setShowLimitBuilder(false)}
           onOrderCreated={() => {

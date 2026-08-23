@@ -84,6 +84,9 @@ export const endpoints = {
     positions: (wallet: string) => `/v1/portfolio/${seg(wallet)}/positions`,
     risk: (wallet: string) => `/v1/portfolio/${seg(wallet)}/risk`,
     performance: (wallet: string) => `/v1/portfolio/${seg(wallet)}/performance`,
+    /** Concentration by token/chain/risk-class. `sharePct` is a 0–1 fraction. */
+    exposure: (wallet: string) => `/v1/portfolio/${seg(wallet)}/exposure`,
+    pnl: (wallet: string) => `/v1/portfolio/${seg(wallet)}/pnl`,
   },
 
   orders: {
@@ -100,6 +103,11 @@ export const endpoints = {
     prepare: '/v1/trading/prepare',
     submit: '/v1/trading/submit',
     history: '/v1/trading/history',
+  },
+
+  watchlist: {
+    /** The caller's own watchlist. User id comes from the session, never the request. */
+    list: '/v1/watchlist',
   },
 
   alerts: {

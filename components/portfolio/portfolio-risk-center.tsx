@@ -38,7 +38,6 @@ import type {
   PositionChange,
 } from '@/lib/portfolio/types';
 
-const DEMO_WALLET = '7xK99zK8mP2xQ5wN3a19';
 type SortKey = 'VALUE' | 'PNL' | 'RISK' | 'ALLOCATION' | 'EXITABILITY';
 
 interface OverviewResponse {
@@ -56,8 +55,13 @@ interface PositionsResponse {
   positions: Position[];
 }
 
-async function fetchJson<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+async function fetchJson<T>(path: string, token?: string): Promise<T> {
+  // The bearer header is optional — the `sentinel_session` cookie authenticates
+  // on its own, and sending `Bearer null` would be worse than sending nothing.
+  const res = await fetch(path, {
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   const body = await res.json();
   if (!res.ok || !body.success) {
     throw new Error(body?.error?.message ?? `Request to ${path} failed`);
@@ -93,8 +97,11 @@ function riskBadgeVariant(band: string): 'success' | 'info' | 'warning' | 'dange
 export function PortfolioRiskCenter() {
   const { token } = useSession();
   const { address } = usePrimaryWallet();
-  const wallet = address || DEMO_WALLET;
-  const authToken = token || 'demo-token';
+  // No demo fallbacks. These substituted an invalid address and a fake token
+  // whenever the real ones were absent, so a signed-out user silently requested
+  // a stranger's portfolio and got a 403 instead of being told to connect.
+  const wallet = address;
+  const authToken = token;
 
   const [overview, setOverview] = useState<PortfolioOverview | null>(null);
   const [changes, setChanges] = useState<PositionChange[]>([]);
@@ -105,14 +112,22 @@ export function PortfolioRiskCenter() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Nothing to fetch without a wallet. Previously this ran regardless, using
+    // a hardcoded demo address, and surfaced the resulting 403 as a failure.
+    if (!wallet) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     Promise.all([
-      fetchJson<OverviewResponse>(`/api/v1/portfolio/${wallet}`, authToken),
-      fetchJson<RiskResponse>(`/api/v1/portfolio/${wallet}/risk`, authToken),
-      fetchJson<PositionsResponse>(`/api/v1/portfolio/${wallet}/positions?sort=${sort}`, authToken),
+      fetchJson<OverviewResponse>(`/api/v1/portfolio/${wallet}`, authToken ?? undefined),
+      fetchJson<RiskResponse>(`/api/v1/portfolio/${wallet}/risk`, authToken ?? undefined),
+      fetchJson<PositionsResponse>(`/api/v1/portfolio/${wallet}/positions?sort=${sort}`, authToken ?? undefined),
     ])
       .then(([overviewRes, riskRes, positionsRes]) => {
         if (cancelled) return;
@@ -215,6 +230,16 @@ export function PortfolioRiskCenter() {
     ],
     [],
   );
+
+  if (!wallet) {
+    return (
+      <EmptyState
+        icon={PieChart}
+        title="No wallet connected"
+        description="Connect a wallet to see its risk profile, exposure and exitability."
+      />
+    );
+  }
 
   if (loading && !overview) {
     return (

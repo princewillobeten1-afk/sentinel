@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, memo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Copy,
   Check,
@@ -25,6 +26,7 @@ import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { DiscoveryToken } from '@/lib/discovery/types';
 import { Decimal } from '@/lib/math/decimal';
 import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase } from '@/lib/discovery/format';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 
 interface TokenDiscoveryCardProps {
   token: DiscoveryToken;
@@ -66,6 +68,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   quickBuyMode = 'sol',
   onQuickBuy,
 }: TokenDiscoveryCardProps) {
+  const router = useRouter();
   const { setQuickBuyOpen } = useAppActions();
   const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
 
@@ -158,26 +161,32 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const isPositive = priceChange >= 0;
 
   return (
-    <div className="group relative bg-[#0b0e14]/95 hover:bg-[#111722] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none hover:shadow-md">
+    <div
+      role="link"
+      tabIndex={0}
+      aria-label={`Trade ${token.symbol}`}
+      onClick={() => router.push(`/trade/${token.chain || 'solana'}/${token.mint}`)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(`/trade/${token.chain || 'solana'}/${token.mint}`);
+        }
+      }}
+      className="group relative bg-[#0b0e14]/95 hover:bg-[#111722] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm select-none hover:shadow-md cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500"
+    >
       {/* 1. Header Row: Logo, Name, Ticker, Price & % Change */}
       <div className="flex items-start justify-between gap-2 min-w-0">
         {/* Left: Avatar + Title & Meta */}
         <div className="flex items-start gap-2 min-w-0 flex-1">
           {/* Avatar Thumbnail with DEX Badge */}
-          <div className="relative shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-750 flex items-center justify-center font-bold text-sky-400 text-xs overflow-hidden shadow-inner">
-            {token.logoURI ? (
-              <img src={token.logoURI} alt={token.name} className="w-full h-full object-cover" />
-            ) : (
-              <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
-            )}
-            {/* DEX Badge at bottom right */}
-            <div
-              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md flex items-center justify-center text-2xs font-black ${dexBadgeColor}`}
-              title={token.source || 'Solana DEX'}
-            >
-              {dexBadgeLetter}
-            </div>
-          </div>
+          <TokenAvatar
+            src={token.logoURI}
+            symbol={token.symbol}
+            name={token.name}
+            mint={token.mint}
+            size="md"
+            dexBadge={token.source}
+          />
 
           {/* Identity Stack */}
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">

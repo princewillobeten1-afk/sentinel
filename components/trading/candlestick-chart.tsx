@@ -75,6 +75,17 @@ function formatPrice(value: number): string {
   return `$${value.toFixed(4)}`;
 }
 
+/**
+ * Chart labels take a token *symbol*, but callers legitimately pass a mint —
+ * the page has no symbol until the metadata provider answers. A 44-character
+ * base58 address as a heading is unreadable, so anything address-shaped is
+ * shortened for display.
+ */
+function displaySymbol(value: string): string {
+  if (!value) return '—';
+  return value.length > 12 ? `${value.slice(0, 4)}…${value.slice(-4)}` : value.toUpperCase();
+}
+
 export function CandlestickChart({
   symbol = 'SENT',
   chain = 'solana',
@@ -218,6 +229,13 @@ export function CandlestickChart({
         if (cancelled) return;
         setHasError(true);
         setIsLoading(false);
+      })
+      .finally(() => {
+        // Belt and braces. Both branches above are guarded by `cancelled`, so
+        // under React StrictMode's double-mount the first pass could return
+        // early and leave `isLoading` true forever — stranding a fully opaque
+        // spinner overlay on top of candles that had actually loaded.
+        if (!cancelled) setIsLoading(false);
       });
 
     // Live Feed Polling: Refresh latest candle every 4 seconds
@@ -230,6 +248,9 @@ export function CandlestickChart({
             candlesRef.current = fresh;
             seriesRef.current?.setData(fresh);
             setOhlc(fresh[fresh.length - 1] ?? null);
+            // The poll proves data is arriving; never leave the overlay up.
+            setIsLoading(false);
+            setHasError(false);
           }
         })
         .catch(() => {});
@@ -279,8 +300,8 @@ export function CandlestickChart({
         {/* Axiom-style top toolbar */}
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-sentinel-800/80 bg-sentinel-900/60 font-mono text-xs select-none">
           <div className="flex items-center gap-2">
-            <span className="text-slate-300 font-bold tracking-wide">${symbol}/USD</span>
-            <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">LIVE DEX</span>
+            <span className="text-slate-300 font-bold tracking-wide">${displaySymbol(symbol)}/USD</span>
+            <span className="text-2xs text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">LIVE DEX</span>
           </div>
 
           <div className="flex items-center gap-1">
@@ -318,7 +339,7 @@ export function CandlestickChart({
           )}
 
           {!isLoading && !hasError && ohlc && (
-            <div className="absolute top-2 left-2 font-mono text-[10px] text-slate-400 bg-sentinel-900/90 px-2 py-1 rounded border border-sentinel-750 backdrop-blur-md pointer-events-none flex items-center gap-2">
+            <div className="absolute top-2 left-2 font-mono text-2xs text-slate-400 bg-sentinel-900/90 px-2 py-1 rounded border border-sentinel-750 backdrop-blur-md pointer-events-none flex items-center gap-2">
               <span>O: <strong className="text-white">{formatPrice(ohlc.open)}</strong></span>
               <span>H: <strong className="text-emerald-400">{formatPrice(ohlc.high)}</strong></span>
               <span>L: <strong className="text-rose-400">{formatPrice(ohlc.low)}</strong></span>
@@ -335,7 +356,7 @@ export function CandlestickChart({
       <div className="flex flex-wrap items-center justify-between gap-3 font-mono">
         <div className="flex items-center gap-2 text-xs">
           <BarChart2 className="h-4 w-4 text-sky-400" />
-          <span className="font-bold text-slate-200 uppercase tracking-wider">{symbol}/USD Price Chart</span>
+          <span className="font-bold text-slate-200 uppercase tracking-wider">{displaySymbol(symbol)}/USD Price Chart</span>
         </div>
 
         <div className="flex items-center gap-1 bg-sentinel-900/80 p-1 rounded-lg border border-sentinel-800 text-xs">

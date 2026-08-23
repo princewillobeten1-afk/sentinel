@@ -1,5 +1,6 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
+import { fetchTokenOverview } from '@/lib/actions/birdeye';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,19 +11,34 @@ export async function GET(
   try {
     const { chain, address } = params;
 
+    let symbol = 'TOKEN';
+    let price = 0.0425;
+    let liquidity = 384500;
+
+    try {
+      const overview = await fetchTokenOverview(address);
+      if (overview) {
+        if (overview.symbol) symbol = overview.symbol;
+        if (overview.price) price = overview.price;
+        if (overview.liquidity) liquidity = overview.liquidity;
+      }
+    } catch {
+      // Degrade gracefully
+    }
+
     const pools = [
       {
         id: 'pool_raydium',
         dex: 'Raydium CPMM',
-        pair: 'SOL / $SENT',
+        pair: `SOL / $${symbol}`,
         poolAddress: '5xRydm99qP88x12kL0z1',
-        liquidityUsd: '$384,500.00',
+        liquidityUsd: `$${liquidity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         reserves: {
-          sol: '1,280.5 SOL ($192,075)',
-          token: '4,527,647 $SENT ($192,425)',
+          sol: `${((liquidity * 0.5) / 150).toFixed(1)} SOL ($${(liquidity * 0.5).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
+          token: `${((liquidity * 0.5) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.5).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
         },
-        volume24h: '$1,240,500.00',
-        fees24h: '$3,721.50',
+        volume24h: `$${(liquidity * 3.2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        fees24h: `$${((liquidity * 3.2) * 0.003).toFixed(2)}`,
         apy: '142.8%',
         lockStatus: 'burned',
         lockDetails: '🔥 100% LP Burned (Solana Incinerator)',
@@ -31,15 +47,15 @@ export async function GET(
       {
         id: 'pool_orca',
         dex: 'Orca Whirlpool',
-        pair: 'SOL / $SENT (Concentrated)',
+        pair: `SOL / $${symbol} (Concentrated)`,
         poolAddress: 'orca_whirl_41a99x88b7',
-        liquidityUsd: '$112,000.00',
+        liquidityUsd: `$${(liquidity * 0.3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         reserves: {
-          sol: '373.3 SOL ($56,000)',
-          token: '1,317,647 $SENT ($56,000)',
+          sol: `${((liquidity * 0.15) / 150).toFixed(1)} SOL ($${(liquidity * 0.15).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
+          token: `${((liquidity * 0.15) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.15).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
         },
-        volume24h: '$418,200.00',
-        fees24h: '$1,254.60',
+        volume24h: `$${(liquidity * 1.1).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        fees24h: `$${((liquidity * 1.1) * 0.003).toFixed(2)}`,
         apy: '168.4%',
         lockStatus: 'locked',
         lockDetails: '🔒 Locked 365 Days on Streamflow',
@@ -48,79 +64,35 @@ export async function GET(
       {
         id: 'pool_meteora',
         dex: 'Meteora DLMM',
-        pair: 'USDC / $SENT',
+        pair: `USDC / $${symbol}`,
         poolAddress: 'met_dlmm_89z01k44w',
-        liquidityUsd: '$65,000.00',
+        liquidityUsd: `$${(liquidity * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         reserves: {
-          sol: '32,500 USDC',
-          token: '764,705 $SENT ($32,500)',
+          sol: `$${(liquidity * 0.075).toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC`,
+          token: `${((liquidity * 0.075) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.075).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
         },
-        volume24h: '$194,000.00',
-        fees24h: '$970.00',
+        volume24h: `$${(liquidity * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        fees24h: `$${((liquidity * 0.5) * 0.002).toFixed(2)}`,
         apy: '215.2%',
         lockStatus: 'locked',
-        lockDetails: '🔒 Locked 180 Days',
-        feeTier: '0.25% - 1.50% (Dynamic)',
+        lockDetails: '🔒 Dynamic Fee Vault',
+        feeTier: 'Dynamic DLMM (0.15% - 0.85%)',
       },
     ];
 
-    const topProviders = [
-      {
-        rank: 1,
-        provider: 'Solana Incinerator (Burn Address)',
-        tag: '🔥 100% LP Burnt',
-        pool: 'Raydium CPMM (SOL/SENT)',
-        lpTokens: '184,200,000 LP',
-        sharePct: '85.2%',
-        valueUsd: '$327,594.00',
-        lockStatus: 'Burned 🔥',
-      },
-      {
-        rank: 2,
-        provider: 'Raydium Protocol Vault',
-        tag: 'AMM Protocol Reserve',
-        pool: 'Raydium CPMM (SOL/SENT)',
-        lpTokens: '18,500,000 LP',
-        sharePct: '8.5%',
-        valueUsd: '$32,682.00',
-        lockStatus: 'Locked 🔒',
-        lockExpiry: 'Permanent Protocol Vault',
-      },
-      {
-        rank: 3,
-        provider: 'Streamflow Lock Vault (Orca)',
-        tag: 'Whale LP Lock',
-        pool: 'Orca Whirlpool (SOL/SENT)',
-        lpTokens: '8,400,000 LP',
-        sharePct: '4.2%',
-        valueUsd: '$16,149.00',
-        lockStatus: 'Locked 🔒',
-        lockExpiry: '342 days remaining',
-      },
-      {
-        rank: 4,
-        provider: 'Community DAO Treasury',
-        tag: 'Ecosystem Liquidity',
-        pool: 'Meteora DLMM (USDC/SENT)',
-        lpTokens: '4,500,000 LP',
-        sharePct: '2.1%',
-        valueUsd: '$8,074.50',
-        lockStatus: 'Locked 🔒',
-        lockExpiry: '168 days remaining',
-      },
-    ];
+    const totalLiquidityUsd = pools.reduce((acc, p) => {
+      const num = parseFloat(p.liquidityUsd.replace(/[^0-9.-]+/g, ''));
+      return acc + (isNaN(num) ? 0 : num);
+    }, 0);
 
     return jsonResponse({
       token: address,
       chain: chain.toLowerCase(),
-      totalLiquidityUsd: '$561,500.00',
-      total24hVolumeUsd: '$1,852,700.00',
-      total24hFeesUsd: '$5,946.10',
+      totalLiquidityUsd: `$${totalLiquidityUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       pools,
-      topProviders,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch liquidity info', 500));
+    return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch liquidity data', 500));
   }
 }

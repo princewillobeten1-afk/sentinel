@@ -331,7 +331,7 @@ export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingP
       </div>
 
       {/* Quote Output Estimate Section */}
-      <div className="space-y-1.5 rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 font-mono">
+      <div className="space-y-1.5 rounded-xl border border-sentinel-800 bg-sentinel-950 p-3">
         <div className="flex items-center justify-between text-2xs text-slate-400">
           <span>You Receive (Estimated)</span>
           {isQuoteLoading && <span className="text-sky-400 text-2xs animate-pulse">Calculating Quote...</span>}
@@ -344,7 +344,11 @@ export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingP
 
         {quote && (
           <p className="text-2xs text-slate-500">
-            Est. Price: ${quote.estimatedPriceUsd} | Provider: {quote.provider}
+            {/* Formatted, not interpolated raw. `estimatedPriceUsd` is an
+                18-decimal fixed-point string, so printing it directly rendered
+                "$3.450000000000000000" on screen. The same Decimal treatment is
+                used on the amount above. */}
+            Est. Price: ${new Decimal(quote.estimatedPriceUsd).formatToken(4)} | Provider: {quote.provider}
           </p>
         )}
       </div>
@@ -430,7 +434,10 @@ export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingP
               </div>
               <div className="flex justify-between">
                 <span>Network Fee:</span>
-                <span>{quote.networkFeeSol} SOL</span>
+                {/* Optional on the Quote type — an absent fee is unknown, not zero. */}
+                <span>
+                  {quote.networkFeeSol ? `${new Decimal(quote.networkFeeSol).formatToken(6)} SOL` : '—'}
+                </span>
               </div>
             </div>
           )}

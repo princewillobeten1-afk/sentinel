@@ -32,6 +32,14 @@ class DatabasePool {
     this.pool = new Pool({
       connectionString: env.DATABASE_URL,
       ssl: isCloudPostgres ? { rejectUnauthorized: false } : undefined,
+      // Without these, an unreachable or paused host leaves every awaiting
+      // request hanging indefinitely: the route never responds, the browser
+      // fetch never settles, and the UI shows a spinner that can never resolve.
+      // Failing is recoverable; hanging is not.
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 15_000,
+      statement_timeout: 15_000,
+      idleTimeoutMillis: 30_000,
     });
     this.pool.on('error', (err) => {
       logger.error('[db] idle client error', { message: err.message });

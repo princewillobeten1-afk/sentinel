@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS markets (
     status VARCHAR(32) NOT NULL DEFAULT 'DISCOVERED', -- DISCOVERED, ACTIVE, INACTIVE, SUSPICIOUS, DEPRECATED
     source VARCHAR(32) NOT NULL DEFAULT 'ONCHAIN', -- ONCHAIN, REGISTRY, INDEXER, MANUAL, EXTERNAL_PROVIDER
     metadata_json TEXT NOT NULL DEFAULT '{}',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_market_identity UNIQUE (chain_id, protocol, address)
 );
 
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS market_reserves (
     quote_price_usd NUMERIC(24, 8) NOT NULL DEFAULT 0,
     liquidity_usd NUMERIC(24, 4) NOT NULL DEFAULT 0,
     slot_or_block BIGINT NOT NULL DEFAULT 0,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_market_reserves_market ON market_reserves (market_id);
@@ -53,8 +53,8 @@ CREATE TABLE IF NOT EXISTS market_swaps (
     price_usd NUMERIC(24, 8) NOT NULL,
     volume_usd NUMERIC(24, 4) NOT NULL,
     slot_or_block BIGINT NOT NULL,
-    timestamp DATETIME NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_market_swaps_market_time ON market_swaps (market_id, timestamp DESC);
@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS ohlcv_candles (
     close NUMERIC(24, 8) NOT NULL,
     volume_usd NUMERIC(24, 4) NOT NULL DEFAULT 0,
     trade_count INTEGER NOT NULL DEFAULT 0,
-    is_final BOOLEAN NOT NULL DEFAULT 0,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    is_final BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_ohlcv_lookup ON ohlcv_candles (market_id, interval, timestamp DESC);
@@ -86,8 +86,12 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
     volume_24h_usd NUMERIC(24, 4) NOT NULL DEFAULT 0,
     liquidity_usd NUMERIC(24, 4) NOT NULL DEFAULT 0,
     price_change_24h NUMERIC(10, 4) NOT NULL DEFAULT 0,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE market_snapshots
+    ADD COLUMN IF NOT EXISTS price_change_24h NUMERIC(10, 4) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_market_snapshots_market_ts ON market_snapshots (market_id, timestamp DESC);
 
@@ -111,7 +115,7 @@ CREATE TABLE IF NOT EXISTS token_market_snapshots (
     market_count INTEGER NOT NULL DEFAULT 1,
     confidence_score NUMERIC(4, 3) NOT NULL DEFAULT 1.0,
     data_quality_score INTEGER NOT NULL DEFAULT 100,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_snapshots_token_ts ON token_market_snapshots (token_id, timestamp DESC);
@@ -124,7 +128,7 @@ CREATE TABLE IF NOT EXISTS token_supplies (
     max_supply NUMERIC(38, 18),
     supply_confidence NUMERIC(4, 3) NOT NULL DEFAULT 1.0,
     source VARCHAR(32) NOT NULL DEFAULT 'ONCHAIN_RPC',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 8. Token Leaderboards / Rankings Cache
@@ -141,7 +145,7 @@ CREATE TABLE IF NOT EXISTS token_rankings_cache (
     liquidity_usd NUMERIC(24, 4) NOT NULL,
     score NUMERIC(16, 4) NOT NULL,
     score_breakdown_json TEXT NOT NULL DEFAULT '{}',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (category, timeframe, rank)
 );
 
@@ -155,7 +159,7 @@ CREATE TABLE IF NOT EXISTS market_data_quality_logs (
     confidence NUMERIC(4, 3) NOT NULL,
     divergence_status VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
     anomalies_json TEXT NOT NULL DEFAULT '[]',
-    checked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    checked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_quality_logs_token ON market_data_quality_logs (token_id, checked_at DESC);

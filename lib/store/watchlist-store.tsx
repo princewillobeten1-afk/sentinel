@@ -1,9 +1,27 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { NormalizedSearchResult, TOKEN_DATABASE, searchTokens } from '@/lib/token/search-service';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { NormalizedSearchResult, searchTokens } from '@/lib/token/search-service';
+import { endpoints, apiUrl } from '@/lib/api/endpoints';
+import { readApiData, ApiRequestError } from '@/lib/api/response';
 
-const WATCHLIST_STORAGE_KEY = 'sentinel_watchlist_mints';
+/**
+ * Watchlist state.
+ *
+ * The server is the source of truth; `localStorage` is only a cache so the list
+ * paints instantly on load and survives being offline.
+ *
+ * Previously this store made **zero** API calls while `/api/v1/watchlist`
+ * existed — the list lived only in `localStorage`, so it died with the browser
+ * profile and never reached a second device. It also seeded two hardcoded mints
+ * on first run, one of which (`7xK99zK8mP2xQ5wN3a19`) is not a valid Solana
+ * address, so every new user started with a token that cannot exist.
+ *
+ * Writes are optimistic and reverted on failure: the star must respond
+ * immediately, but a change the server refused must not be left on screen.
+ */
+
+const WATCHLIST_CACHE_KEY = 'sentinel_watchlist_mints';
 
 interface WatchlistContextType {
   watchlistedMints: string[];
@@ -12,56 +30,141 @@ interface WatchlistContextType {
   toggleWatchlist: (mint: string) => void;
   isWatchlisted: (mint: string) => boolean;
   getWatchlistTokens: () => NormalizedSearchResult[];
+  /** True while the first server read is in flight. */
+  isLoading: boolean;
+  /** Set when the server copy could not be reached; the cache is being shown. */
+  error: string | null;
+  refresh: () => Promise<void>;
 }
 
 const WatchlistContext = createContext<WatchlistContextType | null>(null);
 
+function readCache(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = localStorage.getItem(WATCHLIST_CACHE_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
+    return Array.isArray(parsed) ? parsed.filter((m) => typeof m === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCache(mints: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(WATCHLIST_CACHE_KEY, JSON.stringify(mints));
+  } catch {
+    // Private mode or storage disabled — the server copy is still authoritative.
+  }
+}
+
 export function WatchlistProvider({ children }: { children: React.ReactNode }) {
-  const [watchlistedMints, setWatchlistedMints] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(WATCHLIST_STORAGE_KEY);
-        if (saved) return JSON.parse(saved);
-      } catch (e) {
-        console.warn('Failed to load watchlist from localStorage', e);
-      }
-    }
-    // Default initial watchlisted tokens
-    return ['7xK99zK8mP2xQ5wN3a19', 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'];
-  });
+  // No seeded defaults. An empty watchlist is the honest starting state.
+  const [watchlistedMints, setWatchlistedMints] = useState<string[]>(readCache);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  /** Signed-out users get the local cache only; there is nothing to sync to. */
+  const isAuthenticatedRef = useRef(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlistedMints));
-      } catch (e) {
-        console.warn('Failed to save watchlist to localStorage', e);
-      }
-    }
+    writeCache(watchlistedMints);
   }, [watchlistedMints]);
 
-  const addToWatchlist = (mint: string) => {
-    setWatchlistedMints((prev) => (prev.includes(mint) ? prev : [...prev, mint]));
-  };
-
-  const removeFromWatchlist = (mint: string) => {
-    setWatchlistedMints((prev) => prev.filter((m) => m !== mint));
-  };
-
-  const toggleWatchlist = (mint: string) => {
-    if (watchlistedMints.includes(mint)) {
-      removeFromWatchlist(mint);
-    } else {
-      addToWatchlist(mint);
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(apiUrl(endpoints.watchlist.list), { credentials: 'include' });
+      const data = await readApiData<{ items: Array<{ mint: string }> }>(res, 'Failed to load watchlist');
+      isAuthenticatedRef.current = true;
+      setWatchlistedMints((data.items ?? []).map((i) => i.mint));
+      setError(null);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 401) {
+        // Not signed in: the cache is the whole story, and that is not an error.
+        isAuthenticatedRef.current = false;
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not sync your watchlist.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const isWatchlistedCheck = (mint: string) => watchlistedMints.includes(mint);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const getWatchlistTokens = (): NormalizedSearchResult[] => {
-    const allTokens = searchTokens('');
-    return allTokens.filter((t) => watchlistedMints.includes(t.mint));
-  };
+  /** Optimistic local change, then persist; revert if the server refuses. */
+  const persist = useCallback(
+    async (mint: string, action: 'add' | 'remove', previous: string[]) => {
+      if (!isAuthenticatedRef.current) return;
+      try {
+        const res = await fetch(apiUrl(endpoints.watchlist.list), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ mint, action }),
+        });
+        await readApiData(res, 'Failed to update watchlist');
+        setError(null);
+      } catch (err) {
+        if (err instanceof ApiRequestError && err.status === 401) {
+          isAuthenticatedRef.current = false;
+          return;
+        }
+        setWatchlistedMints(previous);
+        setError(err instanceof Error ? err.message : 'Could not save that change.');
+      }
+    },
+    [],
+  );
+
+  const addToWatchlist = useCallback(
+    (mint: string) => {
+      setWatchlistedMints((prev) => {
+        if (prev.includes(mint)) return prev;
+        void persist(mint, 'add', prev);
+        return [...prev, mint];
+      });
+    },
+    [persist],
+  );
+
+  const removeFromWatchlist = useCallback(
+    (mint: string) => {
+      setWatchlistedMints((prev) => {
+        if (!prev.includes(mint)) return prev;
+        void persist(mint, 'remove', prev);
+        return prev.filter((m) => m !== mint);
+      });
+    },
+    [persist],
+  );
+
+  const toggleWatchlist = useCallback(
+    (mint: string) => {
+      setWatchlistedMints((prev) => {
+        const has = prev.includes(mint);
+        void persist(mint, has ? 'remove' : 'add', prev);
+        return has ? prev.filter((m) => m !== mint) : [...prev, mint];
+      });
+    },
+    [persist],
+  );
+
+  const isWatchlistedCheck = useCallback(
+    (mint: string) => watchlistedMints.includes(mint),
+    [watchlistedMints],
+  );
+
+  const getWatchlistTokens = useCallback(
+    (): NormalizedSearchResult[] =>
+      searchTokens('').filter((t) => watchlistedMints.includes(t.mint)),
+    [watchlistedMints],
+  );
 
   return (
     <WatchlistContext.Provider
@@ -72,6 +175,9 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         toggleWatchlist,
         isWatchlisted: isWatchlistedCheck,
         getWatchlistTokens,
+        isLoading,
+        error,
+        refresh,
       }}
     >
       {children}

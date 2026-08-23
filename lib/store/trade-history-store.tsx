@@ -1,6 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { endpoints, apiUrl } from '@/lib/api/endpoints';
+import { readApiData, ApiRequestError } from '@/lib/api/response';
 
 export interface TradeRecord {
   id: string;
@@ -24,79 +26,133 @@ interface TradeHistoryContextType {
   trades: TradeRecord[];
   addTradeRecord: (record: Omit<TradeRecord, 'id' | 'timestamp' | 'explorerUrl'>) => void;
   getTradeById: (id: string) => TradeRecord | undefined;
+  isLoading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
 }
 
-const INITIAL_TRADES: TradeRecord[] = [
-  {
-    id: 'tx_001',
-    txHash: '8kL9z2mP1xQ5wN3a19TestSignature001',
-    tokenName: 'Solana Sentinel',
-    tokenSymbol: 'SENT',
-    tokenMint: '7xK99zK8mP2xQ5wN3a19',
-    side: 'buy',
-    inputAmount: '0.5000 SOL',
-    outputAmount: '20.6521 SENT',
-    priceUsd: '$3.4500',
-    status: 'confirmed',
-    timestamp: new Date(Date.now() - 120000).toISOString(),
-    networkFeeSol: '0.000005 SOL',
-    route: 'Orca Whirlpools → Raydium CLMM',
-    provider: 'Jupiter Aggregator',
-    explorerUrl: 'https://solscan.io/tx/8kL9z2mP1xQ5wN3a19TestSignature001',
-  },
-  {
-    id: 'tx_002',
-    txHash: '3mR8z9K2xP5wN1a84mP2xQ5wN3a19Sig002',
-    tokenName: 'Bonk Doge',
-    tokenSymbol: 'BONK',
-    tokenMint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
-    side: 'buy',
-    inputAmount: '1.2000 SOL',
-    outputAmount: '6,009,490.33 BONK',
-    priceUsd: '$0.00002845',
-    status: 'confirmed',
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-    networkFeeSol: '0.000005 SOL',
-    route: 'Raydium CLMM',
-    provider: 'Jupiter Aggregator',
-    explorerUrl: 'https://solscan.io/tx/3mR8z9K2xP5wN1a84mP2xQ5wN3a19Sig002',
-  },
-  {
-    id: 'tx_003',
-    txHash: '7aB2z9K1xP4wN2a99mP3xQ6wN4a20Sig003',
-    tokenName: 'Cyber Quantum',
-    tokenSymbol: 'QUANT',
-    tokenMint: '3mR8z9K2xP5wN1a84mP2xQ5wN3a19TestMint',
-    side: 'sell',
-    inputAmount: '1,000.00 QUANT',
-    outputAmount: '0.2890 SOL',
-    priceUsd: '$0.0412',
-    status: 'failed',
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    networkFeeSol: '0.000005 SOL',
-    route: 'Meteora DLMM',
-    provider: 'Jupiter Aggregator',
-    explorerUrl: 'https://solscan.io/tx/7aB2z9K1xP4wN2a99mP3xQ6wN4a20Sig003',
-  },
-];
+/** Order rows as `/api/v1/trading/history` returns them. */
+interface HistoryRow {
+  id: string;
+  txHash: string | null;
+  tokenName: string | null;
+  tokenSymbol: string | null;
+  tokenMint: string | null;
+  side: string;
+  status: string;
+  quantity: string | null;
+  filledQuantity: string | null;
+  averageFillPrice: string | null;
+  timestamp: string;
+}
+
+/**
+ * Maps a persisted order onto the record the UI renders.
+ *
+ * Fields the order domain genuinely does not carry — route, provider, network
+ * fee — are left blank rather than filled with plausible strings. An order that
+ * has not settled has no transaction hash, so there is no explorer link either.
+ */
+function toTradeRecord(row: HistoryRow): TradeRecord {
+  const statusMap: Record<string, TradeRecord['status']> = {
+    FILLED: 'confirmed',
+    PARTIALLY_FILLED: 'pending',
+    CREATED: 'pending',
+    PENDING: 'pending',
+    SUBMITTED: 'pending',
+    CANCELLED: 'rejected',
+    FAILED: 'failed',
+    EXPIRED: 'expired',
+  };
+
+  return {
+    id: row.id,
+    txHash: row.txHash ?? '',
+    tokenName: row.tokenName ?? row.tokenMint ?? 'Unknown token',
+    tokenSymbol: row.tokenSymbol ?? '—',
+    tokenMint: row.tokenMint ?? '',
+    side: row.side === 'sell' ? 'sell' : 'buy',
+    inputAmount: row.quantity ?? '—',
+    outputAmount: row.filledQuantity ?? '—',
+    priceUsd: row.averageFillPrice ?? '—',
+    status: statusMap[row.status] ?? 'unknown',
+    timestamp: row.timestamp,
+    networkFeeSol: '—',
+    route: '—',
+    provider: '—',
+    explorerUrl: row.txHash ? `https://solscan.io/tx/${row.txHash}` : '',
+  };
+}
+
 
 const TradeHistoryContext = createContext<TradeHistoryContextType | null>(null);
 
 export function TradeHistoryProvider({ children }: { children: React.ReactNode }) {
-  const [trades, setTrades] = useState<TradeRecord[]>(INITIAL_TRADES);
+  /**
+   * Trade history is server state.
+   *
+   * This store previously seeded `INITIAL_TRADES` — fabricated confirmed trades
+   * with invented transaction hashes — and kept everything else in memory, so a
+   * real trade vanished on refresh while the fake ones persisted forever.
+   * Orders placed through `/api/v1/orders` are the actual history.
+   */
+  const [trades, setTrades] = useState<TradeRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const addTradeRecord = (record: Omit<TradeRecord, 'id' | 'timestamp' | 'explorerUrl'>) => {
-    const id = `tx_${Date.now()}`;
-    const timestamp = new Date().toISOString();
-    const explorerUrl = `https://solscan.io/tx/${record.txHash}`;
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(apiUrl(endpoints.trading.history, { limit: 100 }), {
+        credentials: 'include',
+      });
+      const data = await readApiData<{ trades: HistoryRow[] }>(res, 'Failed to load trade history');
+      setTrades((data.trades ?? []).map(toTradeRecord));
+      setError(null);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 401) {
+        // Signed out: an empty history is correct, not a failure.
+        setTrades([]);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Could not load trade history.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-    setTrades((prev) => [{ id, timestamp, explorerUrl, ...record }, ...prev]);
-  };
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const getTradeById = (id: string) => trades.find((t) => t.id === id);
+  /**
+   * Records a trade locally and re-reads from the server.
+   *
+   * The optimistic row keeps the UI responsive the instant an order is placed;
+   * the refetch replaces it with the persisted row, so what is on screen a
+   * moment later is what the database actually holds.
+   */
+  const addTradeRecord = useCallback(
+    (record: Omit<TradeRecord, 'id' | 'timestamp' | 'explorerUrl'>) => {
+      const id = `local_${Date.now()}`;
+      const timestamp = new Date().toISOString();
+      const explorerUrl = record.txHash ? `https://solscan.io/tx/${record.txHash}` : '';
+      setTrades((prev) => [{ id, timestamp, explorerUrl, ...record }, ...prev]);
+      void refresh();
+    },
+    [refresh],
+  );
+
+  const getTradeById = useCallback(
+    (id: string) => trades.find((t) => t.id === id),
+    [trades],
+  );
 
   return (
-    <TradeHistoryContext.Provider value={{ trades, addTradeRecord, getTradeById }}>
+    <TradeHistoryContext.Provider
+      value={{ trades, addTradeRecord, getTradeById, isLoading, error, refresh }}
+    >
       {children}
     </TradeHistoryContext.Provider>
   );

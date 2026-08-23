@@ -20,7 +20,7 @@ export class Decimal {
       if (!Number.isFinite(value)) {
         throw new Error(`Invalid non-finite number passed to Decimal: ${value}`);
       }
-      this.rawValue = Decimal.parseString(value.toFixed(14), Decimal.DECIMALS);
+      this.rawValue = Decimal.parseString(value.toString(), Decimal.DECIMALS);
     } else {
       throw new Error('Invalid value type passed to Decimal constructor.');
     }
@@ -31,7 +31,8 @@ export class Decimal {
   }
 
   /**
-   * Converts string representation (e.g. "142.50") into BigInt base units (18 decimals).
+   * Converts string representation (e.g. "142.50", "3.26e-7") into BigInt base units (18 decimals).
+   * Robustly handles scientific notation without BigInt parsing failures.
    */
   public static parseString(strVal: string, decimals = 18): bigint {
     const trimmed = strVal.trim();
@@ -39,7 +40,36 @@ export class Decimal {
       return 0n;
     }
 
-    const parts = trimmed.split('.');
+    const isNegative = trimmed.startsWith('-');
+    let cleanStr = isNegative ? trimmed.slice(1).trim() : trimmed.startsWith('+') ? trimmed.slice(1).trim() : trimmed;
+
+    // Expand scientific notation (e.g. "3.26188e-7" or "1.5e4") into plain decimal representation
+    if (/[eE]/.test(cleanStr)) {
+      const [coeff, expStr] = cleanStr.split(/[eE]/);
+      const exp = parseInt(expStr, 10);
+      if (!isNaN(exp)) {
+        const parts = coeff.split('.');
+        const intPart = parts[0] || '0';
+        const fracPart = parts[1] || '';
+
+        if (exp > 0) {
+          if (fracPart.length <= exp) {
+            cleanStr = intPart + fracPart.padEnd(exp, '0');
+          } else {
+            cleanStr = `${intPart}${fracPart.slice(0, exp)}.${fracPart.slice(exp)}`;
+          }
+        } else if (exp < 0) {
+          const absExp = Math.abs(exp);
+          if (intPart === '0' || intPart === '') {
+            cleanStr = `0.${'0'.repeat(absExp)}${fracPart}`;
+          } else {
+            cleanStr = `0.${'0'.repeat(absExp - 1)}${intPart}${fracPart}`;
+          }
+        }
+      }
+    }
+
+    const parts = cleanStr.split('.');
     let integerPart = parts[0] || '0';
     let fractionalPart = parts[1] || '';
 
@@ -50,8 +80,13 @@ export class Decimal {
       fractionalPart = fractionalPart.padEnd(decimals, '0');
     }
 
+    // Ensure integerPart contains only digits
+    integerPart = integerPart.replace(/\D/g, '') || '0';
+    fractionalPart = fractionalPart.replace(/\D/g, '').padEnd(decimals, '0').slice(0, decimals);
+
     const combined = `${integerPart}${fractionalPart}`;
-    return BigInt(combined);
+    const parsed = BigInt(combined);
+    return isNegative ? -parsed : parsed;
   }
 
   /**

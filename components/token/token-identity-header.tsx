@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, ExternalLink, Star, Share2, ShieldCheck, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 import { watchlistService } from '@/lib/watchlist/watchlist-service';
 
 interface TokenIdentityHeaderProps {
@@ -57,9 +58,13 @@ export function TokenIdentityHeader({
     <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-sentinel-900/50 border border-white/5 backdrop-blur-xl font-mono">
       {/* Left: Logo, Name, Symbol, Verification Badge */}
       <div className="flex items-center gap-3.5">
-        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-sky-500/20 to-indigo-600/20 border border-sky-500/30 flex items-center justify-center font-black text-sky-300 text-base shadow-[0_0_20px_rgba(56,189,248,0.15)] shrink-0">
-          {symbol.slice(0, 3)}
-        </div>
+        <TokenAvatar
+          src={logoUrl}
+          symbol={symbol}
+          name={name}
+          mint={tokenId}
+          size="lg"
+        />
 
         <div>
           <div className="flex items-center gap-2 flex-wrap">

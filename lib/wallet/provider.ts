@@ -1,4 +1,4 @@
-export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'coinbase' | 'embedded' | 'standard';
+export type WalletProviderId = 'phantom' | 'solflare' | 'embedded' | 'standard';
 
 export type WalletType = 'extension' | 'standard' | 'embedded';
 
@@ -31,6 +31,12 @@ export interface WalletProvider {
   disconnect(): Promise<void>;
   getAddress(): string | null;
   
+  // Presence
+  /** Whether this wallet is actually installed in the current browser. */
+  isAvailable?(): boolean;
+  /** Official install page, so "not installed" can be made actionable. */
+  getInstallUrl?(): string | undefined;
+
   // Capabilities
   getCapabilities(): WalletCapabilities;
   

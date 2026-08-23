@@ -19,29 +19,7 @@ export interface ExecutionLog {
   timestamp: string;
 }
 
-const initialNotifications: AppNotification[] = [
-  {
-    id: 'n1',
-    title: 'Coordinated Ownership Alert',
-    message: '17 top holder wallets funded by 3 connected addresses within 22 mins on $SOLM',
-    type: 'risk',
-    timestamp: '2m ago',
-    read: false,
-  },
-  {
-    id: 'n2',
-    title: 'Insider Liquidity Withdrawal',
-    message: 'Creator wallet 7xK9...2mP transferred 12% supply to DEX routing contract',
-    type: 'risk',
-    timestamp: '14m ago',
-    read: false,
-  },
-];
 
-const initialLogs: ExecutionLog[] = [
-  { id: 'l1', text: '[SENTINEL-CORE] Sollet RPC socket connected: mainnet-beta (tps: 2840)', level: 'info', timestamp: '22:54:01' },
-  { id: 'l2', text: '[DISCOVERY-ENGINE] Ingested 142 new mints from Raydium / Pump.fun liquidity routers', level: 'info', timestamp: '22:54:12' },
-];
 
 interface NotificationsState {
   isNotificationsOpen: boolean;
@@ -59,10 +37,21 @@ interface NotificationsActions {
 const NotificationsStateContext = createContext<NotificationsState | undefined>(undefined);
 const NotificationsActionsContext = createContext<NotificationsActions | undefined>(undefined);
 
+/**
+ * In-app notifications and the execution log.
+ *
+ * Deliberately in-memory: these are session events, not records. What was wrong
+ * was the seed — the store opened with fabricated notifications and execution
+ * log lines, so a brand-new session showed alerts that had never fired and
+ * trades that had never run. It now starts empty and fills from real activity.
+ *
+ * Notification *preferences* (which channels, quiet hours) are a different
+ * thing and persist server-side via `/api/v1/notification-preferences`.
+ */
 export function NotificationsStoreProvider({ children }: { children: React.ReactNode }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>(initialNotifications);
-  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>(initialLogs);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
 
   const addNotification = useCallback((n: Omit<AppNotification, 'id' | 'timestamp'>) => {
     setNotifications((prev) => [{ ...n, id: 'n_' + Date.now(), timestamp: 'Just now', read: false }, ...prev]);

@@ -58,7 +58,46 @@ export interface TokenRow {
   discovery_source: string | null;
   first_seen_at: string;
   created_at: string;
+  /**
+   * Market data joined from `realtime_tokens`, the enrichment table populated
+   * by `db/backfill-token-enrichment.js`.
+   *
+   * The `tokens` table is deliberately identity-only — it records what a token
+   * *is*, not what it is worth — so every one of these is optional and `null`
+   * whenever the token has not been enriched. NUMERIC columns arrive as
+   * strings; they are not coerced here, matching every other money column in
+   * this repository.
+   */
+  price_usd?: string | null;
+  price_change_24h?: string | null;
+  liquidity_usd?: string | null;
+  market_cap_usd?: string | null;
+  volume_24h_usd?: string | null;
+  market_updated_at?: string | null;
 }
+
+/**
+ * Ordering for the token registry.
+ *
+ * `symbol` is the registry's own natural order and stays the default — it is
+ * what identity lookups expect. `volume` and `liquidity` exist for the
+ * Overview's Top Tokens tab, where alphabetical order is meaningless: "top"
+ * has to mean top *by something*.
+ */
+export type TokenSort = 'symbol' | 'volume' | 'liquidity';
+
+/**
+ * Unenriched tokens sort last under every market ordering.
+ *
+ * `NULLS LAST` matters more than it looks: without it Postgres sorts NULL
+ * highest on a DESC ordering, so the tokens we know nothing about would lead a
+ * list whose entire purpose is ranking by what we do know.
+ */
+const TOKEN_ORDER_BY: Record<TokenSort, string> = {
+  symbol: 't.symbol ASC',
+  volume: 'r.volume_24h_usd DESC NULLS LAST, t.symbol ASC',
+  liquidity: 'r.liquidity_usd DESC NULLS LAST, t.symbol ASC',
+};
 
 export interface UpsertMarketInput {
   chainId: string;
@@ -223,6 +262,7 @@ export class PgMarketRepository {
     query?: string;
     chainId?: string;
     status?: string;
+    sort?: TokenSort;
     limit: number;
     offset: number;
   }): Promise<TokenRow[]> {
@@ -233,21 +273,40 @@ export class PgMarketRepository {
       const escaped = opts.query.replace(/[\\%_]/g, (c) => `\\${c}`);
       params.push(`%${escaped}%`);
       const p = params.length;
-      clauses.push(`(symbol ILIKE $${p} ESCAPE '\\' OR name ILIKE $${p} ESCAPE '\\' OR address ILIKE $${p} ESCAPE '\\')`);
+      clauses.push(`(t.symbol ILIKE $${p} ESCAPE '\\' OR t.name ILIKE $${p} ESCAPE '\\' OR t.address ILIKE $${p} ESCAPE '\\')`);
     }
     if (opts.chainId) {
       params.push(opts.chainId);
-      clauses.push(`chain_id = $${params.length}`);
+      clauses.push(`t.chain_id = $${params.length}`);
     }
     if (opts.status) {
       params.push(opts.status);
-      clauses.push(`status = $${params.length}`);
+      clauses.push(`t.status = $${params.length}`);
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    // Whitelisted lookup, never interpolated user input — `sort` reaches here
+    // from a query string.
+    const orderBy = TOKEN_ORDER_BY[opts.sort ?? 'symbol'] ?? TOKEN_ORDER_BY.symbol;
     params.push(opts.limit, opts.offset);
+
+    // LEFT JOIN, not INNER: a token that exists but has never been enriched
+    // must still appear in its own registry, with nulls for what is unknown.
+    // An INNER JOIN here would silently hide every unenriched token and make
+    // the registry look emptier than it is.
     const { rows } = await dbPool.query<TokenRow>(
-      `SELECT * FROM tokens ${where} ORDER BY symbol ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT t.*,
+              r.price_usd,
+              r.price_change_24h,
+              r.liquidity_usd,
+              r.market_cap_usd,
+              r.volume_24h_usd,
+              r.updated_at AS market_updated_at
+         FROM tokens t
+         LEFT JOIN realtime_tokens r ON r.mint = t.address
+         ${where}
+        ORDER BY ${orderBy}
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
     return rows;

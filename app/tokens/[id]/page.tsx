@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { TradingHeader } from '@/components/trading/trading-header';
+import { AppShell } from '@/components/layout/app-shell';
 import { TokenIdentityHeader } from '@/components/token/token-identity-header';
 import { MarketStats } from '@/components/market/market-stats';
 import { MarketChart } from '@/components/market/market-chart';
@@ -78,22 +78,24 @@ export default function TokenTradingTerminalPage() {
   }, [tokenId]);
 
   if (!tokenData) {
+    // Rendered inside the shell as well: showing bare chrome-less text first and
+    // the full terminal a moment later reads as two different pages loading.
     return (
-      <div className="min-h-screen bg-sentinel-950 text-white flex items-center justify-center font-mono">
-        <p className="text-xs text-slate-500 animate-pulse">Loading Trading Terminal...</p>
-      </div>
+      <AppShell initialView="trade">
+        <div className="flex items-center justify-center py-24 font-mono">
+          <p className="text-xs text-slate-500 animate-pulse">Loading Trading Terminal...</p>
+        </div>
+      </AppShell>
     );
   }
 
   const primaryMarketId = markets.length > 0 ? markets[0].marketId : 'solana:raydium_cpmm:main';
 
   return (
-    <div className="min-h-screen bg-sentinel-950 text-white font-mono flex flex-col">
-      {/* Top Application Header */}
-      <TradingHeader />
-
-      {/* Main Terminal Layout */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 space-y-4">
+    <AppShell initialView="trade">
+      {/* Main Terminal Layout. The shell supplies nav, status bar and wallet;
+          this page owns only the token content. */}
+      <div className="max-w-[1600px] w-full mx-auto space-y-4 font-mono">
         {/* Token Identity Header Bar */}
         <TokenIdentityHeader
           tokenId={tokenData.tokenId}
@@ -222,7 +224,7 @@ export default function TokenTradingTerminalPage() {
             </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

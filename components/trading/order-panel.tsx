@@ -11,6 +11,7 @@ import { executionService } from '@/lib/execution/execution-service';
 import { masterWalletProvider } from '@/lib/wallet/wallet-provider';
 import { Quote } from '@/lib/quote/types';
 import { TransactionLifecycleState } from '@/lib/transaction/state-machine';
+import { Decimal } from '@/lib/math/decimal';
 
 interface OrderPanelProps {
   tokenSymbol: string;
@@ -253,7 +254,7 @@ export function OrderPanel({
 
         <div className="flex items-center justify-between gap-3">
           <span className="text-xl sm:text-2xl font-bold text-emerald-400 truncate">
-            {quote ? quote.outputAmount : '0.00'}
+            {quote ? new Decimal(quote.outputAmount).formatToken(4) : '0.00'}
           </span>
 
           <span className="px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/10 font-bold text-xs text-emerald-300 shrink-0">

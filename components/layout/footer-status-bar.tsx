@@ -64,7 +64,7 @@ export function FooterStatusBar() {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setConsoleOpen(!isConsoleOpen)}
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-[10px] font-mono font-bold ${
+          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono font-bold ${
             isConsoleOpen
               ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
               : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
@@ -76,7 +76,7 @@ export function FooterStatusBar() {
 
         <button
           onClick={() => setHotkeysOpen(true)}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sentinel-900/90 text-slate-400 border border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700 transition text-[10px] font-mono"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sentinel-900/90 text-slate-400 border border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700 transition text-2xs font-mono"
         >
           <Command className="h-2.5 w-2.5 text-slate-400" />
           <span>Hotkeys (?)</span>

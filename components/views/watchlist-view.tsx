@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { DataTable, Column } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 import { useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { NormalizedSearchResult } from '@/lib/token/search-service';
@@ -21,12 +22,15 @@ export function WatchlistView() {
       key: 'token',
       header: 'Token',
       accessor: (item) => (
-        <div className="font-mono">
-          <Link href={`/trade/solana/${item.mint}`} className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors">
-            {item.name} <span className="text-slate-400 text-xs">${item.symbol}</span>
-            <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100" />
-          </Link>
-          <p className="text-[10px] text-slate-500">Mint: {item.mint.slice(0, 6)}...{item.mint.slice(-6)}</p>
+        <div className="flex items-center gap-2.5 font-mono">
+          <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
+          <div className="min-w-0">
+            <Link href={`/trade/solana/${item.mint}`} className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors">
+              {item.name} <span className="text-slate-400 text-xs">${item.symbol}</span>
+              <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100" />
+            </Link>
+            <p className="text-2xs text-slate-500">Mint: {item.mint.slice(0, 6)}...{item.mint.slice(-6)}</p>
+          </div>
         </div>
       ),
     },
@@ -52,7 +56,7 @@ export function WatchlistView() {
       accessor: (item) => (
         <div>
           <p className="font-bold text-slate-200">{item.marketCapUsd}</p>
-          <p className="text-[10px] text-slate-500">Liq {item.liquidityUsd}</p>
+          <p className="text-2xs text-slate-500">Liq {item.liquidityUsd}</p>
         </div>
       ),
     },

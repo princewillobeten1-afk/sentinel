@@ -52,7 +52,11 @@ export function Badge({ className, variant = 'neutral', size = 'md', pulse = fal
       className={clsx(
         'inline-flex items-center gap-1 rounded-md font-semibold uppercase select-none whitespace-nowrap',
         'tracking-[0.06em] leading-none',
-        size === 'sm' ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-2xs',
+        // Both sizes sit at the 11px floor; `sm` is tighter padding, not smaller
+        // type. Badges are uppercase, which strips the word-shape cues readers
+        // rely on, so shrinking them further is where they stop being readable
+        // rather than just being small.
+        size === 'sm' ? 'px-1.5 py-0.5 text-2xs' : 'px-2 py-1 text-2xs',
         badgeVariants[variant],
         className,
       )}

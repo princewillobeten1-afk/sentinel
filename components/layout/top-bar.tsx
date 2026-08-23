@@ -18,6 +18,8 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { UserProfilePopover } from '@/components/layout/user-profile-popover';
 import { NetworkSelectorPopover } from '@/components/layout/network-selector-popover';
 import { useAppState, useAppActions, DensityMode } from '@/lib/store';
+import { useGlobalTicker } from '@/lib/hooks/use-global-ticker';
+import { useMarketData } from '@/lib/hooks/use-market-data';
 
 export function TopBar() {
   const { density, notifications, isMobileNavOpen, primaryWallet } = useAppState();
@@ -38,6 +40,12 @@ export function TopBar() {
     setDensity(modes[nextIdx]);
   };
 
+  const { threatCount } = useGlobalTicker();
+  const { marketSummary } = useMarketData();
+
+  /** Unknown renders as an em dash — never a plausible-looking constant. */
+  const tick = '—';
+
   return (
     <header className="sticky top-0 z-30 flex flex-col border-b border-white/[0.08] bg-sentinel-950/90 backdrop-blur-2xl shadow-sm select-none">
       {/* Upper Global Market Ticker Ribbon */}
@@ -47,27 +55,44 @@ export function TopBar() {
           <NetworkSelectorPopover />
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-slate-500 font-mono text-[10px]">SOL:</span>
-            <span className="font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">$142.50</span>
-            <span className="text-emerald-400 font-bold text-[10px] bg-emerald-500/10 px-1 rounded border border-emerald-500/20">+4.2%</span>
+            <span className="text-slate-500 font-mono text-2xs">SOL:</span>
+            <span className="font-bold text-white">
+              {marketSummary?.solPriceUsd === undefined
+                ? tick
+                : `$${marketSummary.solPriceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            </span>
+            {marketSummary?.solChange24h !== undefined && (
+              <span
+                className={`font-bold text-2xs px-1 rounded border ${
+                  marketSummary.solChange24h >= 0
+                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                    : 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                }`}
+              >
+                {marketSummary.solChange24h >= 0 ? '+' : ''}
+                {marketSummary.solChange24h.toFixed(1)}%
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 hidden sm:flex">
             <Activity className="h-3 w-3 text-sky-400 drop-shadow-[0_0_5px_rgba(0,240,255,0.5)]" />
-            <span className="text-slate-500 font-mono text-[10px]">TPS:</span>
-            <span className="font-bold text-sky-300">2,840</span>
+            <span className="text-slate-500 font-mono text-2xs">TPS:</span>
+            <span className="font-bold text-sky-300" title="No network-stats endpoint yet">{tick}</span>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 hidden md:flex">
             <Flame className="h-3 w-3 text-amber-400 drop-shadow-[0_0_5px_rgba(255,184,0,0.5)]" />
-            <span className="text-slate-500 font-mono text-[10px]">Fee:</span>
-            <span className="font-bold text-amber-300">0.00005 SOL</span>
+            <span className="text-slate-500 font-mono text-2xs">Fee:</span>
+            <span className="font-bold text-amber-300" title="No network-stats endpoint yet">{tick}</span>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 hidden lg:flex">
             <ShieldAlert className="h-3 w-3 text-rose-400 drop-shadow-[0_0_5px_rgba(255,59,105,0.5)]" />
-            <span className="text-slate-500 font-mono text-[10px]">Threats:</span>
-            <span className="font-bold text-rose-400">4 Flagged</span>
+            <span className="text-slate-500 font-mono text-2xs">Threats:</span>
+            <span className={`font-bold ${threatCount ? 'text-rose-400' : 'text-slate-400'}`}>
+              {threatCount === null ? tick : `${threatCount} Flagged`}
+            </span>
           </div>
         </div>
 
@@ -75,14 +100,14 @@ export function TopBar() {
           <Tooltip content={`Current Density: ${density.toUpperCase()} (Click to toggle)`}>
             <button
               onClick={cycleDensity}
-              className="flex items-center gap-1 rounded-md px-2 py-0.5 border border-white/[0.08] bg-sentinel-900/80 hover:bg-sentinel-800 text-slate-300 transition-all uppercase font-mono text-[10px] font-semibold"
+              className="flex items-center gap-1 rounded-md px-2 py-0.5 border border-white/[0.08] bg-sentinel-900/80 hover:bg-sentinel-800 text-slate-300 transition-all uppercase font-mono text-2xs font-semibold"
             >
               <Sliders className="h-2.5 w-2.5 text-sky-400" />
               <span>{density}</span>
             </button>
           </Tooltip>
 
-          <span className="hidden xl:inline-flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+          <span className="hidden xl:inline-flex items-center gap-1 text-2xs text-slate-500 font-mono">
             <Globe className="h-3 w-3 text-emerald-400" /> US-East (18ms)
           </span>
         </div>
@@ -117,7 +142,7 @@ export function TopBar() {
               Global Search & Commands (⌘K)...
             </span>
           </div>
-          <kbd className="hidden sm:inline-flex items-center gap-1 rounded bg-sentinel-950 px-1.5 py-0.5 text-[10px] text-slate-400 font-mono border border-sentinel-800">
+          <kbd className="hidden sm:inline-flex items-center gap-1 rounded bg-sentinel-950 px-1.5 py-0.5 text-2xs text-slate-400 font-mono border border-sentinel-800">
             ⌘K
           </kbd>
         </div>
@@ -168,7 +193,7 @@ export function TopBar() {
             >
               <Bell className="h-4 w-4" />
               {unreadNotifs > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-[0_0_8px_rgba(255,59,105,0.6)]">
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-2xs font-bold text-white shadow-[0_0_8px_rgba(255,59,105,0.6)]">
                   {unreadNotifs}
                 </span>
               )}

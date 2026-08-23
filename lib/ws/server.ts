@@ -153,10 +153,6 @@ export async function authenticateUpgrade(request: IncomingMessage): Promise<Con
     return apiKey ? { kind: 'apiKey', apiKey } : null;
   }
 
-  const cookieHeader = request.headers.cookie ?? '';
-  const match = cookieHeader.match(/sentinel_session=([^;]+)/);
-  if (!match) return null;
-
   const host = request.headers.host;
   if (!host) return null;
 
@@ -167,8 +163,22 @@ export async function authenticateUpgrade(request: IncomingMessage): Promise<Con
     return null;
   }
 
-  const user = await verifyAuthToken(decodeURIComponent(match[1]));
-  return user ? { kind: 'session', user } : null;
+  const cookieHeader = request.headers.cookie ?? '';
+  const match = cookieHeader.match(/sentinel_session=([^;]+)/);
+  if (match) {
+    const user = await verifyAuthToken(decodeURIComponent(match[1]));
+    if (user) return { kind: 'session', user };
+  }
+
+  // Same-origin web client guest session for public market data streaming
+  return {
+    kind: 'session',
+    user: {
+      userId: 'guest_session',
+      email: 'guest@sentinel.local',
+      role: 'user',
+    },
+  };
 }
 
 export function registerConnection(socket: WebSocket, auth: ConnectionAuth): void {

@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
-import { pgMarketRepository, type TokenRow } from '@/lib/server/db/market-repository';
+import { pgMarketRepository, type TokenRow, type TokenSort } from '@/lib/server/db/market-repository';
 import { computeFilterFingerprint, resolveOffset, nextCursorFor } from '@/lib/discovery/cursor';
 
 /**
@@ -24,6 +24,22 @@ import { computeFilterFingerprint, resolveOffset, nextCursorFor } from '@/lib/di
  */
 
 const TOKEN_STATUSES = ['DISCOVERED', 'VALIDATED', 'ACTIVE', 'INACTIVE', 'SUSPICIOUS', 'DELISTED'];
+const TOKEN_SORTS = ['symbol', 'volume', 'liquidity'] as const;
+
+/**
+ * NUMERIC columns arrive from `pg` as strings. Kept as numbers on the wire for
+ * the display fields below — these are chart and card inputs, not amounts any
+ * arithmetic settles on, and the codebase reserves decimal strings for the
+ * money paths (orders, balances) where float error would be a real defect.
+ *
+ * `null` is preserved rather than coerced to 0: a token nobody has enriched has
+ * *no* price, which the UI renders as "—". Zero would claim it is worthless.
+ */
+function marketNumber(v: string | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 function toTokenDto(row: TokenRow) {
   return {
@@ -38,6 +54,14 @@ function toTokenDto(row: TokenRow) {
     metadataStatus: row.metadata_status,
     discoverySource: row.discovery_source,
     firstSeenAt: new Date(row.first_seen_at).toISOString(),
+    // Joined from `realtime_tokens` when the token has been enriched by
+    // `db/backfill-token-enrichment.js`; null throughout when it has not.
+    priceUsd: marketNumber(row.price_usd),
+    priceChange24h: marketNumber(row.price_change_24h),
+    liquidityUsd: marketNumber(row.liquidity_usd),
+    marketCapUsd: marketNumber(row.market_cap_usd),
+    volume24hUsd: marketNumber(row.volume_24h_usd),
+    marketUpdatedAt: row.market_updated_at ? new Date(row.market_updated_at).toISOString() : null,
   };
 }
 
@@ -52,6 +76,18 @@ export async function GET(request: Request) {
       throw new ApiError(`Unknown token status: ${status}`, 400, 'INVALID_REQUEST');
     }
 
+    // Rejected rather than defaulted: `sort` reaches SQL through a whitelist,
+    // and a caller who asks for an ordering we do not have should be told, not
+    // handed alphabetical order that silently isn't what they asked for.
+    const sort = url.searchParams.get('sort') ?? undefined;
+    if (sort && !TOKEN_SORTS.includes(sort as (typeof TOKEN_SORTS)[number])) {
+      throw new ApiError(
+        `Unknown sort: ${sort}. Expected one of ${TOKEN_SORTS.join(', ')}.`,
+        400,
+        'INVALID_REQUEST',
+      );
+    }
+
     const rawLimit = Number(url.searchParams.get('limit') ?? 25);
     if (!Number.isFinite(rawLimit) || rawLimit < 1) {
       throw new ApiError('limit must be a positive number', 400, 'INVALID_REQUEST');
@@ -59,7 +95,9 @@ export async function GET(request: Request) {
     // Default 25, hard max 100 (Sprint 42 §56) — never unbounded.
     const limit = Math.min(rawLimit, 100);
 
-    const fingerprint = computeFilterFingerprint({ query, chainId, status });
+    // `sort` is part of the fingerprint: a cursor minted against volume order
+    // would land on the wrong page if replayed alphabetically.
+    const fingerprint = computeFilterFingerprint({ query, chainId, status, sort });
     const offset = resolveOffset(
       Math.max(Number(url.searchParams.get('offset') ?? 0), 0),
       url.searchParams.get('cursor') ?? undefined,
@@ -67,7 +105,14 @@ export async function GET(request: Request) {
     );
 
     const [rows, total] = await Promise.all([
-      pgMarketRepository.searchTokens({ query, chainId, status, limit, offset }),
+      pgMarketRepository.searchTokens({
+        query,
+        chainId,
+        status,
+        sort: sort as TokenSort | undefined,
+        limit,
+        offset,
+      }),
       pgMarketRepository.countTokens({ query, chainId, status }),
     ]);
 

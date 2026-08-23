@@ -1,4 +1,4 @@
-export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'coinbase' | 'embedded' | 'standard';
+export type WalletProviderId = 'phantom' | 'solflare' | 'embedded' | 'standard';
 
 export type WalletType = 'extension' | 'standard' | 'embedded';
 
@@ -20,6 +20,10 @@ export interface WalletAdapter {
   connect(): Promise<string>;
   disconnect(): Promise<void>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
+  /** Whether the wallet is actually present in this browser right now. */
+  isAvailable?(): boolean;
+  /** Official download page, so "not installed" can be made actionable. */
+  getInstallUrl?(): string | undefined;
 }
 
 export interface LinkedWallet {

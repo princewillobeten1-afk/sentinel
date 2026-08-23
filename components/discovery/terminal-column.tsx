@@ -10,7 +10,6 @@ import {
   Zap,
   BarChart2,
   ArrowUpDown,
-  SlidersHorizontal,
   RefreshCw,
   X,
   ChevronDown,
@@ -163,7 +162,7 @@ export function TerminalColumn({
   }, [tokens, sortBy]);
 
   return (
-    <div className="flex flex-col h-full bg-[#080b10] border border-slate-800/80 rounded-xl overflow-hidden font-mono min-w-[290px] shadow-sm">
+    <div className="flex flex-col h-full bg-[#080b10] border border-slate-800/80 rounded-xl overflow-hidden min-w-[290px] shadow-sm">
       {/* Sticky Column Header */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2 bg-[#0c1017] border-b border-slate-800/90 text-xs">
         {/* Title + Icon + Count */}
@@ -256,7 +255,7 @@ export function TerminalColumn({
       >
         {error ? (
           /* Independent Error State */
-          <div className="p-4 rounded-xl border border-dashed border-rose-900/50 bg-rose-950/20 text-center space-y-2 my-auto">
+          <div className="p-4 rounded-xl border border-dashed border-rose-900/50 bg-rose-950/20 text-center space-y-2">
             <AlertCircle className="w-6 h-6 text-rose-400 mx-auto" />
             <p className="text-xs font-bold text-rose-300">Feed Unavailable</p>
             <p className="text-2xs text-slate-500">{error}</p>
@@ -292,7 +291,7 @@ export function TerminalColumn({
           </div>
         ) : sortedTokens.length === 0 ? (
           /* Empty State */
-          <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl space-y-2 my-auto">
+          <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl space-y-2">
             <Sparkles className="w-6 h-6 text-slate-600 mx-auto" />
             <p className="text-xs font-bold text-slate-300">No tokens matching filters</p>
             <p className="text-2xs text-slate-500">Try loosening your filter parameters</p>

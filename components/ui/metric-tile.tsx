@@ -63,7 +63,7 @@ export function MetricTile({
           <button
             onClick={() => setShowAdjusted(!showAdjusted)}
             className={clsx(
-              'px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors border',
+              'px-1.5 py-0.5 rounded text-2xs font-mono transition-colors border',
               showAdjusted
                 ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
                 : 'bg-sentinel-950 text-slate-400 border-sentinel-800 hover:text-slate-200'

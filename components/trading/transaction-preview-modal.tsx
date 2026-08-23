@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { X, ArrowDown, Route, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Quote } from '@/lib/quote/types';
+import { Decimal } from '@/lib/math/decimal';
 
 export interface TransactionPreviewModalProps {
   isOpen?: boolean;
@@ -64,7 +65,7 @@ export function TransactionPreviewModal({
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-1">
             <span className="text-2xs text-slate-500 uppercase font-bold">You Pay</span>
             <p className="text-xl font-bold text-white">
-              {quote.inputAmount} <span className="text-sky-400">${quote.inputToken.slice(0, 4).toUpperCase()}</span>
+              {new Decimal(quote.inputAmount).formatToken(4)} <span className="text-sky-400">${quote.inputToken.slice(0, 4).toUpperCase()}</span>
             </p>
           </div>
 
@@ -77,7 +78,7 @@ export function TransactionPreviewModal({
           <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-1">
             <span className="text-2xs text-slate-500 uppercase font-bold">You Receive (Estimated)</span>
             <p className="text-xl font-bold text-emerald-400">
-              {quote.outputAmount} <span className="text-white">${quote.outputToken.slice(0, 4).toUpperCase()}</span>
+              {new Decimal(quote.outputAmount).formatToken(4)} <span className="text-white">${quote.outputToken.slice(0, 4).toUpperCase()}</span>
             </p>
           </div>
         </div>
@@ -112,7 +113,7 @@ export function TransactionPreviewModal({
           <div className="flex justify-between">
             <span className="text-slate-400">Minimum Received:</span>
             <span className="font-bold text-white">
-              {quote.minimumReceived} {quote.outputToken.slice(0, 4).toUpperCase()}
+              {new Decimal(quote.minimumReceived).formatToken(4)} {quote.outputToken.slice(0, 4).toUpperCase()}
             </span>
           </div>
 

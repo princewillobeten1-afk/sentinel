@@ -28,6 +28,7 @@ import { WalletProviderId } from '@/lib/wallet/types';
 import { DepositTab } from '@/components/wallet/deposit-tab';
 import { WithdrawTab } from '@/components/wallet/withdraw-tab';
 import { WalletHistoryTab } from '@/components/wallet/wallet-history-tab';
+import { WalletMark } from '@/components/wallet/wallet-mark';
 
 export function WalletModal() {
   const {
@@ -392,31 +393,101 @@ export function WalletModal() {
         /* VIEW 3: Wallet Provider Selection View */
         <div className="space-y-4">
           <p className="text-xs text-slate-400 leading-relaxed">
-            Select your preferred Solana wallet extension or test with Sentinel’s embedded keypair.
+            Connect a Solana wallet to prove ownership. Sentinel never holds your keys — every
+            action is signed in your own wallet.
           </p>
 
-          <div className="space-y-2">
-            {adapters.map((adapter) => (
-              <button
-                key={adapter.id}
-                onClick={() => handleSelectAdapter(adapter.id)}
-                className="w-full flex items-center justify-between rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3.5 hover:border-sentinel-500 hover:bg-sentinel-800 transition text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{adapter.icon}</span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100 group-hover:text-sky-300 transition-colors">
-                      {adapter.name}
-                    </p>
-                    <p className="text-xs text-slate-400">{adapter.type} adapter</p>
+          {/*
+            Split by what is actually in the browser.
+
+            Previously every wallet was rendered as a connect button and a
+            non-installed one was labelled "Supported" — clicking it just failed,
+            with no way to find out what to do next. A wallet you do not have is
+            not a connection problem, it is an install step, so it gets a link to
+            the official download instead of a dead button.
+          */}
+          {(() => {
+            const detected = adapters.filter((a) => a.installed);
+            const missing = adapters.filter((a) => !a.installed);
+
+            return (
+              <div className="space-y-4">
+                {detected.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="label-micro">Detected in this browser</p>
+                    {detected.map((adapter) => (
+                      <button
+                        key={adapter.id}
+                        onClick={() => handleSelectAdapter(adapter.id)}
+                        className="w-full flex items-center justify-between rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3.5 hover:border-sky-500/50 hover:bg-sentinel-800 transition text-left group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <WalletMark id={adapter.id} name={adapter.name} size={32} />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-100 group-hover:text-sky-300 transition-colors">
+                              {adapter.name}
+                            </p>
+                            <p className="text-xs text-slate-400">Ready to connect</p>
+                          </div>
+                        </div>
+                        <Badge variant="success" size="sm">Detected</Badge>
+                      </button>
+                    ))}
                   </div>
-                </div>
-                <Badge variant={adapter.installed ? 'success' : 'mono'} size="sm">
-                  {adapter.installed ? 'Detected' : 'Supported'}
-                </Badge>
-              </button>
-            ))}
-          </div>
+                )}
+
+                {detected.length === 0 && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5">
+                    <p className="text-sm font-semibold text-amber-300">No Solana wallet detected</p>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Install one of the wallets below, then reload this page. Sentinel is
+                      self-custodial — the wallet stays yours and signs every action locally.
+                    </p>
+                  </div>
+                )}
+
+                {missing.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="label-micro">
+                      {detected.length > 0 ? 'Other supported wallets' : 'Get a wallet'}
+                    </p>
+                    {missing.map((adapter) => {
+                      const url = adapter.getInstallUrl?.();
+                      return (
+                        <a
+                          key={adapter.id}
+                          href={url ?? '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-disabled={!url}
+                          className={`w-full flex items-center justify-between rounded-xl border border-sentinel-800 bg-sentinel-900/60 p-3.5 transition text-left group ${
+                            url ? 'hover:border-sky-500/40 hover:bg-sentinel-850' : 'opacity-50 pointer-events-none'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <WalletMark id={adapter.id} name={adapter.name} size={32} muted />
+                            <div>
+                              <p className="text-sm font-semibold text-slate-300 group-hover:text-sky-300 transition-colors">
+                                {adapter.name}
+                              </p>
+                              <p className="text-xs text-slate-500">Not installed</p>
+                            </div>
+                          </div>
+                          <span className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 shrink-0">
+                            Install <ExternalLink className="h-3.5 w-3.5" />
+                          </span>
+                        </a>
+                      );
+                    })}
+                    <p className="text-2xs text-slate-500 pt-0.5">
+                      Opens the wallet&apos;s official download page in a new tab. Reload Sentinel
+                      once it is installed and it will appear as detected.
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 flex items-center gap-2.5 text-2xs text-slate-400">
             <KeyRound className="h-4 w-4 text-sky-400 shrink-0" />

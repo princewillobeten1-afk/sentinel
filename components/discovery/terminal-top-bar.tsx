@@ -81,7 +81,7 @@ export function TerminalTopBar({
   };
 
   return (
-    <div className="sticky top-0 z-20 bg-[#070a0f]/95 backdrop-blur border-b border-slate-800/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 font-mono text-xs shadow-sm">
+    <div className="sticky top-0 z-20 bg-[#070a0f]/95 backdrop-blur border-b border-slate-800/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-sm">
       {/* Left Section: Search & Chain & Time Window */}
       <div className="flex items-center gap-2 flex-1 min-w-[320px]">
         {/* Global Search Input */}
@@ -241,7 +241,7 @@ export function TerminalTopBar({
       {/* Quick Buy Presets Configuration Modal */}
       {showQuickBuyModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e131b] border border-slate-700/90 rounded-xl max-w-sm w-full p-4 shadow-2xl space-y-4 font-mono">
+          <div className="bg-[#0e131b] border border-slate-700/90 rounded-xl max-w-sm w-full p-4 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-emerald-400 fill-current" />

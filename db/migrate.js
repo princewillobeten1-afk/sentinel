@@ -17,6 +17,31 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
+// Automatically load environment variables from .env / .env.local if not already in process.env
+function loadEnv() {
+  const envFiles = ['.env.local', '.env', '.env.development'];
+  for (const file of envFiles) {
+    const filePath = path.join(__dirname, '..', file);
+    if (!fs.existsSync(filePath)) continue;
+    const content = fs.readFileSync(filePath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+loadEnv();
+
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
 /**
@@ -164,8 +189,10 @@ async function migrate() {
       console.log(`Applying ${file}...`);
 
       await client.query('BEGIN');
+      let currentStatement = '';
       try {
         for (const statement of splitStatements(sql)) {
+          currentStatement = statement;
           await client.query(statement);
         }
         await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
@@ -173,7 +200,7 @@ async function migrate() {
         appliedCount += 1;
       } catch (err) {
         await client.query('ROLLBACK');
-        throw new Error(`Migration ${file} failed: ${err.message}`);
+        throw new Error(`Migration ${file} failed on statement:\n${currentStatement}\nError: ${err.message}`);
       }
     }
 

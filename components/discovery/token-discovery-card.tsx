@@ -2,9 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Copy, Star, Zap, Users, Shield, Lock, CheckCircle } from 'lucide-react';
 import { PriceChange } from '../market/price-change';
 import { RankedTokenItem } from '@/lib/market-data/types';
+import { TokenAvatar } from '@/components/ui/token-avatar';
 
 interface TokenDiscoveryCardProps {
   token: RankedTokenItem;
@@ -30,24 +32,33 @@ function formatSmartPrice(num: number): string {
 }
 
 export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
+  const router = useRouter();
   const isPumpFun = token.tokenId?.toLowerCase().endsWith('pump') || token.symbol.toLowerCase().includes('pump');
 
   return (
-    <div className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none">
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={() => router.push(`/trade/solana/${token.tokenId}`)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(`/trade/solana/${token.tokenId}`);
+        }
+      }}
+      className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none cursor-pointer focus-visible:ring-1 focus-visible:ring-sky-500"
+    >
       {/* Top Row */}
       <div className="flex items-start justify-between gap-2 min-w-0">
         {/* Left: Avatar + Details */}
         <div className="flex items-start gap-2.5 min-w-0 flex-1">
-          <div className="relative shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-750 flex items-center justify-center font-bold text-sky-400 text-xs overflow-hidden shadow-inner">
-            <span>{token.symbol.slice(0, 3).toUpperCase()}</span>
-            <div
-              className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-tl-md flex items-center justify-center text-[8px] font-black ${
-                isPumpFun ? 'bg-emerald-500 text-slate-950' : 'bg-sky-500 text-slate-950'
-              }`}
-            >
-              {isPumpFun ? '💊' : 'R'}
-            </div>
-          </div>
+          <TokenAvatar
+            symbol={token.symbol}
+            name={token.name}
+            mint={token.tokenId}
+            size="md"
+            dexBadge={isPumpFun ? 'Pump.fun' : 'Raydium'}
+          />
 
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
             <div className="flex items-center gap-1 min-w-0">
@@ -58,20 +69,20 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
               >
                 {token.name}
               </Link>
-              <span className="text-[10px] text-slate-400 truncate max-w-[65px]" title={token.symbol}>
+              <span className="text-2xs text-slate-400 truncate max-w-[65px]" title={token.symbol}>
                 ${token.symbol}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 leading-tight">
+            <div className="flex items-center gap-1.5 text-2xs text-slate-400 leading-tight">
               <span className="font-medium text-slate-400">Rank #{token.rank}</span>
               <span className="text-slate-700">|</span>
-              <span className="text-slate-400 truncate font-mono text-[10px]">
+              <span className="text-slate-400 truncate font-mono text-2xs">
                 {token.tokenId.slice(0, 4)}...{token.tokenId.slice(-4)}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] pt-0.5">
+            <div className="flex items-center gap-1.5 text-slate-500 text-2xs pt-0.5">
               <PriceChange changePct={token.changePct} size="sm" />
             </div>
           </div>
@@ -79,7 +90,7 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
 
         {/* Right: Vol, Liquidity, Price, and Quick Action */}
         <div className="text-right shrink-0 flex flex-col items-end gap-1">
-          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
+          <div className="flex items-center justify-end gap-1.5 text-2xs leading-tight">
             <span className="text-slate-500">
               V <span className="text-slate-200 font-bold">${formatCompactUSD(token.volumeUsd)}</span>
             </span>
@@ -88,7 +99,7 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
             </span>
           </div>
 
-          <div className="flex items-center justify-end gap-1.5 text-[10px] leading-tight">
+          <div className="flex items-center justify-end gap-1.5 text-2xs leading-tight">
             <span className="text-slate-500">
               P <span className="text-slate-300 font-bold">${formatSmartPrice(token.priceUsd)}</span>
             </span>
@@ -105,7 +116,7 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
       </div>
 
       {/* Footer Security Badges */}
-      <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60 text-[10px]">
+      <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60 text-2xs">
         <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400">
           <CheckCircle className="w-2.5 h-2.5" />
           <span>Verified</span>
@@ -117,7 +128,7 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
         <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-900/50 text-emerald-400">
           <Lock className="w-2.5 h-2.5" />
         </div>
-        <div className="ml-auto px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-400 font-bold text-[10px]">
+        <div className="ml-auto px-1.5 py-0.5 rounded bg-sky-950/60 border border-sky-800/60 text-sky-400 font-bold text-2xs">
           Score 98
         </div>
       </div>

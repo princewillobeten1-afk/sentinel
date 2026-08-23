@@ -1,54 +1,81 @@
-import { jsonResponse, errorResponse } from '@/lib/server/api';
-import { ApiError } from '@/lib/server/errors';
-import { watchlistService } from '@/lib/watchlist/watchlist-service';
-
 export const dynamic = 'force-dynamic';
 
-/** GET /api/v1/watchlist — list user's watchlisted tokens */
+import { jsonResponse, errorResponse } from '@/lib/server/api';
+import { ApiError } from '@/lib/server/errors';
+import { requireAuth } from '@/lib/server/auth';
+import { pgWatchlistRepository, type WatchlistRow } from '@/lib/server/db/watchlist-repository';
+
+/**
+ * The caller's watchlist.
+ *
+ * Both handlers previously read `userId` from the request — a query parameter on
+ * GET, a body field on POST — defaulting to `'user_default'`, with no
+ * authentication anywhere. Any caller could read or modify any user's watchlist
+ * by passing an id, and an unauthenticated caller silently shared one global
+ * list. The user id now comes from the session and nowhere else.
+ *
+ * Storage moved from a per-process `Map` (which also seeded tokens the user
+ * never chose) to `watchlist_items`, so a watchlist survives a restart and
+ * follows the user across devices.
+ */
+
+function toDto(row: WatchlistRow) {
+  return {
+    mint: row.mint,
+    chain: row.chain,
+    note: row.note,
+    addedAt: new Date(row.added_at).toISOString(),
+  };
+}
+
 export async function GET(request: Request) {
   try {
-    const url = new URL(request.url);
-    const userId = url.searchParams.get('userId') || 'user_default';
-    const items = watchlistService.getWatchlist(userId);
+    const user = await requireAuth(request);
+    const rows = await pgWatchlistRepository.list(user.userId);
 
     return jsonResponse({
-      userId,
-      items,
-      count: items.length,
+      items: rows.map(toDto),
+      count: rows.length,
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch watchlist', 500));
   }
 }
 
-/** POST /api/v1/watchlist — add or remove a token from the user's watchlist */
+/** POST — add, remove, or toggle a token on the caller's own watchlist. */
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { userId = 'user_default', tokenId, action = 'toggle' } = body;
+    const user = await requireAuth(request);
+    const body = await request.json().catch(() => null);
 
-    if (!tokenId) {
-      throw new ApiError('Missing tokenId', 400);
+    // `tokenId` kept as an accepted alias so existing callers keep working.
+    const mint: string | undefined = body?.mint ?? body?.tokenId;
+    const chain: string = body?.chain ?? 'solana';
+    const action: string = body?.action ?? 'toggle';
+
+    if (!mint || typeof mint !== 'string') {
+      throw new ApiError('mint is required', 400, 'INVALID_REQUEST');
+    }
+    if (!['add', 'remove', 'toggle'].includes(action)) {
+      throw new ApiError('action must be add, remove or toggle', 400, 'INVALID_REQUEST');
     }
 
-    const isCurrentlyIn = watchlistService.isWatchlisted(userId, tokenId);
-
-    if (action === 'remove' || (action === 'toggle' && isCurrentlyIn)) {
-      watchlistService.removeFromWatchlist(userId, tokenId);
-      return jsonResponse({
-        success: true,
-        action: 'removed',
-        tokenId,
-        isWatchlisted: false,
-      });
+    let isWatchlisted: boolean;
+    if (action === 'add') {
+      await pgWatchlistRepository.add(user.userId, mint, chain);
+      isWatchlisted = true;
+    } else if (action === 'remove') {
+      await pgWatchlistRepository.remove(user.userId, mint);
+      isWatchlisted = false;
+    } else {
+      isWatchlisted = await pgWatchlistRepository.toggle(user.userId, mint, chain);
     }
 
-    watchlistService.addToWatchlist(userId, tokenId);
     return jsonResponse({
-      success: true,
-      action: 'added',
-      tokenId,
-      isWatchlisted: true,
+      mint,
+      isWatchlisted,
+      action: isWatchlisted ? 'added' : 'removed',
+      count: await pgWatchlistRepository.count(user.userId),
     });
   } catch (error) {
     return errorResponse(error instanceof Error ? error : new ApiError('Failed to update watchlist', 500));

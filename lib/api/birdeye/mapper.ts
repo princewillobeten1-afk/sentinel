@@ -15,6 +15,7 @@ export function mapBirdeyeToDiscoveryToken(
   const liquidity = token.liquidity || token.liquidityUsd || 0;
   const mcap = token.marketcap || token.market_cap || token.fdv || 0;
   const rank = token.rank || 50;
+  const logoURI = token.logo_uri || token.logoURI || token.icon || token.image || token.avatar || token.logo_url || '';
 
   // Age calculation if recent_listing_time exists
   let ageMinutes = 0;
@@ -38,6 +39,7 @@ export function mapBirdeyeToDiscoveryToken(
     mint: address,
     chain,
     source: 'Raydium', // Default source
+    logoURI,
     ageMinutes,
     ageFormatted,
     priceUsd: price.toString(),

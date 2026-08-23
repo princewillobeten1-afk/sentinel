@@ -114,6 +114,7 @@ export function useRealtimeTokenFeed(
         setIsLoading(false);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, chain, timeWindow, filterKey]);
 
   // 2. Incremental Real-time Event Handler (Section 12 & Section 17)

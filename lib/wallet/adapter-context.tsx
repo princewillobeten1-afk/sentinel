@@ -20,7 +20,7 @@ import { blockchainProvider } from '@/lib/blockchain/provider';
  * explicit fallback for older extension versions; any Wallet-Standard-
  * compliant extension (Phantom, Solflare, and Backpack all qualify) also
  * auto-registers into `useWallet()`'s `wallets` array with no adapter
- * package needed — there is no dedicated `@solana/wallet-adapter-backpack`
+ * package needed — Phantom and Solflare are the supported wallets
  * package, Backpack is Standard-only.
  */
 export function SolanaWalletAdapterProviders({ children }: { children: React.ReactNode }) {

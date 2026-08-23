@@ -15,7 +15,7 @@ export function WhyThisToken({ score, symbol, className = '' }: WhyThisTokenProp
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className={`font-mono text-xs ${className}`}>
+    <div className={`text-xs ${className}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 text-2xs text-sky-400 hover:text-sky-300 font-bold transition"

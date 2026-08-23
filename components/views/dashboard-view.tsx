@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Compass,
   ShieldAlert,
@@ -30,136 +31,103 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs } from '@/components/ui/tabs';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useMarketData } from '@/lib/hooks/use-market-data';
+import { useOverviewData, type OverviewToken } from '@/lib/hooks/use-overview-data';
 import { useWatchlist } from '@/lib/store/watchlist-store';
+
+/**
+ * Market values are genuinely absent when the provider is down.
+ *
+ * `useMarketData` no longer substitutes mock numbers on failure, so these
+ * render `—` rather than a plausible-looking figure. `n()` is for the few
+ * places a number is structurally required (a chart input, a progress value);
+ * it must never be used for a displayed figure.
+ */
+const dash = '—';
+
+/** Allocation slice colours, cycled by index so a token keeps its colour. */
+const ALLOCATION_COLOURS = [
+  'bg-sky-400',
+  'bg-emerald-400',
+  'bg-purple-400',
+  'bg-amber-400',
+  'bg-rose-400',
+  'bg-slate-400',
+];
+const money = (v: number | undefined, digits = 2, suffix = '') =>
+  v === undefined || !Number.isFinite(v) ? dash : `$${v.toLocaleString(undefined, { maximumFractionDigits: digits })}${suffix}`;
+const pct = (v: number | undefined, digits = 2) =>
+  v === undefined || !Number.isFinite(v) ? dash : `${v.toFixed(digits)}%`;
+const n = (v: number | undefined, fallback = 0) =>
+  v === undefined || !Number.isFinite(v) ? fallback : v;
 
 export function DashboardView() {
   const { isLoading: isGlobalLoading, connectedWallet, primaryWallet } = useAppState();
+  const router = useRouter();
   const { refreshOverview, setQuickBuyOpen, setActiveView } = useAppActions();
   const { watchlistedMints } = useWatchlist();
   const [marketTab, setMarketTab] = useState<'trending' | 'top' | 'watchlist'>('trending');
   
-  const { tokens: trendingTokens, isLoading, marketSummary } = useMarketData();
+  const { marketSummary } = useMarketData();
   const activeWallet = primaryWallet || connectedWallet;
 
+  /**
+   * Every panel on this page now reads from real endpoints. Each section tracks
+   * its own availability, so a portfolio failure cannot blank the market panels
+   * and a market outage cannot hide alerts that loaded.
+   */
+  const overview = useOverviewData(activeWallet?.address ?? null);
+  const isLoading = overview.isLoading;
+
+  /** Maps an API token onto the card shape, without inventing anything. */
+  const toCard = (t: OverviewToken): TokenCardData => ({
+    name: t.name,
+    symbol: t.symbol.startsWith('$') ? t.symbol : `$${t.symbol}`,
+    mint: t.mint,
+    logoURI: t.logoURI ?? undefined,
+    price: t.priceUsd === null ? dash : money(Number(t.priceUsd), Number(t.priceUsd) < 1 ? 6 : 2),
+    priceChange24h: n(t.priceChange24h ?? undefined),
+    mcap: t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0),
+    liquidity: t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0),
+    volume24h: t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0),
+    // Null score renders as 0 in the badge today; the card shows "—" for it
+    // rather than a fabricated number (see token-card.tsx).
+    intelligenceScore: t.intelligenceScore ?? 0,
+    badges: [],
+    sparklineData: undefined,
+  });
+
   // Curated High-Cap & High-Volume Top Solana Ecosystem Tokens
-  const topTokens: TokenCardData[] = [
-    {
-      name: 'Solana',
-      symbol: '$SOL',
-      mint: 'So11111111111111111111111111111111111111112',
-      price: `$${(marketSummary.solPriceUsd ?? 184.5).toFixed(2)}`,
-      priceChange24h: marketSummary.solChange24h ?? 4.2,
-      mcap: '$88.5B',
-      liquidity: '$4.2B',
-      volume24h: `$${((marketSummary.totalVolume24hUsd ?? 4200000000) / 1_000_000_000).toFixed(1)}B`,
-      intelligenceScore: 98,
-      badges: ['verified', 'smart-money'],
-      sparklineData: [40, 55, 65, 75, 85, 90, 98],
-    },
-    {
-      name: 'Jupiter',
-      symbol: '$JUP',
-      mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
-      price: '$1.18',
-      priceChange24h: 12.4,
-      mcap: '$1.58B',
-      liquidity: '$320M',
-      volume24h: '$240M',
-      intelligenceScore: 95,
-      badges: ['verified'],
-      sparklineData: [35, 45, 58, 65, 78, 88, 95],
-    },
-    {
-      name: 'Bonk',
-      symbol: '$BONK',
-      mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
-      price: '$0.0000284',
-      priceChange24h: 24.8,
-      mcap: '$1.85B',
-      liquidity: '$180M',
-      volume24h: '$410M',
-      intelligenceScore: 92,
-      badges: ['verified', 'trending'],
-      sparklineData: [20, 35, 50, 65, 78, 85, 92],
-    },
-    {
-      name: 'dogwifhat',
-      symbol: '$WIF',
-      mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
-      price: '$2.42',
-      priceChange24h: 8.6,
-      mcap: '$2.41B',
-      liquidity: '$210M',
-      volume24h: '$380M',
-      intelligenceScore: 90,
-      badges: ['verified'],
-      sparklineData: [45, 52, 60, 68, 75, 82, 90],
-    },
-    {
-      name: 'Raydium Revival',
-      symbol: '$RAYR',
-      mint: '4kF8...1z55',
-      price: '$3.85',
-      priceChange24h: 52.1,
-      mcap: '$1.12B',
-      liquidity: '$195M',
-      volume24h: '$280M',
-      intelligenceScore: 93,
-      badges: ['verified'],
-      sparklineData: [50, 65, 70, 80, 85, 95],
-    },
-    {
-      name: 'Solana Sentinel',
-      symbol: '$SENT',
-      mint: '7xK99zK8mP2xQ5wN3a19',
-      price: '$0.0425',
-      priceChange24h: 34.2,
-      mcap: '$14.2M',
-      liquidity: '$820K',
-      volume24h: '$4.2M',
-      intelligenceScore: 94,
-      badges: ['verified', 'smart-money'],
-      sparklineData: [30, 45, 60, 50, 75, 85, 90, 100],
-    },
-  ];
+  /**
+   * Token lists come from the registry and the ranking engine.
+   *
+   * These were two hardcoded arrays of ~10 tokens each — fixed prices, fixed
+   * market caps, fixed intelligence scores — rendered as live market data.
+   * Watchlist previously fell back to `[topTokens[0], topTokens[5]]` when empty,
+   * so an empty watchlist silently showed two tokens the user never added.
+   */
+  const trendingCards = overview.trending.map(toCard);
+  const topCards = overview.topTokens.map(toCard);
+  const watchlistCards = [...overview.trending, ...overview.topTokens]
+    .filter((t) => watchlistedMints.includes(t.mint))
+    .map(toCard);
 
-  // Watchlisted Tokens (Filter from trending + top or fallback)
-  const allAvailableTokens = [...topTokens, ...trendingTokens];
-  const watchlistedTokens = allAvailableTokens.filter((t) => watchlistedMints.includes(t.mint));
-  const activeWatchlistList = watchlistedTokens.length > 0 ? watchlistedTokens : [topTokens[0], topTokens[5]];
+  const activeCards =
+    marketTab === 'trending' ? trendingCards : marketTab === 'top' ? topCards : watchlistCards;
 
-  const mockAlerts: AlertCardData[] = [
-    {
-      id: 'alt1',
-      type: 'Wash Trading Detected',
-      severity: 'critical',
-      timestamp: '2m ago',
-      tokenSymbol: '$MEME',
-      tokenName: 'Solana Meme',
-      description: 'Circular volume loop identified between 4 linked wallets. Organic score reduced to 12/100.',
-      evidence: '4 wallets exchanging 85% of volume in tight 10s cycles',
-    },
-    {
-      id: 'alt2',
-      type: 'Dev Cluster Liquidity Drain Risk',
-      severity: 'high',
-      timestamp: '8m ago',
-      tokenSymbol: '$CYBER',
-      tokenName: 'Cyber Core AI',
-      description: 'Top deployer wallet moved 25% supply to CEX deposit routing contract.',
-      evidence: 'Transfer to Binance deposit address detected',
-    },
-    {
-      id: 'alt3',
-      type: 'Smart Money Inflow Wave',
-      severity: 'low',
-      timestamp: '14m ago',
-      tokenSymbol: '$SENT',
-      tokenName: 'Solana Sentinel',
-      description: '12 tracked high-conviction alpha wallets bought $SENT in the past 15 minutes.',
-      evidence: '12 Tier-1 smart wallets accumulated 450 SOL worth of $SENT',
-    },
-  ];
+  /** Risk feed, from the real alert domain rather than a literal array. */
+  const alertCards: AlertCardData[] = overview.alerts.map((a) => ({
+    id: a.id,
+    type: a.category ?? 'ALERT',
+    severity: (a.severity ?? 'medium').toLowerCase() as AlertCardData['severity'],
+    timestamp: a.timestamp,
+    tokenSymbol: a.token ?? '—',
+    tokenName: a.token ?? 'Unknown token',
+    description: a.title ?? 'Alert triggered',
+    // The event DTO carries a summary, not a separate evidence field. Empty
+    // rather than a restated description dressed up as corroboration.
+    evidence: a.summary ?? '',
+  }));
+
 
   return (
     <div className="space-y-3.5 max-w-[1600px] mx-auto select-none">
@@ -182,7 +150,7 @@ export function DashboardView() {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 relative z-10">
-          <Button onClick={refreshOverview} variant="secondary" size="sm" isLoading={isGlobalLoading} leftIcon={<RefreshCcw className="h-3.5 w-3.5" />}>
+          <Button onClick={() => { refreshOverview(); void overview.refresh(); }} variant="secondary" size="sm" isLoading={isLoading} leftIcon={<RefreshCcw className="h-3.5 w-3.5" />}>
             Refresh Engine
           </Button>
           <Button onClick={() => setActiveView('trade')} variant="buy" size="sm" rightIcon={<ArrowUpRight className="h-3.5 w-3.5" />}>
@@ -201,48 +169,75 @@ export function DashboardView() {
           </div>
           <div className="flex items-baseline justify-between font-numeric">
             <span className="text-xl sm:text-2xl font-bold text-emerald-400">
-              {Math.min(99, Math.max(20, Math.round(50 + marketSummary.solChange24h * 3)))}
+              {overview.market ? String(overview.market.regime.confidenceScore) : dash}
               <span className="text-xs text-slate-400">/100</span>
             </span>
-            <Badge variant={marketSummary.solChange24h >= 0 ? 'risk-low' : 'risk-high'}>
-              {marketSummary.solChange24h >= 0 ? 'BULLISH VELOCITY' : 'BEARISH PRESSURE'}
+            <Badge variant={n(overview.market?.regime.confidenceScore) >= 50 ? 'risk-low' : 'risk-high'}>
+              {overview.market ? overview.market.regime.regime.replace(/_/g, ' ') : dash}
             </Badge>
           </div>
-          <Progress value={Math.min(99, Math.max(20, Math.round(50 + marketSummary.solChange24h * 3)))} color="emerald" size="sm" />
-          <p className="text-[10px] text-slate-400 font-mono">
-            {marketSummary.solChange24h >= 0
-              ? 'Organic buyer growth outstripping insider dumps by 3.4x'
-              : 'Distribution detected across high-volume liquidity pools'}
+          <Progress value={n(overview.market?.regime.confidenceScore)} color="emerald" size="sm" />
+          <p className="text-2xs text-slate-400 font-mono">
+            {overview.market
+              ? `${overview.market.regime.newMintsCount24h.toLocaleString()} new mints · ${pct(overview.market.regime.averageWashTradingPct, 1)} avg wash`
+              : (overview.errors.market ?? 'Market telemetry unavailable.')}
           </p>
         </div>
 
+        {/* Organic volume is the engine's own decomposition, not `raw * 0.82`.
+            `organicVolumeUsd` and `organicVolumePct` come from
+            VolumeDecompositionEngine — the product's core claim, measured. */}
         <MetricTile
           title="Organic Volume (24h)"
-          rawValue={`$${((marketSummary.totalVolume24hUsd || 48200000) / 1000000).toFixed(1)}M`}
-          adjustedValue={`Adj: $${(((marketSummary.totalVolume24hUsd || 48200000) * 0.82) / 1000000).toFixed(1)}M`}
-          change={`${marketSummary.solChange24h >= 0 ? '+' : ''}${marketSummary.solChange24h.toFixed(2)}%`}
-          changeType={marketSummary.solChange24h >= 0 ? 'positive' : 'negative'}
-          sparklineData={[30, 45, 60, 50, 75, 85, 90 + Math.round(marketSummary.solChange24h)]}
+          rawValue={money(overview.market?.decomposition.organicVolumeUsd, 0)}
+          adjustedValue={
+            overview.market
+              ? `of ${money(overview.market.decomposition.totalVolumeUsd, 0)} reported`
+              : dash
+          }
+          change={
+            overview.market?.decomposition.organicVolumePct === undefined
+              ? dash
+              : `${pct(overview.market.decomposition.organicVolumePct, 1)} organic`
+          }
+          changeType={
+            n(overview.market?.decomposition.organicVolumePct) >= 70 ? 'positive' : 'negative'
+          }
+          sparklineData={undefined}
           subtitle="Filtered wash-trading"
         />
         <MetricTile
           title="Active Threat Alerts"
-          rawValue="4 Flagged"
-          change="Critical"
-          changeType="negative"
-          badgeText="THREAT DETECTED"
+          rawValue={
+            overview.errors.alerts
+              ? dash
+              : `${overview.criticalAlertCount} Flagged`
+          }
+          change={overview.criticalAlertCount > 0 ? 'Critical' : 'Clear'}
+          changeType={overview.criticalAlertCount > 0 ? 'negative' : 'positive'}
+          badgeText={overview.criticalAlertCount > 0 ? 'THREAT DETECTED' : undefined}
           badgeVariant="danger"
-          sparklineData={[10, 20, 15, 40, 80, 95]}
+          sparklineData={undefined}
           subtitle="Coordinated wallet clusters"
         />
+        {/* Portfolio is wallet-scoped; with no wallet linked there is nothing to
+            report, which reads as `—` rather than someone else's balance. */}
         <MetricTile
           title="Portfolio Net Value"
-          rawValue="$138,450.00"
-          adjustedValue="$134,120.00"
-          change="+$14,210.00 (+11.4%)"
-          changeType="positive"
-          sparklineData={[60, 65, 70, 75, 85, 95]}
-          subtitle="Net value after fees & slippage"
+          rawValue={money(overview.portfolio?.totalValueUsd ?? undefined, 2)}
+          adjustedValue={
+            overview.portfolio?.exitValueUsd == null
+              ? dash
+              : `Exit: ${money(overview.portfolio.exitValueUsd, 2)}`
+          }
+          change={
+            overview.portfolio?.changeUsd == null
+              ? dash
+              : `${overview.portfolio.changeUsd >= 0 ? '+' : ''}${money(Math.abs(overview.portfolio.changeUsd), 2)}`
+          }
+          changeType={n(overview.portfolio?.changeUsd ?? undefined) >= 0 ? 'positive' : 'negative'}
+          sparklineData={undefined}
+          subtitle={activeWallet ? 'Net value after fees & slippage' : 'Connect a wallet'}
         />
       </div>
 
@@ -265,32 +260,46 @@ export function DashboardView() {
                 variant="segmented"
                 size="sm"
                 tabs={[
-                  { id: 'trending', label: 'Trending Tokens', count: trendingTokens.length },
-                  { id: 'top', label: 'Top Tokens', count: topTokens.length },
-                  { id: 'watchlist', label: 'Watchlist', count: watchlistedTokens.length },
+                  { id: 'trending', label: 'Trending Tokens', count: trendingCards.length },
+                  { id: 'top', label: 'Top Tokens', count: topCards.length },
+                  { id: 'watchlist', label: 'Watchlist', count: watchlistCards.length },
                 ]}
               />
             }
           >
             {isLoading ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                 <div className="h-32 rounded-xl bg-sentinel-800/50 animate-pulse border border-white/5" />
-                 <div className="h-32 rounded-xl bg-sentinel-800/50 animate-pulse border border-white/5" />
-                 <div className="h-32 rounded-xl bg-sentinel-800/50 animate-pulse border border-white/5" />
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-32 rounded-xl bg-sentinel-800/50 animate-pulse border border-white/5"
+                  />
+                ))}
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {(marketTab === 'trending'
-                  ? trendingTokens
-                  : marketTab === 'top'
-                  ? topTokens
-                  : activeWatchlistList
-                ).map((t) => (
+              /* Scrolls inside the panel rather than growing the page: 20
+                 trending tokens across three columns is seven rows, which would
+                 push the activity stream and rankings below the fold. The
+                 container keeps the panel a fixed size and the whole list
+                 reachable. */
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-h-[26rem] overflow-y-auto pr-1">
+                {activeCards.length === 0 && (
+                  <p className="col-span-full text-2xs text-slate-500 py-8 text-center">
+                    {overview.errors.trending || overview.errors.topTokens
+                      ? (overview.errors.trending ?? overview.errors.topTokens)
+                      : marketTab === 'watchlist'
+                        ? 'Nothing on your watchlist yet.'
+                        : 'No tokens returned.'}
+                  </p>
+                )}
+                {activeCards.map((t) => (
                   <TokenCard
                     key={t.symbol + t.mint}
                     token={t}
                     onQuickBuy={() => setQuickBuyOpen(true, t)}
-                    onClick={() => setActiveView('trade')}
+                    // Navigate to the token actually clicked — switching the
+                    // view alone dropped which token the user picked.
+                    onClick={() => router.push(`/trade/solana/${t.mint}`)}
                   />
                 ))}
               </div>
@@ -328,10 +337,18 @@ export function DashboardView() {
                 ))}
               </div>
 
+              {/* TPS and block time have no endpoint in this codebase — they
+                  render as unknown rather than as plausible constants. 24h
+                  volume is real, from the decomposition engine. */}
               <div className="flex justify-between items-center text-2xs font-numeric text-slate-400 pt-1.5 border-t border-sentinel-800/80">
-                <span>TPS: <strong className="text-sky-300">2,840</strong></span>
-                <span>Avg Block: <strong className="text-slate-200">420ms</strong></span>
-                <span>24h Vol: <strong className="text-emerald-400">$48.2M</strong></span>
+                <span>TPS: <strong className="text-sky-300" title="No network-stats endpoint yet">{dash}</strong></span>
+                <span>Avg Block: <strong className="text-slate-200" title="No network-stats endpoint yet">{dash}</strong></span>
+                <span>
+                  24h Vol:{' '}
+                  <strong className="text-emerald-400">
+                    {money(overview.market?.decomposition.totalVolumeUsd, 0)}
+                  </strong>
+                </span>
               </div>
             </div>
           </Panel>
@@ -345,25 +362,44 @@ export function DashboardView() {
               </span>
             }
           >
+            {/* Ranked by the discovery engine's own score, not two literals.
+                These were a fixed 94/Credible and 32/High Risk with invented
+                supporting sentences — presented as analysis of specific tokens.
+                Only tokens that actually carry a score are shown. */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <IntelligenceScore
-                data={{
-                  overallScore: 94,
-                  riskScore: 6,
-                  confidence: 98,
-                  status: 'Credible',
-                  summary: '$SENT exhibits 92.4% organic buyer distribution with zero connected funding clusters.',
-                }}
-              />
-              <IntelligenceScore
-                data={{
-                  overallScore: 32,
-                  riskScore: 88,
-                  confidence: 87,
-                  status: 'High Risk',
-                  summary: '$SOLM flagged: 17 top wallets funded from same exchange deposit key.',
-                }}
-              />
+              {overview.trending.filter((t) => t.intelligenceScore !== null).length === 0 ? (
+                <p className="col-span-full text-2xs text-slate-500 py-6 text-center">
+                  {isLoading
+                    ? 'Scoring tokens…'
+                    : (overview.errors.trending ?? 'No scored tokens available.')}
+                </p>
+              ) : (
+                overview.trending
+                  .filter((t) => t.intelligenceScore !== null)
+                  .slice(0, 2)
+                  .map((t) => {
+                    const score = t.intelligenceScore as number;
+                    return (
+                      <IntelligenceScore
+                        key={t.mint || t.symbol}
+                        data={{
+                          overallScore: Math.round(score),
+                          // Risk is the inverse of the signal score the engine
+                          // produced. Stated as derived, not as a second
+                          // independent measurement.
+                          riskScore: Math.max(0, 100 - Math.round(score)),
+                          confidence: Math.round(score),
+                          status: score >= 70 ? 'Credible' : score >= 40 ? 'Caution' : 'High Risk',
+                          summary: `$${t.symbol} scores ${score.toFixed(1)} on the discovery engine${
+                            t.priceChange24h === null
+                              ? ''
+                              : ` with ${pct(t.priceChange24h, 1)} 24h movement`
+                          }.`,
+                        }}
+                      />
+                    );
+                  })
+              )}
             </div>
           </Panel>
         </div>
@@ -385,37 +421,80 @@ export function DashboardView() {
             }
           >
             <div className="space-y-3 font-numeric">
-              <div className="flex justify-between items-baseline">
-                <div>
+              {/* Net value, real change, and no wallet invented when none is
+                  linked. This block previously hardcoded $138,450.00 and
+                  +$14,210.00, and fell back to the literal address 7xK9...3a19. */}
+              <div className="flex justify-between items-baseline gap-3">
+                <div className="min-w-0">
                   <span className="text-2xs text-slate-400 uppercase font-mono">Net Portfolio</span>
-                  <p className="text-xl font-bold text-white">$138,450.00</p>
+                  <p className="text-xl font-bold text-white truncate">
+                    {money(overview.portfolio?.totalValueUsd ?? undefined, 2)}
+                  </p>
                 </div>
-                <PriceChange value={11.4} formatted="+$14,210.00 (+11.4%)" size="sm" />
+                {overview.portfolio?.changeUsd != null && (
+                  <PriceChange
+                    value={overview.portfolio.changeUsd}
+                    formatted={`${overview.portfolio.changeUsd >= 0 ? '+' : '-'}${money(Math.abs(overview.portfolio.changeUsd), 2)}`}
+                    size="sm"
+                  />
+                )}
               </div>
 
-              {/* Allocation Bar */}
+              {/* Allocation. Slices come from /portfolio/:wallet/exposure —
+                  byToken buckets, share converted from the 0–1 fraction the
+                  engine emits. Colours cycle through a fixed palette so the
+                  same token keeps the same colour across renders. */}
               <div className="space-y-1.5">
                 <div className="flex justify-between text-2xs font-mono text-slate-400">
                   <span>Asset Allocation</span>
-                  <span className="text-[10px]">SOL (45%) • $SENT (35%)</span>
+                  <span className="text-2xs truncate max-w-[55%] text-right">
+                    {overview.allocation.length > 0
+                      ? overview.allocation
+                          .slice(0, 2)
+                          .map((a) => `${a.label} (${a.sharePct.toFixed(0)}%)`)
+                          .join(' • ')
+                      : dash}
+                  </span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-sentinel-950 overflow-hidden flex border border-sentinel-800">
-                  <div style={{ width: '45%' }} className="bg-sky-400 shadow-[0_0_6px_rgba(0,240,255,0.4)]" title="SOL (45%)" />
-                  <div style={{ width: '35%' }} className="bg-emerald-400 shadow-[0_0_6px_rgba(0,229,153,0.4)]" title="$SENT (35%)" />
-                  <div style={{ width: '15%' }} className="bg-purple-400" title="$CYBER (15%)" />
-                  <div style={{ width: '5%' }} className="bg-slate-400" title="USDC (5%)" />
+                  {overview.allocation.length === 0 ? (
+                    <div className="w-full bg-sentinel-800/60" title="No allocation data" />
+                  ) : (
+                    overview.allocation.map((a, i) => (
+                      <div
+                        key={a.key}
+                        style={{ width: `${a.sharePct}%` }}
+                        className={ALLOCATION_COLOURS[i % ALLOCATION_COLOURS.length]}
+                        title={`${a.label} (${a.sharePct.toFixed(1)}%) — ${money(a.valueUsd, 0)}`}
+                      />
+                    ))
+                  )}
                 </div>
               </div>
 
               <div className="pt-2 border-t border-sentinel-800/80 space-y-1 text-xs">
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-2">
                   <span className="text-slate-400">Wallet:</span>
-                  <span className="font-bold text-sky-300 font-mono">{activeWallet?.address.slice(0, 6)}...{activeWallet?.address.slice(-4) || '7xK9...3a19'}</span>
+                  <span className="font-bold text-sky-300 font-mono truncate">
+                    {activeWallet?.address
+                      ? `${activeWallet.address.slice(0, 6)}...${activeWallet.address.slice(-4)}`
+                      : dash}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Balance:</span>
-                  <span className="font-bold text-emerald-400">{activeWallet?.balanceSol ?? 42.85} SOL</span>
+                  <span className="font-bold text-emerald-400">
+                    {activeWallet?.balanceSol == null ? dash : `${activeWallet.balanceSol} SOL`}
+                  </span>
                 </div>
+                {overview.portfolio?.exitValueUsd != null && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Exit value:</span>
+                    <span className="font-bold text-amber-400">
+                      {money(overview.portfolio.exitValueUsd, 0)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </Panel>
@@ -435,7 +514,14 @@ export function DashboardView() {
             }
           >
             <div className="space-y-2.5">
-              {mockAlerts.map((alt) => (
+              {overview.errors.alerts ? (
+                <p className="text-2xs text-amber-400 py-4 text-center">{overview.errors.alerts}</p>
+              ) : alertCards.length === 0 ? (
+                <p className="text-2xs text-slate-500 py-4 text-center">
+                  {isLoading ? 'Loading alerts…' : 'No alerts have fired.'}
+                </p>
+              ) : null}
+              {alertCards.map((alt) => (
                 <AlertCard
                   key={alt.id}
                   alert={alt}

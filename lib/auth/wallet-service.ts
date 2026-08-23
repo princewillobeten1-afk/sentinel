@@ -16,6 +16,7 @@ import { DbAuthChallenge, DbWallet, DbWalletVerification, DbUser } from '../db/s
 import { ApiError } from '../server/errors';
 import { decodeBase58 } from '../shared/base58';
 import crypto from 'node:crypto';
+import { logger } from '@/lib/server/logger';
 
 export class WalletService {
   private static instance: WalletService;
@@ -429,8 +430,22 @@ export class WalletService {
   public verifySignature(message: string, signature: string, address: string, chainId: string): boolean {
     if (!message || !signature || !address) return false;
 
-    // Test/Dev mock signatures support for automated suites
-    if (signature.startsWith('mock_sig_') || signature.startsWith('solana_sig_') || signature.startsWith('0x_mock_')) {
+    /**
+     * Mock-signature bypass for the automated suites.
+     *
+     * Hard-gated to non-production. Previously this ran unconditionally, so any
+     * caller could authenticate as any wallet by sending the literal string
+     * `mock_sig_` — proof of ownership was optional. In a self-custodial product
+     * where a linked wallet grants access to portfolio and order placement, that
+     * is the whole security boundary.
+     */
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      (signature.startsWith('mock_sig_') ||
+        signature.startsWith('solana_sig_') ||
+        signature.startsWith('0x_mock_'))
+    ) {
+      logger.warn('[wallet] accepting a mock signature — non-production only', { address });
       return true;
     }
 
