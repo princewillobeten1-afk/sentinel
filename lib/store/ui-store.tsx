@@ -13,6 +13,17 @@ import {
 
 export type ThemeMode = 'dark' | 'light';
 
+export interface SelectedToken {
+  mint: string;
+  symbol: string;
+  name: string;
+  logoUrl?: string;
+  priceUsd?: string;
+  marketCapUsd?: string;
+  liquidityUsd?: string;
+  chain?: string;
+}
+
 export { UI_SCALE_MIN, UI_SCALE_MAX, UI_SCALE_DEFAULT, clampUiScale } from './ui-scale';
 
 interface UIState {
@@ -26,6 +37,7 @@ interface UIState {
   isCommandPaletteOpen: boolean;
   isHotkeysOpen: boolean;
   isConsoleOpen: boolean;
+  selectedToken: SelectedToken;
 }
 
 interface UIActions {
@@ -42,10 +54,18 @@ interface UIActions {
   setCommandPaletteOpen: (open: boolean) => void;
   setHotkeysOpen: (open: boolean) => void;
   setConsoleOpen: (open: boolean) => void;
+  setSelectedToken: (token: SelectedToken) => void;
 }
 
 const UIStateContext = createContext<UIState | undefined>(undefined);
 const UIActionsContext = createContext<UIActions | undefined>(undefined);
+
+const DEFAULT_SELECTED_TOKEN: SelectedToken = {
+  mint: 'So11111111111111111111111111111111111111112',
+  symbol: 'SOL',
+  name: 'Wrapped SOL',
+  chain: 'solana',
+};
 
 export function UIStoreProvider({ children }: { children: React.ReactNode }) {
   const [activeView, setActiveView] = useState<AppView>('dashboard');
@@ -58,6 +78,7 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
   const [isHotkeysOpen, setIsHotkeysOpen] = useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [uiScale, setUiScaleState] = useState<number>(UI_SCALE_DEFAULT);
+  const [selectedToken, setSelectedToken] = useState<SelectedToken>(DEFAULT_SELECTED_TOKEN);
 
   // Restore the saved scale once on mount. Deliberately not part of the
   // initial useState: reading localStorage during render would differ between
@@ -135,6 +156,7 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
         isCommandPaletteOpen,
         isHotkeysOpen,
         isConsoleOpen,
+        selectedToken,
       }}
     >
       <UIActionsContext.Provider
@@ -151,6 +173,7 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
           setCommandPaletteOpen: setIsCommandPaletteOpen,
           setHotkeysOpen: setIsHotkeysOpen,
           setConsoleOpen: setIsConsoleOpen,
+          setSelectedToken,
         }}
       >
         {children}

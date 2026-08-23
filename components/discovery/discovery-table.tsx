@@ -67,7 +67,7 @@ interface DiscoveryTableProps {
 }
 
 export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
-  const { setQuickBuyOpen } = useAppActions();
+  const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -449,6 +449,19 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
                         <div className="min-w-0">
                           <Link
                             href={`/trade/solana/${token.mint}`}
+                            onClick={() => {
+                              setSelectedToken({
+                                mint: token.mint,
+                                symbol: token.symbol,
+                                name: token.name,
+                                logoUrl: token.logoURI,
+                                priceUsd: token.priceUsd,
+                                marketCapUsd: token.marketCapUsd,
+                                liquidityUsd: token.liquidityUsd,
+                                chain: 'solana',
+                              });
+                              setActiveView('trade');
+                            }}
                             className="font-bold text-slate-100 hover:text-sky-400 flex items-center gap-1 truncate"
                           >
                             {token.name} <span className="text-slate-400 text-2xs">${token.symbol}</span>
@@ -572,7 +585,22 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
                   {visibleColumns.actions && (
                     <td style={{ width: COLUMN_WIDTHS.actions, flexShrink: 0 }} className="p-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Link href={`/trade/solana/${token.mint}`}>
+                        <Link
+                          href={`/trade/solana/${token.mint}`}
+                          onClick={() => {
+                            setSelectedToken({
+                              mint: token.mint,
+                              symbol: token.symbol,
+                              name: token.name,
+                              logoUrl: token.logoURI,
+                              priceUsd: token.priceUsd,
+                              marketCapUsd: token.marketCapUsd,
+                              liquidityUsd: token.liquidityUsd,
+                              chain: 'solana',
+                            });
+                            setActiveView('trade');
+                          }}
+                        >
                           <Button variant="outline" size="xs" aria-label={`Inspect ${token.symbol}`}>
                             <Eye className="h-3 w-3 text-sky-400" />
                           </Button>

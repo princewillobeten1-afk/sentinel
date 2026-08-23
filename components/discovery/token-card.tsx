@@ -69,7 +69,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   onQuickBuy,
 }: TokenDiscoveryCardProps) {
   const router = useRouter();
-  const { setQuickBuyOpen } = useAppActions();
+  const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
   const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
 
   const [copied, setCopied] = useState(false);
@@ -78,6 +78,21 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const isWatchlisted = checkWatchlisted(token.mint);
   const priceDec = useMemo(() => new Decimal(token.priceUsd || '0'), [token.priceUsd]);
   const mcapDec = useMemo(() => new Decimal(token.marketCapUsd || '0'), [token.marketCapUsd]);
+
+  const handleOpenTrade = () => {
+    setSelectedToken({
+      mint: token.mint,
+      symbol: token.symbol,
+      name: token.name,
+      logoUrl: token.logoURI,
+      priceUsd: token.priceUsd,
+      marketCapUsd: token.marketCapUsd,
+      liquidityUsd: token.liquidityUsd,
+      chain: token.chain || 'solana',
+    });
+    setActiveView('trade');
+    router.push(`/trade/${token.chain || 'solana'}/${token.mint}`);
+  };
 
   const handleCopyAddress = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -130,19 +145,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     ? 'bg-purple-500 text-white'
     : 'bg-sky-500 text-slate-950';
 
-  /**
-   * Safety and distribution figures are shown only when they are real.
-   *
-   * These previously fell back to invented values when the field was missing:
-   * top-10 concentration and developer holdings were both derived from
-   * `buyPressureRatio` — a completely unrelated measure of recent trade
-   * direction — and an unknown risk score defaulted to 88, which renders as a
-   * green "LOW" risk badge. A token nobody has analysed would therefore display
-   * as one that had been analysed and cleared.
-   *
-   * On a screen people use to decide what to buy, an absent measurement has to
-   * look absent. `null` here renders as "—" below.
-   */
   const buyRatio = token.buyPressureRatio ?? null;
   const buyPct = buyRatio !== null ? Math.round(buyRatio * 100) : null;
   const sellPct = buyPct !== null ? 100 - buyPct : null;
@@ -165,11 +167,11 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       role="link"
       tabIndex={0}
       aria-label={`Trade ${token.symbol}`}
-      onClick={() => router.push(`/trade/${token.chain || 'solana'}/${token.mint}`)}
+      onClick={handleOpenTrade}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          router.push(`/trade/${token.chain || 'solana'}/${token.mint}`);
+          handleOpenTrade();
         }
       }}
       className="group relative bg-[#0b0e14]/95 hover:bg-[#111722] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm select-none hover:shadow-md cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-500"
@@ -192,14 +194,17 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
             {/* Line 1: Name + Symbol + Open + Copy + Star */}
             <div className="flex items-center gap-1 min-w-0">
-              <Link
-                href={`/trade/solana/${token.mint}`}
-                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans flex items-center gap-0.5"
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenTrade();
+                }}
+                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans flex items-center gap-0.5 cursor-pointer"
                 title={token.name}
               >
                 <span>{token.name}</span>
                 <ChevronRight className="w-2.5 h-2.5 text-slate-500 group-hover:text-sky-400 shrink-0" />
-              </Link>
+              </div>
               <span className="text-2xs text-slate-400 truncate max-w-[55px]" title={token.symbol}>
                 ${token.symbol}
               </span>

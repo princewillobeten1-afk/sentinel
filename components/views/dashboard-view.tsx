@@ -63,7 +63,7 @@ const n = (v: number | undefined, fallback = 0) =>
 export function DashboardView() {
   const { isLoading: isGlobalLoading, connectedWallet, primaryWallet } = useAppState();
   const router = useRouter();
-  const { refreshOverview, setQuickBuyOpen, setActiveView } = useAppActions();
+  const { refreshOverview, setQuickBuyOpen, setActiveView, setSelectedToken } = useAppActions();
   const { watchlistedMints } = useWatchlist();
   const [marketTab, setMarketTab] = useState<'trending' | 'top' | 'watchlist'>('trending');
   
@@ -89,9 +89,10 @@ export function DashboardView() {
     mcap: t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0),
     liquidity: t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0),
     volume24h: t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0),
-    // Null score renders as 0 in the badge today; the card shows "—" for it
-    // rather than a fabricated number (see token-card.tsx).
-    intelligenceScore: t.intelligenceScore ?? 0,
+    // Passed through as null, never coerced to 0: the registry returns no
+    // score, and `?? 0` made every Top Tokens card read a red "0/100" — the
+    // worst possible rating — for tokens that were simply never scored.
+    intelligenceScore: t.intelligenceScore,
     badges: [],
     sparklineData: undefined,
   });
@@ -297,9 +298,20 @@ export function DashboardView() {
                     key={t.symbol + t.mint}
                     token={t}
                     onQuickBuy={() => setQuickBuyOpen(true, t)}
-                    // Navigate to the token actually clicked — switching the
-                    // view alone dropped which token the user picked.
-                    onClick={() => router.push(`/trade/solana/${t.mint}`)}
+                    onClick={() => {
+                      setSelectedToken({
+                        mint: t.mint,
+                        symbol: t.symbol.replace('$', ''),
+                        name: t.name,
+                        priceUsd: t.price ? String(t.price).replace('$', '') : undefined,
+                        marketCapUsd: t.mcap ? String(t.mcap).replace('$', '') : undefined,
+                        liquidityUsd: t.liquidity ? String(t.liquidity).replace('$', '') : undefined,
+                        logoUrl: t.logoURI,
+                        chain: 'solana',
+                      });
+                      setActiveView('trade');
+                      router.push(`/trade/solana/${t.mint}`);
+                    }}
                   />
                 ))}
               </div>

@@ -7,6 +7,7 @@ import { Copy, Star, Zap, Users, Shield, Lock, CheckCircle } from 'lucide-react'
 import { PriceChange } from '../market/price-change';
 import { RankedTokenItem } from '@/lib/market-data/types';
 import { TokenAvatar } from '@/components/ui/token-avatar';
+import { useAppActions } from '@/lib/store';
 
 interface TokenDiscoveryCardProps {
   token: RankedTokenItem;
@@ -33,17 +34,31 @@ function formatSmartPrice(num: number): string {
 
 export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
   const router = useRouter();
+  const { setSelectedToken, setActiveView } = useAppActions();
   const isPumpFun = token.tokenId?.toLowerCase().endsWith('pump') || token.symbol.toLowerCase().includes('pump');
+
+  const handleOpenTrade = () => {
+    setSelectedToken({
+      mint: token.tokenId,
+      symbol: token.symbol,
+      name: token.name,
+      priceUsd: String(token.priceUsd),
+      liquidityUsd: String(token.liquidityUsd),
+      chain: 'solana',
+    });
+    setActiveView('trade');
+    router.push(`/trade/solana/${token.tokenId}`);
+  };
 
   return (
     <div
       role="link"
       tabIndex={0}
-      onClick={() => router.push(`/trade/solana/${token.tokenId}`)}
+      onClick={handleOpenTrade}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          router.push(`/trade/solana/${token.tokenId}`);
+          handleOpenTrade();
         }
       }}
       className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none cursor-pointer focus-visible:ring-1 focus-visible:ring-sky-500"
@@ -62,13 +77,16 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
 
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5">
             <div className="flex items-center gap-1 min-w-0">
-              <Link
-                href={`/trade/solana/${token.tokenId}`}
-                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans"
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenTrade();
+                }}
+                className="font-bold text-slate-100 text-xs hover:text-sky-400 truncate max-w-[85px] shrink-0 font-sans cursor-pointer"
                 title={token.name}
               >
                 {token.name}
-              </Link>
+              </div>
               <span className="text-2xs text-slate-400 truncate max-w-[65px]" title={token.symbol}>
                 ${token.symbol}
               </span>

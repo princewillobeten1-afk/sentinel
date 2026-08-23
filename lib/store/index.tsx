@@ -1,14 +1,14 @@
 'use client';
 
 import React from 'react';
-import { UIStoreProvider, useUIState, useUIActions, ThemeMode } from './ui-store';
+import { UIStoreProvider, useUIState, useUIActions, ThemeMode, SelectedToken } from './ui-store';
 import { WalletStoreProvider, useWalletState, useWalletActions, QuickBuyTokenData } from './wallet-store';
 import { NotificationsStoreProvider, useNotificationsState, useNotificationsActions, AppNotification, ExecutionLog } from './notifications-store';
 import { PreferencesProvider, usePreferencesState, usePreferencesActions } from './preferences-store';
 import { WatchlistProvider, useWatchlist } from './watchlist-store';
 import { TradeHistoryProvider, useTradeHistory } from './trade-history-store';
 
-export type { ThemeMode, QuickBuyTokenData, AppNotification, ExecutionLog };
+export type { ThemeMode, QuickBuyTokenData, AppNotification, ExecutionLog, SelectedToken };
 export type AppView =
   | 'dashboard'
   | 'trade'

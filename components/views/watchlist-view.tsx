@@ -13,7 +13,7 @@ import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { NormalizedSearchResult } from '@/lib/token/search-service';
 
 export function WatchlistView() {
-  const { setQuickBuyOpen } = useAppActions();
+  const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
   const { getWatchlistTokens, removeFromWatchlist } = useWatchlist();
   const watchlistTokens = getWatchlistTokens();
 
@@ -25,7 +25,22 @@ export function WatchlistView() {
         <div className="flex items-center gap-2.5 font-mono">
           <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
           <div className="min-w-0">
-            <Link href={`/trade/solana/${item.mint}`} className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors">
+            <Link
+              href={`/trade/solana/${item.mint}`}
+              onClick={() => {
+                setSelectedToken({
+                  mint: item.mint,
+                  symbol: item.symbol,
+                  name: item.name,
+                  priceUsd: String(item.priceUsd),
+                  marketCapUsd: String(item.marketCapUsd),
+                  liquidityUsd: String(item.liquidityUsd),
+                  chain: 'solana',
+                });
+                setActiveView('trade');
+              }}
+              className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors"
+            >
               {item.name} <span className="text-slate-400 text-xs">${item.symbol}</span>
               <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100" />
             </Link>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Wallet,
@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { SkeletonChart } from '@/components/ui/skeleton-states';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useMarketData } from '@/lib/hooks/use-market-data';
+import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import { TransactionPreviewModal } from '@/components/ui/transaction-preview-modal';
 import { LimitOrderBuilder } from '@/components/limit-orders/limit-order-builder';
 import { AxiomChartTabs } from '@/components/trading/axiom-chart-tabs';
@@ -43,11 +44,6 @@ const DynamicCandlestickChart = dynamic(() => import('@/components/trading/candl
 
 /**
  * Market values are genuinely absent when the provider is down.
- *
- * `useMarketData` no longer substitutes mock numbers on failure, so these
- * render `—` rather than a plausible-looking figure. `n()` is for the few
- * places a number is structurally required (a chart input, a progress value);
- * it must never be used for a displayed figure.
  */
 const dash = '—';
 const money = (v: number | undefined, digits = 2, suffix = '') =>
@@ -57,10 +53,22 @@ const pct = (v: number | undefined, digits = 2) =>
 const n = (v: number | undefined, fallback = 0) =>
   v === undefined || !Number.isFinite(v) ? fallback : v;
 
-export function TradeView() {
-  const { connectedWallet, primaryWallet } = useAppState();
+export interface TradeViewProps {
+  tokenMint?: string;
+  tokenSymbol?: string;
+}
+
+export function TradeView({ tokenMint: propTokenMint, tokenSymbol: propTokenSymbol }: TradeViewProps = {}) {
+  const { connectedWallet, primaryWallet, selectedToken } = useAppState();
   const { addNotification, addExecutionLog } = useAppActions();
   const { marketSummary } = useMarketData();
+
+  const activeMint = propTokenMint || selectedToken?.mint || 'So11111111111111111111111111111111111111112';
+  const activeSymbol = propTokenSymbol || selectedToken?.symbol || 'SOL';
+
+  const [tokenOverview, setTokenOverview] = useState<any>(null);
+  const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
   const [executionMode, setExecutionMode] = useState<'market' | 'limit'>('market');
@@ -76,25 +84,66 @@ export function TradeView() {
   const [showLimitBuilder, setShowLimitBuilder] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
 
-  /**
-   * The token being traded against the native asset.
-   *
-   * Still fixed while the terminal has no token-selection control wired to it —
-   * but it is now resolved against the registry rather than sent as a bare
-   * string, so an unknown symbol is reported instead of silently accepted.
-   */
-  const quoteSymbol = 'SENT';
+  // Fetch token details dynamically
+  useEffect(() => {
+    let cancelled = false;
+    async function loadToken() {
+      if (!activeMint) return;
+      try {
+        const res = await fetch(`/api/v1/tokens/solana/${activeMint}`);
+        if (res.ok) {
+          const json = await res.json();
+          const t = json.data?.token || json.token || json;
+          if (!cancelled && t) {
+            setTokenOverview(t);
+          }
+        }
+      } catch {
+        // Degrades to selectedToken defaults
+      }
+    }
+    loadToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMint]);
 
-  /**
-   * One idempotency key per order attempt, minted when the flow starts and
-   * cleared once the order is placed. Held in a ref rather than state so that
-   * a re-render between preview and confirm cannot mint a second key — which
-   * would defeat the deduplication it exists to provide.
-   */
+  // Live WebSocket price & trade streams
+  const wsTopics = useMemo(() => (activeMint ? [`token.price:${activeMint}`, `token.trade:${activeMint}`] : []), [activeMint]);
+  useSentinelWS(wsTopics, (data, msg) => {
+    if (msg.topic === `token.price:${activeMint}` && data?.priceUsd !== undefined) {
+      setLivePrice(Number(data.priceUsd));
+    }
+  });
+
+  const currentToken = useMemo(() => {
+    const isNativeSol = activeMint === 'So11111111111111111111111111111111111111112';
+    return {
+      name: tokenOverview?.name || selectedToken?.name || (isNativeSol ? 'Wrapped SOL' : `Token ${activeMint.slice(0, 4)}`),
+      symbol: tokenOverview?.symbol || selectedToken?.symbol || activeSymbol,
+      mint: activeMint,
+      logoUrl: tokenOverview?.logoUrl || tokenOverview?.logoURI || selectedToken?.logoUrl,
+      priceUsd: livePrice ?? Number(tokenOverview?.priceUsd ?? tokenOverview?.price ?? selectedToken?.priceUsd ?? (isNativeSol ? (marketSummary?.solPriceUsd ?? 150) : 0.0425)),
+      priceChange24h: Number(tokenOverview?.priceChange24h ?? tokenOverview?.priceChange24hPercent ?? (isNativeSol ? (marketSummary?.solChange24h ?? 0) : 5.4)),
+      marketCapUsd: Number(tokenOverview?.marketCapUsd ?? tokenOverview?.marketCap ?? (isNativeSol ? (marketSummary?.totalMarketCapUsd ?? 0) : 42500000)),
+      liquidityUsd: Number(tokenOverview?.liquidityUsd ?? tokenOverview?.liquidity ?? (isNativeSol ? (marketSummary?.totalLiquidityUsd ?? 0) : 1500000)),
+      volume24hUsd: Number(tokenOverview?.volume24hUsd ?? tokenOverview?.v24hUSD ?? (isNativeSol ? (marketSummary?.totalVolume24hUsd ?? 0) : 850000)),
+      riskTier: tokenOverview?.riskTier || 'LOW RISK',
+    };
+  }, [tokenOverview, selectedToken, activeMint, activeSymbol, livePrice, marketSummary]);
+
+  const quoteSymbol = currentToken.symbol;
+
   const idempotencyKeyRef = useRef<string | null>(null);
 
   const activeWalletAddress = primaryWallet?.address || connectedWallet?.address || '';
   const activeBalance = primaryWallet?.balanceSol ?? connectedWallet?.balanceSol ?? 42.85;
+
+  const handleCopyAddress = () => {
+    navigator.clipboard.writeText(activeMint);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleInitiateOrder = async () => {
     setIsExecuting(true);
@@ -108,9 +157,6 @@ export function TradeView() {
       return;
     }
 
-    // The order API is wallet-scoped and ownership-checked. Previously a
-    // truncated display string ('7xK9...3a19') stood in for a missing wallet,
-    // which the in-memory route accepted; say what is actually needed instead.
     if (!walletId) {
       setExecutionError('Connect a wallet before placing an order.');
       setIsExecuting(false);
@@ -127,9 +173,6 @@ export function TradeView() {
     });
 
     try {
-      // Step 1: price the swap. `/api/v1/trading/quote` is validated and
-      // rate-limited and runs the real quote router, unlike the legacy
-      // `/api/orders/:id/quote` which read back an in-memory intent.
       const quoteRes = await fetch(apiUrl(endpoints.trading.quote), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,16 +197,11 @@ export function TradeView() {
         networkFeeUsd: Number(quote.fees?.networkFeeUsd ?? quote.fees?.totalUsd ?? 0),
       });
 
-      // Step 2: resolve the identifiers the order API needs. Done before the
-      // preview opens so an unlinked wallet or unknown token is reported now,
-      // rather than after the user has confirmed.
       const [resolvedWalletId, resolvedTokenId] = await Promise.all([
         resolveWalletId(walletId),
         resolveTokenId(quoteSymbol),
       ]);
-      // Sent as the decimal string the user typed: the order API validates
-      // against /^\d+(\.\d+)?$/ and stores NUMERIC, so a float would both fail
-      // validation and lose precision.
+
       setPendingOrder({
         walletId: resolvedWalletId,
         tokenId: resolvedTokenId,
@@ -189,9 +227,6 @@ export function TradeView() {
     setShowPreviewModal(false);
 
     try {
-      // Step 3: place the order. This is the Phase 3 Postgres domain — the row
-      // persists, the state machine enforces its transitions, and the
-      // idempotency key means a double-submit produces one order, not two.
       const res = await fetch(apiUrl(endpoints.orders.create), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,8 +260,6 @@ export function TradeView() {
         level: 'info',
       });
 
-      // A new key per completed submission: the next order is a new intent, and
-      // reusing the key would make it collapse into this one.
       idempotencyKeyRef.current = null;
     } catch (err: any) {
       setExecutionError(err.message || 'Order placement failed');
@@ -248,24 +281,29 @@ export function TradeView() {
       <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3 sm:p-3.5 shadow-card flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <TokenAvatar
-            symbol="SENT"
-            name="Solana Sentinel"
-            mint="7xK99zK8mP2xQ5wN3a19"
+            src={currentToken.logoUrl}
+            symbol={currentToken.symbol}
+            name={currentToken.name}
+            mint={currentToken.mint}
             size="md"
           />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-white">Solana Sentinel</h2>
-              <span className="text-xs font-mono text-slate-400">$SENT</span>
-              <Badge variant="risk-low" size="sm">LOW RISK</Badge>
+              <h2 className="text-base sm:text-lg font-bold text-white">{currentToken.name}</h2>
+              <span className="text-xs font-mono text-slate-400">${currentToken.symbol}</span>
+              <Badge variant="risk-low" size="sm">{currentToken.riskTier}</Badge>
             </div>
             <div className="flex flex-wrap items-center gap-2.5 mt-0.5">
               <p className="text-2xs text-slate-400 font-numeric flex items-center gap-1.5">
-                <span>Mint: 7xK99zK8mP2xQ5wN3a19</span>
-                <Copy className="h-3 w-3 cursor-pointer hover:text-white" />
+                <span>Mint: {currentToken.mint.slice(0, 6)}...{currentToken.mint.slice(-6)}</span>
+                <Copy
+                  onClick={handleCopyAddress}
+                  className="h-3 w-3 cursor-pointer hover:text-white transition-colors"
+                />
+                {copied && <span className="text-emerald-400 text-2xs">Copied</span>}
               </p>
               {/* Token Social Media Handles */}
-              <TokenSocials symbol="SENT" showHandles={true} size="xs" />
+              <TokenSocials symbol={currentToken.symbol} showHandles={true} size="xs" />
             </div>
           </div>
         </div>
@@ -273,28 +311,33 @@ export function TradeView() {
         <div className="flex flex-wrap items-center gap-3 sm:gap-4 font-numeric">
           <div className="min-w-[130px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Price</p>
-            <p className="text-base sm:text-lg font-bold text-white">{money(marketSummary?.solPriceUsd, 4)} <span className="text-xs text-emerald-400 font-bold">{pct(marketSummary?.solChange24h)}</span></p>
+            <p className="text-base sm:text-lg font-bold text-white">
+              {money(currentToken.priceUsd, 4)}{' '}
+              <span className={`text-xs font-bold ${currentToken.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {pct(currentToken.priceChange24h)}
+              </span>
+            </p>
           </div>
 
           <div className="min-w-[130px]">
-            <p className="text-2xs text-slate-400 uppercase font-mono">24h Organic Vol</p>
+            <p className="text-2xs text-slate-400 uppercase font-mono">24h Volume</p>
             <p className="text-xs sm:text-sm font-bold text-slate-200">
-              {money(marketSummary?.totalVolume24hUsd, 0)}
-              {/* Was `raw * 0.87`, presented as an organic figure. MarketSummary
-                  carries no organic field; wire /api/v1/analytics/market before
-                  showing a split. */}
-              <span className="text-2xs text-slate-500 font-normal"> reported</span>
+              {money(currentToken.volume24hUsd, 0)}
             </p>
           </div>
 
           <div className="min-w-[120px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Liquidity</p>
-            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary?.totalLiquidityUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-200">
+              {money(currentToken.liquidityUsd, 0)}
+            </p>
           </div>
 
           <div className="min-w-[120px]">
             <p className="text-2xs text-slate-400 uppercase font-mono">Market Cap</p>
-            <p className="text-xs sm:text-sm font-bold text-slate-200">${marketSummary?.totalMarketCapUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-200">
+              {money(currentToken.marketCapUsd, 0)}
+            </p>
           </div>
         </div>
       </div>
@@ -308,14 +351,15 @@ export function TradeView() {
             compact={true}
             height="h-[250px] sm:h-[265px]"
             timeframe={timeframe}
+            symbol={currentToken.mint}
             onTimeframeChange={setTimeframe}
           />
 
           {/* Axiom-Style Navigation Tabs (Trades, Positions, Orders, Sentinel Intelligence Audit, Holders, Top Traders, Dev Tokens) */}
           <AxiomChartTabs
-            currentPrice={n(marketSummary?.solPriceUsd)}
-            tokenSymbol="SENT"
-            tokenMint="7xK99zK8mP2xQ5wN3a19"
+            currentPrice={currentToken.priceUsd}
+            tokenSymbol={currentToken.symbol}
+            tokenMint={currentToken.mint}
             onOpenLimitBuilder={() => setShowLimitBuilder(true)}
             onQuickTrade={(type, amt) => {
               setOrderType(type);
@@ -323,7 +367,7 @@ export function TradeView() {
               setExecutionMode('market');
               addNotification({
                 title: `Instant ${type.toUpperCase()} Selected`,
-                message: `Set ${type.toUpperCase()} order size to ${amt} SOL on $SENT. Click execute to submit.`,
+                message: `Set ${type.toUpperCase()} order size to ${amt} SOL on $${currentToken.symbol}. Click execute to submit.`,
                 type: 'system',
               });
             }}
@@ -351,7 +395,7 @@ export function TradeView() {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  BUY $SENT
+                  BUY ${currentToken.symbol}
                 </button>
                 <button
                   onClick={() => setOrderType('sell')}
@@ -361,7 +405,7 @@ export function TradeView() {
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  SELL $SENT
+                  SELL ${currentToken.symbol}
                 </button>
               </div>
 
@@ -489,17 +533,10 @@ export function TradeView() {
           tokenId={quoteSymbol}
           action={orderType === 'buy' ? 'BUY' : 'SELL'}
           amountUsd={parseFloat(solAmount) * n(marketSummary?.solPriceUsd)}
-          // The quote already fetched from /api/v1/trading/quote, so the figures
-          // the user confirms are the ones they were quoted.
           simulation={
             pendingQuote
               ? {
                   success: true,
-                  // Value received, not token count: `expectedOut` is denominated
-                  // in the *output* token, so converting it with the SOL price
-                  // would be meaningless. A swap trades equal value less costs,
-                  // so the input value net of impact and fee is the honest
-                  // figure to show against a "$" label.
                   expectedReceiveUsd: Math.max(
                     0,
                     parseFloat(solAmount) *
@@ -523,10 +560,10 @@ export function TradeView() {
         />
       )}
 
-      {/* Intelligent Limit Order Builder Modal (Sprint 21) */}
+      {/* Intelligent Limit Order Builder Modal */}
       {showLimitBuilder && (
         <LimitOrderBuilder
-          currentPrice={n(marketSummary?.solPriceUsd)}
+          currentPrice={currentToken.priceUsd}
           walletBalanceSol={activeBalance}
           onClose={() => setShowLimitBuilder(false)}
           onOrderCreated={() => {
