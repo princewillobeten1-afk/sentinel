@@ -79,5 +79,6 @@ export function searchTokens(query: string): NormalizedSearchResult[] {
 }
 
 export function getTokenByMint(mint: string): NormalizedSearchResult | undefined {
-  return TOKEN_DATABASE.find((t) => t.mint.toLowerCase() === mint.toLowerCase()) || TOKEN_DATABASE[0];
+  if (!mint) return undefined;
+  return TOKEN_DATABASE.find((t) => t.mint.toLowerCase() === mint.toLowerCase());
 }

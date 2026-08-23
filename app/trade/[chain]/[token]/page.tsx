@@ -16,16 +16,16 @@ import { TokenAvatar } from '@/components/ui/token-avatar';
 import { Decimal } from '@/lib/math/decimal';
 import { formatPercent } from '@/lib/discovery/format';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
+import { useAppState } from '@/lib/store';
 import type { TokenOverview } from '@/lib/api/birdeye/stats';
 
 export default function DynamicTokenPage() {
   const params = useParams();
   const chain = (params?.chain as string) || 'solana';
-  // No invalid fallback. `/trade` redirects here with a real mint, so an empty
-  // param now means a genuinely malformed URL and should read as one rather
-  // than silently substituting a 20-character string that is not a Solana
-  // address and can never resolve.
   const tokenMint = (params?.token as string) || '';
+  const { selectedToken } = useAppState();
+
+  const isSelectedMatch = selectedToken?.mint?.toLowerCase() === tokenMint.toLowerCase();
 
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -54,17 +54,17 @@ export default function DynamicTokenPage() {
         setTokenOverview({
           address: token.mint || tokenMint,
           decimals: token.decimals || 9,
-          symbol: token.symbol || tokenMint.slice(0, 4).toUpperCase(),
-          name: token.name || `Token ${tokenMint.slice(0, 4)}`,
-          marketCap: Number(token.marketCapUsd) || 0,
-          fdv: Number(token.marketCapUsd) || 0,
+          symbol: token.symbol || (isSelectedMatch ? selectedToken?.symbol : undefined) || tokenMint.slice(0, 4).toUpperCase(),
+          name: token.name || (isSelectedMatch ? selectedToken?.name : undefined) || `Token ${tokenMint.slice(0, 4)}`,
+          marketCap: Number(token.marketCapUsd || (isSelectedMatch ? selectedToken?.marketCapUsd : 0)) || 0,
+          fdv: Number(token.marketCapUsd || (isSelectedMatch ? selectedToken?.marketCapUsd : 0)) || 0,
           totalSupply: Number(token.totalSupply) || 1000000000,
           circulatingSupply: Number(token.circulatingSupply) || 1000000000,
-          logoURI: token.logoUrl || token.logoURI || '',
-          liquidity: Number(token.liquidityUsd) || 0,
+          logoURI: token.logoUrl || token.logoURI || (isSelectedMatch ? selectedToken?.logoUrl : '') || '',
+          liquidity: Number(token.liquidityUsd || (isSelectedMatch ? selectedToken?.liquidityUsd : 0)) || 0,
           lastTradeUnixTime: Date.now(),
           lastTradeHumanTime: 'Just now',
-          price: Number(token.priceUsd) || 0,
+          price: Number(token.priceUsd || (isSelectedMatch ? selectedToken?.priceUsd : 0)) || 0,
           holder: token.holderCount || 0,
           numberMarkets: 1,
           priceChange24hPercent: Number(token.priceChange24h) || 0,
@@ -80,7 +80,7 @@ export default function DynamicTokenPage() {
     } finally {
       setIsOverviewLoading(false);
     }
-  }, [tokenMint, chain]);
+  }, [tokenMint, chain, isSelectedMatch, selectedToken]);
 
   React.useEffect(() => {
     void loadOverview();
@@ -103,7 +103,7 @@ export default function DynamicTokenPage() {
         {
           id: data.signature || `tx_${Date.now()}_${Math.random()}`,
           side: data.side ? data.side.toLowerCase() : 'buy',
-          amount: `${data.amount ? Number(data.amount).toFixed(2) : '1.00'} ${tokenOverview?.symbol || 'Tokens'}`,
+          amount: `${data.amount ? Number(data.amount).toFixed(2) : '1.00'} ${tokenOverview?.symbol || (isSelectedMatch ? selectedToken?.symbol : 'Tokens')}`,
           valueUsd: volUsd ? `$${volUsd.toFixed(2)}` : data.priceUsd ? `$${Number(data.priceUsd).toFixed(2)}` : '$0.00',
           time: 'Just now',
           tx: data.signature ? `${data.signature.slice(0, 8)}...` : 'tx...',
@@ -114,17 +114,14 @@ export default function DynamicTokenPage() {
   });
 
   const tokenData = {
-    // Falls back to the mint rather than 'Loading...'/'...'. Those strings were
-    // shown indefinitely on failure, and worse, propagated into the trading
-    // panel as the literal buy/sell token ("BUY ...") and into the quote request.
-    name: tokenOverview?.name || (isOverviewLoading ? 'Loading…' : `${tokenMint.slice(0, 4)}…${tokenMint.slice(-4)}`),
-    symbol: tokenOverview?.symbol || (isOverviewLoading ? '' : tokenMint.slice(0, 4).toUpperCase()),
+    name: tokenOverview?.name || (isSelectedMatch && selectedToken?.name ? selectedToken.name : (isOverviewLoading ? 'Loading…' : `${tokenMint.slice(0, 4)}…${tokenMint.slice(-4)}`)),
+    symbol: tokenOverview?.symbol || (isSelectedMatch && selectedToken?.symbol ? selectedToken.symbol : (isOverviewLoading ? '' : tokenMint.slice(0, 4).toUpperCase())),
     mint: tokenMint,
     chain: chain.toUpperCase(),
-    priceUsd: new Decimal(livePrice || tokenOverview?.price || 0),
+    priceUsd: new Decimal(livePrice || tokenOverview?.price || (isSelectedMatch && selectedToken?.priceUsd ? Number(selectedToken.priceUsd) : 0)),
     priceChange24h: tokenOverview?.priceChange24hPercent || 0,
-    marketCapUsd: new Decimal(tokenOverview?.marketCap || 0),
-    liquidityUsd: new Decimal(tokenOverview?.liquidity || 0),
+    marketCapUsd: new Decimal(tokenOverview?.marketCap || (isSelectedMatch && selectedToken?.marketCapUsd ? Number(selectedToken.marketCapUsd) : 0)),
+    liquidityUsd: new Decimal(tokenOverview?.liquidity || (isSelectedMatch && selectedToken?.liquidityUsd ? Number(selectedToken.liquidityUsd) : 0)),
     volume24hUsd: new Decimal(tokenOverview?.v24hUSD || 0),
     holders: tokenOverview?.holder || 0,
     explorerUrl: `https://solscan.io/token/${tokenMint}`,

@@ -140,9 +140,9 @@ export interface AxiomChartTabsProps {
 }
 
 export function AxiomChartTabs({
-  currentPrice = 0.0425,
-  tokenSymbol = 'SENT',
-  tokenMint = '7xK99zK8mP2xQ5wN3a19',
+  currentPrice = 142.5,
+  tokenSymbol = 'SOL',
+  tokenMint = 'So11111111111111111111111111111111111111112',
   onOpenLimitBuilder,
   onQuickTrade,
 }: AxiomChartTabsProps) {
@@ -150,9 +150,9 @@ export function AxiomChartTabs({
   const { addNotification, addExecutionLog, setQuickBuyOpen } = useAppActions();
 
   // Safe sanitized token and price calculations
-  const safeSymbol = tokenSymbol?.trim() && tokenSymbol !== '$' ? tokenSymbol.replace(/^\$/, '') : 'SENT';
-  const safeMint = tokenMint || '7xK99zK8mP2xQ5wN3a19';
-  const safePrice = typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : 0.0425;
+  const safeSymbol = tokenSymbol?.trim() && tokenSymbol !== '$' ? tokenSymbol.replace(/^\$/, '') : 'SOL';
+  const safeMint = tokenMint || 'So11111111111111111111111111111111111111112';
+  const safePrice = typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : 142.5;
   const safePriceFormatted = safePrice < 0.0001 ? `$0.0₄${(safePrice * 10000).toFixed(2)}` : safePrice < 0.01 ? `$${safePrice.toFixed(4)}` : `$${safePrice.toFixed(4)}`;
 
   const [activeTab, setActiveTab] = useState<AxiomTabType>('trades');
