@@ -25,13 +25,15 @@ import {
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { useAppState, useAppActions, AppView } from '@/lib/store';
 import { searchTokens } from '@/lib/token/search-service';
-import useRouter from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import { viewRouteMap } from '@/components/layout/sidebar';
+import { useAppState, useAppActions, type AppView } from '@/lib/store';
 
 export type SearchCategory = 'all' | 'tokens' | 'wallets' | 'creators' | 'launches' | 'commands';
 
 export function CommandPalette() {
+  const router = useRouter();
   const { isCommandPaletteOpen } = useAppState();
   const { setCommandPaletteOpen, setActiveView, setQuickBuyOpen, setHotkeysOpen, setWalletModalOpen } = useAppActions();
   const [query, setQuery] = useState('');
@@ -100,6 +102,8 @@ export function CommandPalette() {
     setActiveView(view);
     setCommandPaletteOpen(false);
     setQuery('');
+    const target = viewRouteMap[view] || `/${view}`;
+    router.push(target);
   };
 
   const handleSelectSearchTerm = (term: string) => {

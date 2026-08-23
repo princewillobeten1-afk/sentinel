@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard,
@@ -36,6 +37,23 @@ export interface NavItemConfig {
   badgeVariant?: 'info' | 'warning' | 'danger' | 'success' | 'cyan' | 'purple';
 }
 
+export const viewRouteMap: Record<AppView, string> = {
+  dashboard: '/terminal',
+  trade: '/trade',
+  discover: '/discover',
+  portfolio: '/portfolio',
+  watchlist: '/watchlist',
+  alerts: '/alerts',
+  launchpad: '/launchpad',
+  intelligence: '/intelligence',
+  ai: '/ai',
+  analytics: '/analytics',
+  admin: '/admin',
+  developers: '/developers',
+  settings: '/settings',
+  help: '/help',
+};
+
 export const mainNavItems: NavItemConfig[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
@@ -57,17 +75,37 @@ export const lowerNavItems: NavItemConfig[] = [
 ];
 
 export function Sidebar() {
+  const router = useRouter();
+  const pathname = usePathname();
   const { activeView, isSidebarCollapsed, isMobileNavOpen, connectedWallet, primaryWallet } = useAppState();
   const { setActiveView, toggleSidebar, setMobileNavOpen } = useAppActions();
 
   const activeWallet = primaryWallet || connectedWallet;
+
+  // Keep activeView synchronized with current browser URL path
+  useEffect(() => {
+    if (!pathname) return;
+    for (const [view, route] of Object.entries(viewRouteMap)) {
+      if (pathname === route || (route !== '/' && pathname.startsWith(route))) {
+        setActiveView(view as AppView);
+        break;
+      }
+    }
+  }, [pathname, setActiveView]);
+
+  const handleNavigate = (viewId: AppView) => {
+    setActiveView(viewId);
+    setMobileNavOpen(false);
+    const target = viewRouteMap[viewId] || `/${viewId}`;
+    router.push(target);
+  };
 
   const renderNavButton = (item: NavItemConfig) => {
     const isActive = activeView === item.id;
     const btn = (
       <button
         key={item.id}
-        onClick={() => setActiveView(item.id)}
+        onClick={() => handleNavigate(item.id)}
         className={clsx(
           'w-full flex items-center justify-between rounded-xl px-3 py-2 transition-all duration-150 text-xs select-none group',
           isActive
@@ -119,7 +157,7 @@ export function Sidebar() {
       >
         {/* Header Logo */}
         <div className="flex items-center justify-between mb-3 px-1">
-          <div onClick={() => setActiveView('dashboard')} className="flex items-center gap-2.5 cursor-pointer group">
+          <div onClick={() => handleNavigate('discover')} className="flex items-center gap-2.5 cursor-pointer group">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500/30 to-emerald-500/20 text-sky-300 border border-sky-500/40 shadow-[0_0_12px_rgba(0,240,255,0.3)] group-hover:scale-105 transition-transform shrink-0">
               <Zap className="h-4 w-4 fill-current text-sky-400" />
             </div>
@@ -162,8 +200,6 @@ export function Sidebar() {
         {/* Wallet Account Status Box */}
         {!isSidebarCollapsed && (
           <div className="mt-3 rounded-xl border border-white/[0.08] bg-sentinel-900/80 p-2.5 text-slate-300 backdrop-blur-md">
-            {/* min-w-0 + truncate: without them the two labels wrapped into
-                each other once the type was raised to the 11px floor. */}
             <div className="flex items-center justify-between gap-2 text-2xs uppercase font-mono text-slate-400 mb-1">
               <span className="shrink-0">Network</span>
               <span className="text-emerald-400 flex items-center gap-1 font-bold min-w-0">
@@ -207,10 +243,7 @@ export function Sidebar() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    setActiveView(item.id);
-                    setMobileNavOpen(false);
-                  }}
+                  onClick={() => handleNavigate(item.id)}
                   className={clsx(
                     'w-full flex items-center justify-between rounded-xl p-2.5 text-xs font-medium transition',
                     isActive ? 'bg-sky-500/15 text-white font-bold border border-sky-500/30' : 'text-slate-300 hover:bg-sentinel-850'
@@ -233,10 +266,7 @@ export function Sidebar() {
             {lowerNavItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => {
-                  setActiveView(item.id);
-                  setMobileNavOpen(false);
-                }}
+                onClick={() => handleNavigate(item.id)}
                 className="w-full flex items-center gap-3 rounded-xl p-2.5 text-xs font-medium text-slate-300 hover:bg-sentinel-850"
               >
                 <item.icon className="h-4 w-4 text-slate-400" />
