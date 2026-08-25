@@ -57,11 +57,14 @@ export function TopBar() {
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="text-slate-500 font-mono text-2xs">SOL:</span>
             <span className="font-bold text-white">
-              {marketSummary?.solPriceUsd === undefined
+              {/* `== null` catches both undefined (not loaded) and null (the
+                  provider could not fetch it). Either way the honest render is
+                  a dash, not the $142.50 literal that used to sit here. */}
+              {marketSummary?.solPriceUsd == null
                 ? tick
                 : `$${marketSummary.solPriceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
             </span>
-            {marketSummary?.solChange24h !== undefined && (
+            {marketSummary?.solChange24h != null && (
               <span
                 className={`font-bold text-2xs px-1 rounded border ${
                   marketSummary.solChange24h >= 0

@@ -2,12 +2,9 @@ import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { parseDiscoveryQuery, queryToFilter } from '@/lib/discovery/query-model';
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
-import { getSmartMoneyTokenList } from '@/lib/api/birdeye/smartMoney';
-import { mapBirdeyeToDiscoveryToken } from '@/lib/api/birdeye/mapper';
 import { DiscoveryToken } from '@/lib/discovery/types';
-import { externalFeedCache } from '@/lib/discovery/external-feed-cache';
 import { computeFilterFingerprint, resolveOffset, nextCursorFor } from '@/lib/discovery/cursor';
-import { getMockDiscoveryTokens } from '@/lib/discovery/service';
+import { getLiveDiscoveryTokens } from '@/lib/discovery/live-solana-feed';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,46 +17,30 @@ export const GET = withApiGateway(
       const fingerprint = computeFilterFingerprint({ section: 'momentum', chain: params.chain, timeWindow: params.timeWindow });
       const offset = resolveOffset(params.offset, params.cursor, fingerprint);
 
-      let mappedTokens: DiscoveryToken[] = [];
-      let nextCursor: string | null = null;
-      let hit = false;
+      const allTokens = await getLiveDiscoveryTokens({ ...queryToFilter(params), section: 'momentum' });
+      const mappedTokens: DiscoveryToken[] = allTokens.slice(offset, offset + params.limit);
 
-      try {
-        const cacheKey = `momentum:${params.chain}:net_flow:desc:1d:${params.limit}:${offset}`;
-        const feedResult = await externalFeedCache.getOrFetch(cacheKey, () =>
-          getSmartMoneyTokenList({
-            limit: params.limit,
-            offset,
-            sort_by: 'net_flow',
-            sort_type: 'desc',
-            interval: '1d',
-          }, params.chain),
-        );
-        hit = feedResult.hit;
-
-        mappedTokens = (Array.isArray(feedResult.value) ? feedResult.value : []).map((t) =>
-          mapBirdeyeToDiscoveryToken(t, params.chain)
-        );
-
-        nextCursor = nextCursorFor(offset, params.limit, mappedTokens.length, fingerprint);
-      } catch {
-        const mock = getMockDiscoveryTokens(queryToFilter(params));
-        mappedTokens = mock.slice(offset, offset + params.limit);
-      }
+      const nextCursor = nextCursorFor(
+        offset,
+        params.limit,
+        mappedTokens.length,
+        fingerprint,
+        offset + mappedTokens.length < allTokens.length,
+      );
 
       return jsonResponse({
         section: 'momentum',
         chain: params.chain,
         timeWindow: params.timeWindow,
         updatedAt: new Date().toISOString(),
-        totalCount: mappedTokens.length,
+        totalCount: allTokens.length,
         limit: params.limit,
         offset,
         nextCursor,
         tokens: mappedTokens,
-      }, 200, { 'X-Cache': hit ? 'HIT' : 'MISS' });
+      }, 200);
     } catch (error) {
-      return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch smart money momentum', 500));
+      return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch momentum tokens', 500));
     }
   },
   { scopes: ['READ_MARKET_DATA'], optionalAuth: true },

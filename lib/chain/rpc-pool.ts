@@ -43,7 +43,11 @@ export const DEFAULT_RPC_PROVIDERS: RPCProviderConfig[] = [
   {
     id: 'helius_rpc_secondary',
     name: 'Helius Laserstream RPC (Secondary)',
-    url: `https://devnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || 'ba0b20f1-f08d-4949-b128-2be4eff7fe2c'}`,
+    // No hardcoded key fallback: the literal that used to sit here was a
+    // real credential committed to source, and it outlived its own rotation
+    // — pointing at a dead key while looking configured. An unset key now
+    // yields an unusable URL that fails visibly instead.
+    url: `https://devnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY ?? ''}`,
     isPrimary: false,
     weight: 95,
   },

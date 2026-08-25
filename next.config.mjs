@@ -2,7 +2,23 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  transpilePackages: ['lucide-react'],
   experimental: {
+    // Page-data collection runs single-threaded.
+    //
+    // With the default worker pool this build fails intermittently on Windows
+    // with ENOENT during "Collecting page data" — observed on `/_document`
+    // (which does not exist in App Router), `/api/alerts/rules` and
+    // `/api/dashboard/overview`, all of which compile fine and none of which
+    // share any import. The failures move between targets run to run, which is
+    // the signature of workers racing each other over `.next` rather than a
+    // fault in any page. Measured across the session: 6 passes and 4 failures
+    // on unchanged code.
+    //
+    // One worker removes the race. The cost is a slower build; the benefit is
+    // a build whose result means something.
+    workerThreads: false,
+    cpus: 1,
     // Runs instrumentation.ts's register() once on server boot, so the
     // Birdeye/Helius market data streams start without needing an inbound
     // HTTP request (lib/market/live/stream-manager.ts).

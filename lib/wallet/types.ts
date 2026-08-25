@@ -1,6 +1,6 @@
-export type WalletProviderId = 'phantom' | 'solflare' | 'embedded' | 'standard';
+export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'okx' | 'embedded' | 'manual' | 'standard';
 
-export type WalletType = 'extension' | 'standard' | 'embedded';
+export type WalletType = 'extension' | 'standard' | 'embedded' | 'manual';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -17,13 +17,15 @@ export interface WalletAdapter {
   type: WalletType;
   installed: boolean;
   publicKey: string | null;
-  connect(): Promise<string>;
+  connect(customAddress?: string): Promise<string>;
   disconnect(): Promise<void>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
   /** Whether the wallet is actually present in this browser right now. */
   isAvailable?(): boolean;
   /** Official download page, so "not installed" can be made actionable. */
   getInstallUrl?(): string | undefined;
+  /** Export private key for embedded smart wallets */
+  exportPrivateKey?(): string | null;
 }
 
 export interface LinkedWallet {

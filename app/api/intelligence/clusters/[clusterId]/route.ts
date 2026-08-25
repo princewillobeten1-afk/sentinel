@@ -1,13 +1,12 @@
-export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 
-export async function GET(request: Request, { params }: { params: { clusterId: string } }) {
-  // Mock implementation returning cluster details
+export const dynamic = 'force-dynamic';
 
+export async function GET(request: Request, { params }: { params: { clusterId: string } }) {
   return NextResponse.json({
     id: params.clusterId,
     walletCount: 17,
-    confidence: 87, // 0-100
+    confidence: 87,
     riskProfile: 'HIGH',
     evidenceSummary: 'The wallets show repeated coordinated entry patterns across 8 launches and share a common funding source.',
     metrics: {

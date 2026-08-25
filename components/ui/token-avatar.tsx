@@ -73,6 +73,7 @@ export function TokenAvatar({
           alt={name || cleanSymbol}
           className="w-full h-full object-cover"
           loading="lazy"
+          referrerPolicy="no-referrer"
           onError={() => setHasError(true)}
         />
       ) : (

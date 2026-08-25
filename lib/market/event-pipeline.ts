@@ -8,6 +8,36 @@ export interface RawMarketEvent {
   eventType: 'SWAP' | 'LIQUIDITY_ADD' | 'LIQUIDITY_REMOVE' | 'PRICE_UPDATE';
   priceUsd?: string;
   volumeUsd?: string;
+  /**
+   * Direction of a SWAP, when the source actually measured it.
+   *
+   * Without this every swap was persisted as a BUY, because the stream manager
+   * mapped `eventType === 'SWAP'` straight to `BUY`. On a platform whose whole
+   * premise is separating genuine flow from wash trading, recording every sell
+   * as a buy corrupts the measurement it exists to make. Left undefined when
+   * the source cannot tell, and the consumer then keeps its own default rather
+   * than being handed a guess.
+   */
+  side?: 'BUY' | 'SELL';
+  /**
+   * The bare on-chain transaction signature.
+   *
+   * Distinct from `eventId`, which is namespaced as
+   * `helius_<signature>_<programLabel>` to keep provider events unique. That
+   * namespaced value was being persisted into `realtime_trades.signature`,
+   * producing rows whose "signature" could not be looked up on any explorer.
+   * Carrying the real one separately also means dedup keys on the transaction
+   * itself, so a swap matched under two program subscriptions collapses to a
+   * single event instead of two.
+   */
+  signature?: string;
+  /**
+   * The trading wallet, when the provider identified one.
+   *
+   * Without this `realtime_trades.wallet` was null on all 22,253 real captures,
+   * so any per-wallet view grouped by a column that never had a value.
+   */
+  wallet?: string;
   timestamp: string;
 }
 

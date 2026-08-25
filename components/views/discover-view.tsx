@@ -19,7 +19,7 @@ import { TerminalTopBar } from '@/components/discovery/terminal-top-bar';
 import { TerminalColumn } from '@/components/discovery/terminal-column';
 import { AdvancedFilterDrawer } from '@/components/discovery/advanced-filter-drawer';
 import { useDebouncedValue } from '@/lib/hooks/use-debounce';
-import { useRealtimeTokenFeed } from '@/lib/hooks/use-realtime-token-feed';
+import { subscribeToDiscovery, getDiscoverySnapshot, setDiscoveryQuery } from '@/lib/discovery/discovery-store';
 import { useAppActions } from '@/lib/store';
 import type {
   DiscoverySection,
@@ -29,13 +29,25 @@ import type {
   DiscoveryToken,
 } from '@/lib/discovery/types';
 
-const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v3';
+// Bumped from _v3: saved 3-column layouts would otherwise suppress the two
+// new columns for anyone who has used the page before.
+const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v4';
 const STORAGE_QUICKBUY_KEY = 'sentinel_quickbuy_presets_v2';
 
+/**
+ * The five columns, each backed by a distinct real source.
+ *
+ * New / Bonding / Migrated all read Jupiter's `/recent` (tokens aged 0-2
+ * minutes) and are partitioned by the structural bonding test in
+ * `jupiter-feed.ts#isOnBondingCurve` — one request serves all three. Trending
+ * and Hot read their own ranked feeds on slower cadences.
+ */
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
   { id: 'col_new', type: 'new', title: 'New Launches', sortBy: 'newest' },
-  { id: 'col_migrating', type: 'migrating', title: 'Bonding Migration', sortBy: 'migration-progress' },
-  { id: 'col_graduated', type: 'graduated', title: 'Graduated / Raydium', sortBy: 'market-cap' },
+  { id: 'col_bonding', type: 'migrating', title: 'Bonding', sortBy: 'market-cap' },
+  { id: 'col_migrated', type: 'graduated', title: 'Migrated', sortBy: 'market-cap' },
+  { id: 'col_trending', type: 'trending', title: 'Trending', sortBy: 'volume' },
+  { id: 'col_hot', type: 'hot', title: 'Hot', sortBy: 'volume' },
 ];
 
 const DEFAULT_QUICKBUY_PRESETS = [0.05, 0.1, 0.5, 1.0];
@@ -53,6 +65,8 @@ export function DiscoverView() {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('15m');
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [globalFilters, setGlobalFilters] = useState<Partial<DiscoveryFilter>>({});
+  /** Zero-liquidity launches are hidden by default — they cannot be traded. */
+  const [showZeroLiquidity, setShowZeroLiquidity] = useState(false);
 
   // State: Quick Buy Settings
   const [quickBuyPresets, setQuickBuyPresets] = useState<number[]>(DEFAULT_QUICKBUY_PRESETS);
@@ -69,9 +83,10 @@ export function DiscoverView() {
         if (savedCols) {
           const parsed = JSON.parse(savedCols);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            // Filter out any stale trending columns
-            const sanitized = parsed.filter((c: DiscoveryColumnConfig) => c.type !== 'trending');
-            setColumns(sanitized.length > 0 ? sanitized : DEFAULT_COLUMNS);
+            // Trending columns used to be stripped here because the section
+            // had no working source. It now reads Jupiter's ranked feed, so
+            // removing it would delete a column the user can see working.
+            setColumns(parsed.length > 0 ? parsed : DEFAULT_COLUMNS);
           }
         }
         const savedQB = localStorage.getItem(STORAGE_QUICKBUY_KEY);
@@ -98,11 +113,21 @@ export function DiscoverView() {
     }
   }, []);
 
-  // Real-time stream indicator hook
-  const { isConnected: liveConnected } = useRealtimeTokenFeed({
-    section: 'new',
-    chain: selectedChain,
-  });
+  /**
+   * Feed health for the header indicator.
+   *
+   * This used to mount a whole `useRealtimeTokenFeed` — a sixth instance with
+   * its own timer, socket and `/api/v1/events` catch-up — purely to read a
+   * boolean. Defaulting to `section: 'new'` is why that section was fetched
+   * three times as often as the others (this call, the New column, and
+   * StrictMode doubling both in dev). It now reads the shared store.
+   */
+  const [feedVersion, setFeedVersion] = useState(0);
+  useEffect(() => subscribeToDiscovery(() => setFeedVersion((v) => v + 1)), []);
+  const feedSnapshot = getDiscoverySnapshot();
+  const liveConnected =
+    feedSnapshot.hasLoaded &&
+    Object.values(feedSnapshot.sections).some((section) => section.state === 'live');
 
   // Column Actions
   const handleAddColumn = (type: DiscoverySection, title: string) => {
@@ -178,6 +203,11 @@ export function DiscoverView() {
         activeFilterCount={activeFilterCount}
         onOpenFilterDrawer={() => setIsFilterDrawerOpen(true)}
         columns={columns}
+        showZeroLiquidity={showZeroLiquidity}
+        onToggleZeroLiquidity={(next) => {
+          setShowZeroLiquidity(next);
+          setDiscoveryQuery({ includeZeroLiquidity: next });
+        }}
         onAddColumn={handleAddColumn}
         onResetLayout={handleResetLayout}
         quickBuyPresets={quickBuyPresets}
@@ -209,7 +239,12 @@ export function DiscoverView() {
         <div
           className="hidden md:grid h-full gap-2.5 overflow-x-auto"
           style={{
-            gridTemplateColumns: `repeat(${columns.length}, minmax(290px, 1fr))`,
+            // 290px x 5 exceeded the workspace at 1440 and pushed the fifth
+            // column off-screen entirely. 252px lets all five sit side by side
+            // at 1440 while staying legible; the container scrolls
+            // horizontally below that, which is the behaviour these terminals
+            // use anyway once a user adds columns.
+            gridTemplateColumns: `repeat(${columns.length}, minmax(252px, 1fr))`,
           }}
         >
           {columns.map((col) => (

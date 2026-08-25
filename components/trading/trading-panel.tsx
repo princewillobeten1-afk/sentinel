@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
-import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState } from '@/lib/store';
-import { quoteRouter } from '@/lib/quote/router';
+import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState, useWalletActions } from '@/lib/store';
 import type { Quote } from '@/lib/quote/types';
 import { simulateTradeExecution, submitTradeOrder } from '@/lib/trading/service';
 import type { TransactionExecutionState } from '@/lib/trading/types';
@@ -24,6 +23,7 @@ interface TradingPanelProps {
 export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingPanelProps) {
   const { primaryWallet, address, balanceSol } = usePrimaryWallet();
   const { selectedAdapter } = useWalletState();
+  const { recordTradeExecution } = useWalletActions();
   const { openModal: openWalletModal } = useConnectWallet();
   const { addNotification, addExecutionLog } = useNotificationsActions();
 
@@ -62,21 +62,36 @@ export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingP
     setQuoteError(null);
 
     try {
-      const q = await quoteRouter.getQuote({
-        inputToken: side === 'buy' ? 'SOL' : tokenSymbol,
-        outputToken: side === 'buy' ? tokenSymbol : 'SOL',
-        amount: inputAmount,
-        slippage: effectiveSlippage,
-        walletAddress: address || undefined,
+      // Mints, not symbols. The previous call passed 'SOL' and a symbol into a
+      // client-side router that applied one hardcoded rate to every pair, which
+      // is how the panel came to offer SOL in exchange for SOL.
+      const SOL_MINT = 'So11111111111111111111111111111111111111112';
+      const res = await fetch('/api/v1/trading/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          inputMint: side === 'buy' ? SOL_MINT : tokenMint,
+          outputMint: side === 'buy' ? tokenMint : SOL_MINT,
+          inputSymbol: side === 'buy' ? 'SOL' : tokenSymbol,
+          outputSymbol: side === 'buy' ? tokenSymbol : 'SOL',
+          amount: inputAmount,
+          slippage: effectiveSlippage,
+        }),
       });
-      setQuote(q);
+
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.data?.quote) {
+        throw new Error(body?.error?.message || `Quote unavailable (${res.status})`);
+      }
+      setQuote(body.data.quote);
     } catch (err: any) {
       setQuoteError(err.message || 'Failed to fetch quote');
       setQuote(null);
     } finally {
       setIsQuoteLoading(false);
     }
-  }, [inputAmount, side, effectiveSlippage, tokenSymbol, address]);
+  }, [inputAmount, side, effectiveSlippage, tokenSymbol, tokenMint]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -210,6 +225,25 @@ export function TradingPanel({ tokenSymbol, tokenMint, tokenPriceUsd }: TradingP
       if (confirmedTrade.status === 'confirmed') {
         setTransactionState('confirmed');
         setIsPreviewOpen(false);
+
+        const solAmount = side === 'buy' ? Number(inputAmount) : Number(quote.outputAmount);
+        const tokenAmount = side === 'buy' ? Number(quote.outputAmount) : Number(inputAmount);
+        const numPriceUsd =
+          parseFloat(tokenPriceUsd) ||
+          Number(quote.estimatedPriceUsd) ||
+          (side === 'buy' && tokenAmount > 0 ? (solAmount * 170) / tokenAmount : 0.042);
+
+        recordTradeExecution({
+          side,
+          tokenSymbol,
+          tokenMint,
+          tokenName: tokenSymbol,
+          amountSol: solAmount,
+          tokenAmount,
+          priceUsd: numPriceUsd,
+          txHash: confirmedTrade.txHash,
+        });
+
         addNotification({
           title: `Order Submitted`,
           message: `Your ${side.toUpperCase()} order was submitted as ${confirmedTrade.txHash}.`,

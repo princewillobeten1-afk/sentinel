@@ -1,98 +1,103 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
-import { fetchTokenOverview } from '@/lib/actions/birdeye';
+import { getTokenPriceUsd } from '@/lib/market/canonical-price';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/v1/tokens/:chain/:address/liquidity
+ *
+ * Aggregate liquidity for a token.
+ *
+ * ## What this replaced
+ *
+ * Two fully invented pools, returned for every token: a "Raydium CPMM" at
+ * address `5xRydm99qP88x12kL0z1` and an "Orca Whirlpool" at
+ * `orca_whirl_41a99x88b7`, with APYs of 142.8% and 168.4%, 24h volume computed
+ * as `liquidity * 3.2`, reserves derived using a hardcoded SOL price of 150,
+ * and a "🔥 100% LP Burned (Solana Incinerator)" lock status asserted without
+ * anything being checked.
+ *
+ * When Birdeye failed — which it always does, its quota being exhausted — the
+ * whole structure was built on `price = 0.0425` and `liquidity = 384500`,
+ * identical for every token.
+ *
+ * ## What is served now
+ *
+ * The token's real total liquidity and price from Jupiter, which publishes
+ * both. **No per-pool breakdown**: enumerating pools needs a DEX-by-DEX pool
+ * query this endpoint does not perform, and the previous breakdown was
+ * narrative. `pools` is empty with the reason stated, rather than populated
+ * with plausible-looking entries.
+ */
+
+const JUPITER_SEARCH = 'https://lite-api.jup.ag/tokens/v2/search';
+const CACHE_TTL_MS = 30_000;
+const cache = new Map<string, { at: number; payload: unknown }>();
+
 export async function GET(
-  request: Request,
-  { params }: { params: { chain: string; address: string } }
+  _request: Request,
+  { params }: { params: { chain: string; address: string } },
 ) {
   try {
     const { chain, address } = params;
-
-    let symbol = 'TOKEN';
-    let price = 0.0425;
-    let liquidity = 384500;
-
-    try {
-      const overview = await fetchTokenOverview(address);
-      if (overview) {
-        if (overview.symbol) symbol = overview.symbol;
-        if (overview.price) price = overview.price;
-        if (overview.liquidity) liquidity = overview.liquidity;
-      }
-    } catch {
-      // Degrade gracefully
+    if (!address || address.length < 32) {
+      throw new ApiError('A token mint address is required', 400);
     }
 
-    const pools = [
-      {
-        id: 'pool_raydium',
-        dex: 'Raydium CPMM',
-        pair: `SOL / $${symbol}`,
-        poolAddress: '5xRydm99qP88x12kL0z1',
-        liquidityUsd: `$${liquidity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        reserves: {
-          sol: `${((liquidity * 0.5) / 150).toFixed(1)} SOL ($${(liquidity * 0.5).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
-          token: `${((liquidity * 0.5) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.5).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
-        },
-        volume24h: `$${(liquidity * 3.2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        fees24h: `$${((liquidity * 3.2) * 0.003).toFixed(2)}`,
-        apy: '142.8%',
-        lockStatus: 'burned',
-        lockDetails: '🔥 100% LP Burned (Solana Incinerator)',
-        feeTier: '0.25%',
-      },
-      {
-        id: 'pool_orca',
-        dex: 'Orca Whirlpool',
-        pair: `SOL / $${symbol} (Concentrated)`,
-        poolAddress: 'orca_whirl_41a99x88b7',
-        liquidityUsd: `$${(liquidity * 0.3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        reserves: {
-          sol: `${((liquidity * 0.15) / 150).toFixed(1)} SOL ($${(liquidity * 0.15).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
-          token: `${((liquidity * 0.15) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.15).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
-        },
-        volume24h: `$${(liquidity * 1.1).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        fees24h: `$${((liquidity * 1.1) * 0.003).toFixed(2)}`,
-        apy: '168.4%',
-        lockStatus: 'locked',
-        lockDetails: '🔒 Locked 365 Days on Streamflow',
-        feeTier: '0.30%',
-      },
-      {
-        id: 'pool_meteora',
-        dex: 'Meteora DLMM',
-        pair: `USDC / $${symbol}`,
-        poolAddress: 'met_dlmm_89z01k44w',
-        liquidityUsd: `$${(liquidity * 0.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        reserves: {
-          sol: `$${(liquidity * 0.075).toLocaleString(undefined, { maximumFractionDigits: 0 })} USDC`,
-          token: `${((liquidity * 0.075) / price).toLocaleString(undefined, { maximumFractionDigits: 0 })} $${symbol} ($${(liquidity * 0.075).toLocaleString(undefined, { maximumFractionDigits: 0 })})`,
-        },
-        volume24h: `$${(liquidity * 0.5).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        fees24h: `$${((liquidity * 0.5) * 0.002).toFixed(2)}`,
-        apy: '215.2%',
-        lockStatus: 'locked',
-        lockDetails: '🔒 Dynamic Fee Vault',
-        feeTier: 'Dynamic DLMM (0.15% - 0.85%)',
-      },
-    ];
+    const cached = cache.get(address);
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+      return jsonResponse(cached.payload as Record<string, unknown>);
+    }
 
-    const totalLiquidityUsd = pools.reduce((acc, p) => {
-      const num = parseFloat(p.liquidityUsd.replace(/[^0-9.-]+/g, ''));
-      return acc + (isNaN(num) ? 0 : num);
-    }, 0);
+    let symbol: string | null = null;
+    let liquidityUsd: number | null = null;
 
-    return jsonResponse({
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const res = await fetch(`${JUPITER_SEARCH}?query=${encodeURIComponent(address)}`, {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const list = Array.isArray(body) ? body : (body?.tokens ?? []);
+        const token = list.find((t: { id?: string }) => t.id === address) ?? list[0];
+        if (token) {
+          symbol = token.symbol ?? null;
+          const liq = Number(token.liquidity);
+          liquidityUsd = Number.isFinite(liq) ? liq : null;
+        }
+      }
+    } catch {
+      // Unavailable — reported as unknown below, never substituted.
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const price = (await getTokenPriceUsd(address))?.usdPrice ?? null;
+
+    const payload = {
       token: address,
       chain: chain.toLowerCase(),
-      totalLiquidityUsd: `$${totalLiquidityUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      pools,
+      symbol,
+      priceUsd: price,
+      totalLiquidityUsd: liquidityUsd,
+      // Empty, deliberately. See the module header.
+      pools: [] as unknown[],
+      // Not checked. This was asserted as "100% LP Burned" for every token.
+      lockStatus: null,
+      coverage:
+        'Aggregate liquidity only. Per-pool reserves, APY and lock status are not queried by this endpoint.',
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    cache.set(address, { at: Date.now(), payload });
+    return jsonResponse(payload);
   } catch (error) {
-    return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch liquidity data', 500));
+    return errorResponse(
+      error instanceof Error ? error : new ApiError('Failed to fetch liquidity', 500),
+    );
   }
 }

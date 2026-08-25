@@ -128,19 +128,25 @@ export function detectAnomalies(token: DiscoveryToken): DetectedAnomaly[] {
     });
   }
 
-  // 6. HOLDER GROWTH SPIKE — Holder growth > 50% in 1h
-  if (token.holderGrowth1hPct >= 50) {
+  // 6. HOLDER GROWTH SPIKE — Holder growth > 50% in 1h.
+  //
+  // Skipped entirely when growth is unknown. Treating an absent figure as 0
+  // would silently report "no holder spike" for every token the data source
+  // does not cover, which reads as a checked-and-clear result rather than an
+  // unchecked one.
+  const holderGrowth = token.holderGrowth1hPct;
+  if (holderGrowth !== undefined && holderGrowth >= 50) {
     anomalies.push({
       type: 'HOLDER_GROWTH_SPIKE',
-      severity: token.holderGrowth1hPct >= 150 ? 'high' : 'medium',
+      severity: holderGrowth >= 150 ? 'high' : 'medium',
       confidence: 0.85,
       detectedAt: now,
       token: tokenRef,
       supportingMetrics: {
-        holdersCount: token.holdersCount,
-        growthPct: token.holderGrowth1hPct,
+        holdersCount: token.holdersCount ?? 0,
+        growthPct: holderGrowth,
       },
-      label: `Holders +${token.holderGrowth1hPct.toFixed(0)}%`,
+      label: `Holders +${holderGrowth.toFixed(0)}%`,
     });
   }
 

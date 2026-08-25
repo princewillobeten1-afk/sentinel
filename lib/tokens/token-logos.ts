@@ -55,6 +55,26 @@ const GRADIENT_PALETTES = [
 /**
  * Resolves a reliable token logo URI, mapping IPFS gateways and known token mints.
  */
+/**
+ * Routes a third-party image through this origin.
+ *
+ * Token metadata points at IPFS and Arweave gateways, which send a restrictive
+ * `Cross-Origin-Resource-Policy`; the browser then refuses the image with
+ * `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and every card falls back to a
+ * lettermark. The proxy also keeps viewers' IP addresses away from those
+ * gateways. Same-origin and data URLs are passed through untouched.
+ */
+function proxied(url: string): string {
+  if (url.startsWith('/') || url.startsWith('data:')) return url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return url;
+  } catch {
+    return url;
+  }
+  return `/api/v1/media/token-icon?url=${encodeURIComponent(url)}`;
+}
+
 export function resolveTokenLogoUrl(params: {
   src?: string | null;
   symbol?: string | null;
@@ -64,20 +84,20 @@ export function resolveTokenLogoUrl(params: {
 
   if (src && typeof src === 'string' && src.trim() !== '') {
     const trimmed = src.trim();
-    if (trimmed.startsWith('ipfs://')) {
-      return trimmed.replace('ipfs://', 'https://ipfs.io/ipfs/');
-    }
-    return trimmed;
+    const direct = trimmed.startsWith('ipfs://')
+      ? trimmed.replace('ipfs://', 'https://ipfs.io/ipfs/')
+      : trimmed;
+    return proxied(direct);
   }
 
   if (mint && MINT_LOGOS[mint]) {
-    return MINT_LOGOS[mint];
+    return proxied(MINT_LOGOS[mint]);
   }
 
   if (symbol) {
     const cleanSym = symbol.replace(/^\$/, '').toUpperCase();
     if (KNOWN_LOGOS[cleanSym]) {
-      return KNOWN_LOGOS[cleanSym];
+      return proxied(KNOWN_LOGOS[cleanSym]);
     }
   }
 

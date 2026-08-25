@@ -95,3 +95,23 @@ export function matchLogsForProgram(programLabel: string, logs: string[]): LogMa
   if (!matcher) return null;
   return matcher(logs);
 }
+
+/**
+ * Classifies logs when the subscription was by mint rather than by program.
+ *
+ * A `mentions:[mint]` subscription returns that token's transactions across
+ * every venue, so there is no single program label to select a matcher with.
+ * Each matcher is tried in turn and the first classification wins.
+ *
+ * Without this, focused-mode notifications carry a label like `focus:<mint>`,
+ * find no matcher, and are dropped — the stream would look subscribed while
+ * delivering nothing, which is precisely the failure mode this codebase keeps
+ * having to dig out.
+ */
+export function matchLogsAnyProgram(logs: string[]): LogMatchResult | null {
+  for (const matcher of Object.values(PROGRAM_MATCHERS)) {
+    const result = matcher(logs);
+    if (result) return result;
+  }
+  return null;
+}

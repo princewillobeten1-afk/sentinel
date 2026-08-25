@@ -354,6 +354,20 @@ export function broadcastRealtimeEvent(event: any): void {
       // Ignore socket send errors
     }
 
+    // Dispatch to discovery topic subscribers
+    const discoveryTopics = ['feed.discovery:all', 'feed.discovery:new', 'feed.discovery:migrating', 'feed.discovery:graduated', 'feed.discovery:trending'];
+    for (const dTopic of discoveryTopics) {
+      if (connection.topics.has(dTopic)) {
+        send(connection, {
+          type: 'event',
+          topic: dTopic,
+          sequence: nextTopicSequence(connection.topicSequences, dTopic),
+          data: event,
+          ts,
+        });
+      }
+    }
+
     // Also dispatch to topic subscribers if applicable
     if (event.mint) {
       const priceTopic = `token.price:${event.mint}`;

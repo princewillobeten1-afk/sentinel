@@ -22,6 +22,13 @@ export async function POST() {
   const { webhookDispatcher } = await import('@/lib/webhooks/dispatcher');
   webhookDispatcher.start();
 
+  // Keeps token prices current. Same reasoning as the dispatcher for living
+  // here rather than in instrumentation.ts: it spawns the `db/*.js` jobs and
+  // so needs the Node target. Idempotent, and a no-op unless
+  // TOKEN_REFRESH_ENABLED=true.
+  const { tokenRefreshWorker } = await import('@/lib/market-data/refresh/token-refresh-worker');
+  tokenRefreshWorker.start();
+
   if (!wss) {
     return jsonResponse({ webSocketAttached: false, reason: 'No WebSocketServer published on globalThis (not running under server.js).' });
   }

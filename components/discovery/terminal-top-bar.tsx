@@ -33,6 +33,9 @@ interface TerminalTopBarProps {
   onAddColumn: (type: DiscoverySection, title: string) => void;
   onResetLayout: () => void;
   quickBuyPresets: number[];
+  /** Whether zero-liquidity launches are shown. Off by default. */
+  showZeroLiquidity?: boolean;
+  onToggleZeroLiquidity?: (next: boolean) => void;
   quickBuyMode: 'sol' | 'usd';
   onUpdateQuickBuySettings: (presets: number[], mode: 'sol' | 'usd') => void;
   liveConnected: boolean;
@@ -63,6 +66,8 @@ export function TerminalTopBar({
   quickBuyMode,
   onUpdateQuickBuySettings,
   liveConnected,
+  showZeroLiquidity = false,
+  onToggleZeroLiquidity,
 }: TerminalTopBarProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showQuickBuyModal, setShowQuickBuyModal] = useState(false);
@@ -158,6 +163,28 @@ export function TerminalTopBar({
             {quickBuyMode === 'sol' ? `≡${quickBuyPresets[0]}` : `$${quickBuyPresets[0]}`}
           </span>
           <Settings className="w-2.5 h-2.5 text-slate-500" />
+        </button>
+
+        {/* Dead-row toggle.
+            Twelve of thirty rows in a measured response had no pool at all —
+            they cannot be traded, so they are hidden by default rather than
+            occupying the feed. The toggle is visible so the filtering is a
+            stated choice, not a silent one. */}
+        <button
+          onClick={() => onToggleZeroLiquidity?.(!showZeroLiquidity)}
+          className={`h-7 px-2.5 rounded-lg border font-bold text-2xs flex items-center gap-1 transition-colors ${
+            showZeroLiquidity
+              ? 'bg-amber-950/50 border-amber-900/60 text-amber-300'
+              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400'
+          }`}
+          title={
+            showZeroLiquidity
+              ? 'Showing launches with no liquidity pool. These cannot be traded.'
+              : 'Launches with no liquidity pool are hidden. They cannot be traded.'
+          }
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${showZeroLiquidity ? 'bg-amber-400' : 'bg-slate-600'}`} />
+          <span>No-liquidity</span>
         </button>
 
         {/* Column Manager: Add Column Menu */}

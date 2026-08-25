@@ -10,6 +10,7 @@ import { liveMarketCache } from './live-cache';
 import { persistMarketEventFireAndForget } from './persistence';
 import { resolveTrackedMints, resolveTrackedProgramIds } from './subscription-set';
 import { realtimeProcessor } from '@/lib/server/events/processor';
+import { getEnricherStats, type EnricherStats } from './transaction-enricher';
 import type { ConnectionHealth } from './types';
 
 export interface StreamManagerHealth {
@@ -19,6 +20,23 @@ export interface StreamManagerHealth {
   trackedProgramCount: number;
   recentEventCount: number;
   startedAt: string | null;
+  /**
+   * Mint the stream is currently focused on, or null when sweeping.
+   *
+   * Reported so it is never ambiguous which mode is running — a paused
+   * market-wide capture should be visible, not inferred from a quiet feed.
+   */
+  focusedMint: string | null;
+  /**
+   * Parsed-transaction enrichment counters.
+   *
+   * Exposed rather than kept internal because the enricher deliberately drops
+   * work under load: a feed that quietly samples a fraction of trades while
+   * presenting itself as complete is worse than one that says what it missed.
+   * `droppedQueueFull` is the number never fetched; `droppedNoMint` is fetched
+   * but skipped because no subject token could be derived.
+   */
+  enricher: EnricherStats;
 }
 
 /**
@@ -109,6 +127,22 @@ class StreamManager {
     this.started = false;
   }
 
+  /**
+   * Aim the enrichment budget at one token, for as long as its page is open.
+   *
+   * The call budget cannot cover both a full DEX sweep and one token's tape,
+   * so focusing swaps the broad subscriptions for a single `mentions:[mint]`
+   * one. The trade-off is explicit and reported by `getHealth()`: while
+   * focused, market-wide capture is paused.
+   */
+  focusMint(mint: string): void {
+    this.helius?.focusMint(mint);
+  }
+
+  clearFocus(): void {
+    this.helius?.clearFocus();
+  }
+
   getHealth(): StreamManagerHealth {
     return {
       birdeye: this.birdeye?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
@@ -117,6 +151,8 @@ class StreamManager {
       trackedProgramCount: Object.keys(resolveTrackedProgramIds(env.MARKET_STREAM_PROGRAM_IDS)).length,
       recentEventCount: liveMarketCache.getRecentEvents(Number.MAX_SAFE_INTEGER).length,
       startedAt: this.startedAt,
+      focusedMint: this.helius?.getFocusedMint() ?? null,
+      enricher: getEnricherStats(),
     };
   }
 
@@ -130,11 +166,26 @@ class StreamManager {
 
     // Forward to Real-Time Event Pipeline (Fast Path + Async Path)
     void realtimeProcessor.processDecodedEvent({
-      type: (raw.eventType === 'SWAP' ? 'BUY' : raw.eventType === 'LIQUIDITY_ADD' ? 'LIQUIDITY_ADDED' : 'TOKEN_UPDATE') as any,
-      signature: raw.eventId || `evt_${Date.now()}`,
+      // A swap carries its measured direction when the enricher could read it
+      // off the token-balance deltas; only fall back to BUY when it could not.
+      // Mapping every swap to BUY unconditionally is why `realtime_trades`
+      // held no sells at all.
+      type: (raw.eventType === 'SWAP'
+        ? raw.side === 'SELL'
+          ? 'SELL'
+          : 'BUY'
+        : raw.eventType === 'LIQUIDITY_ADD'
+          ? 'LIQUIDITY_ADDED'
+          : 'TOKEN_UPDATE') as any,
+      // The bare on-chain signature when the provider supplied one. Passing
+      // `eventId` here is what wrote `helius_<sig>_<program>` into
+      // `realtime_trades.signature`, a value no explorer can resolve.
+      signature: raw.signature || raw.eventId || `evt_${Date.now()}`,
       slot: 0,
       programId: raw.providerId,
       mint: raw.mint,
+      // Persisted by realtimeRepository.saveTrade, which already accepts it.
+      wallet: raw.wallet,
       amount: raw.volumeUsd ? Number(raw.volumeUsd) : undefined,
       price: raw.priceUsd ? Number(raw.priceUsd) : undefined,
       chainTimestamp: raw.timestamp ? new Date(raw.timestamp).getTime() : Date.now(),

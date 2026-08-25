@@ -1,3 +1,4 @@
+import { ApiError } from '@/lib/server/errors';
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { limitOrderService } from '@/lib/limit-order/limit-order-service';
@@ -18,7 +19,14 @@ export async function GET(
     }
 
     const { searchParams } = new URL(req.url);
-    const currentPrice = parseFloat(searchParams.get('currentPrice') || '0.0425');
+    // A price default is a fabrication: it silently prices a real decision
+    // off a constant. 0.0425 was that constant here, identical for every
+    // token. Absent now fails loudly instead.
+    const currentPriceRaw = searchParams.get('currentPrice');
+    const currentPrice = currentPriceRaw === null ? NaN : parseFloat(currentPriceRaw);
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      throw new ApiError('currentPrice is required to evaluate order conditions', 400);
+    }
     const mockLiquidity = searchParams.get('mockLiquidity') ? parseFloat(searchParams.get('mockLiquidity')!) : 850000;
     const mockExitability = searchParams.get('mockExitability') ? parseInt(searchParams.get('mockExitability')!, 10) : 84;
 

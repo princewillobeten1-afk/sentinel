@@ -21,16 +21,25 @@ export interface MarketSnapshot {
   timestamp: string;
 }
 
+/**
+ * Every figure is nullable, because every one of them can genuinely be
+ * unavailable.
+ *
+ * These were all required numbers, which is exactly why the provider's failure
+ * path invented a full set of them — SOL at $142.50, a 3.45% change, 48 active
+ * pools, a "SENT" trending token. A required field with no guaranteed source
+ * forces the code to make something up. `null` renders as an em-dash.
+ */
 export interface MarketSummary {
-  solPriceUsd: number;
-  solChange24h: number;
-  totalMarketCapUsd: number;
-  totalLiquidityUsd: number;
-  totalVolume24hUsd: number;
-  activePools: number;
+  solPriceUsd: number | null;
+  solChange24h: number | null;
+  totalMarketCapUsd: number | null;
+  totalLiquidityUsd: number | null;
+  totalVolume24hUsd: number | null;
+  activePools: number | null;
   trendingTokens: string[];
-  averageSpread: number;
-  marketSentiment: 'bullish' | 'neutral' | 'bearish';
+  averageSpread: number | null;
+  marketSentiment: 'bullish' | 'neutral' | 'bearish' | null;
   dataSource: MarketDataSource;
   updatedAt: string;
   freshness: FreshnessState;

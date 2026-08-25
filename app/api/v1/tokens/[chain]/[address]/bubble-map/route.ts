@@ -1,178 +1,124 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
-import { fetchTokenSecurity, fetchTokenOverview } from '@/lib/actions/birdeye';
+import { fetchHolderConcentration, type HolderRow } from '@/lib/tokens/holder-analysis';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/v1/tokens/:chain/:address/bubble-map
+ *
+ * Supply distribution across the largest holders, drawn from chain state.
+ *
+ * ## What this replaced
+ *
+ * A fixed set of nodes returned for every token: a "Raydium CPMM Pool" holding
+ * exactly 18.42%, a "Dev Creator Wallet" at 0.85%, retail at 67.21%, with
+ * invented addresses (`5xRydm99qP88x12kL0z1`), invented funding sources
+ * ("Genesis Raydium CPMM Vault") and hardcoded x/y coordinates. The same
+ * picture rendered for Wrapped SOL as for a token minted a minute ago.
+ *
+ * ## What is real here, and what is absent
+ *
+ * Addresses, balances and supply percentages come from
+ * `getTokenLargestAccounts` + `getTokenSupply`, resolved to owning wallets.
+ * Node radius is proportional to holding, and positions are laid out from the
+ * data rather than fixed.
+ *
+ * `fundingSource` is **null on every node**. Determining who funded a wallet
+ * needs a transaction-history walk that this endpoint does not do, and the
+ * previous strings were narrative. That is the funding-wallet graph, and it is
+ * a separate build.
+ */
+
+const CACHE_TTL_MS = 60_000;
+const cache = new Map<string, { at: number; payload: unknown }>();
+
+/** Lays nodes out on a ring, largest first, sized by holding. */
+function layout(holders: HolderRow[]) {
+  const width = 320;
+  const height = 260;
+  const centreX = width / 2;
+  const centreY = height / 2;
+
+  const maxPct = Math.max(...holders.map((h) => h.percent ?? 0), 0.0001);
+
+  return holders.map((holder, index) => {
+    // Largest sits at the centre; the rest ring outward in rank order.
+    const isCentre = index === 0;
+    const ringIndex = index - 1;
+    const perRing = 7;
+    const ring = Math.floor(ringIndex / perRing);
+    const angle = ((ringIndex % perRing) / perRing) * Math.PI * 2 + ring * 0.5;
+    const radius = 70 + ring * 46;
+
+    const share = (holder.percent ?? 0) / maxPct;
+    // Area-proportional, so a 2x holding does not look 4x larger.
+    const r = Math.max(9, Math.min(46, 9 + Math.sqrt(share) * 34));
+
+    return {
+      id: `node_${holder.rank}`,
+      label: holder.poolLabel ?? `#${holder.rank}`,
+      tag: holder.isPool ? 'dex' : 'holder',
+      address: holder.address,
+      tokenAccount: holder.tokenAccount,
+      balanceTokens: holder.balance,
+      supplyPct: holder.percent === null ? null : Number(holder.percent.toFixed(2)),
+      // No USD value: this endpoint reads balances, not prices, and deriving
+      // one from a price fetched elsewhere is how the app came to disagree
+      // with itself about what things are worth.
+      valueUsd: null,
+      x: isCentre ? centreX : centreX + Math.cos(angle) * radius,
+      y: isCentre ? centreY : centreY + Math.sin(angle) * radius,
+      r,
+      // Not determinable here — see the module header.
+      fundingSource: null,
+      color: holder.isPool ? 'rgba(6, 182, 212, 0.25)' : 'rgba(148, 163, 184, 0.18)',
+      borderColor: holder.isPool ? '#2B6FC4' : '#64748B',
+    };
+  });
+}
+
 export async function GET(
-  request: Request,
-  { params }: { params: { chain: string; address: string } }
+  _request: Request,
+  { params }: { params: { chain: string; address: string } },
 ) {
   try {
     const { chain, address } = params;
-
-    let symbol = 'TOKEN';
-    let price = 0.0425;
-    let devHoldingPct = 0.85;
-    let top10Pct = '14.20%';
-
-    try {
-      const [overview, security] = await Promise.all([
-        fetchTokenOverview(address).catch(() => null),
-        fetchTokenSecurity(address).catch(() => null),
-      ]);
-
-      if (overview) {
-        if (overview.symbol) symbol = overview.symbol;
-        if (overview.price) price = overview.price;
-      }
-
-      if (security) {
-        if (security.creatorPercentage != null) {
-          devHoldingPct = Number(security.creatorPercentage) || 0.85;
-        }
-        if (security.top10HolderPercent != null) {
-          top10Pct = `${Number(security.top10HolderPercent).toFixed(2)}%`;
-        }
-      }
-    } catch {
-      // Degrade gracefully
+    if (!address || address.length < 32) {
+      throw new ApiError('A token mint address is required', 400);
     }
 
-    const stats = {
-      decentralizationScore: 89,
-      decentralizationRating: 'Safe & Decentralized',
-      top10ConcentrationPct: top10Pct,
-      devConnectedWalletsCount: 2,
-      devConnectedSupplyPct: `${devHoldingPct.toFixed(2)}%`,
-      sniperWalletsCount: 4,
-      sniperSupplyPct: '2.94%',
-      suspiciousClustersDetected: 0,
-    };
+    const cached = cache.get(address);
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+      return jsonResponse(cached.payload as Record<string, unknown>);
+    }
 
-    const nodes = [
-      {
-        id: 'node_dex_raydium',
-        label: 'Raydium CPMM Pool',
-        tag: 'dex',
-        address: '5xRydm99qP88x12kL0z1',
-        balanceTokens: `184,200,000 $${symbol}`,
-        supplyPct: 18.42,
-        valueUsd: `$${(184200000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 160,
-        y: 130,
-        r: 44,
-        fundingSource: 'Genesis Raydium CPMM Vault',
-        color: 'rgba(6, 182, 212, 0.25)',
-        borderColor: '#2B6FC4',
-      },
-      {
-        id: 'node_dev_creator',
-        label: 'Dev Creator Wallet',
-        tag: 'dev',
-        address: `${address.slice(0, 6)}...${address.slice(-4)}`,
-        balanceTokens: `8,500,000 $${symbol}`,
-        supplyPct: devHoldingPct,
-        valueUsd: `$${(8500000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 270,
-        y: 110,
-        r: 22,
-        fundingSource: 'Funded via Binance 45 days ago',
-        color: 'rgba(16, 185, 129, 0.25)',
-        borderColor: '#12B574',
-      },
-      {
-        id: 'node_whale_1',
-        label: 'Whale Accumulator #1',
-        tag: 'whale',
-        address: '4zW8j1k9pQ2x88b7',
-        balanceTokens: `45,200,000 $${symbol}`,
-        supplyPct: 4.52,
-        valueUsd: `$${(45200000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 380,
-        y: 90,
-        r: 32,
-        fundingSource: 'Funded via Kraken 12 days ago',
-        color: 'rgba(168, 85, 247, 0.25)',
-        borderColor: '#A78BFA',
-      },
-      {
-        id: 'node_whale_2',
-        label: 'Smart Money Whale #2',
-        tag: 'whale',
-        address: '1aM3p88qL2vN77b3',
-        balanceTokens: `38,100,000 $${symbol}`,
-        supplyPct: 3.81,
-        valueUsd: `$${(38100000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 350,
-        y: 180,
-        r: 30,
-        fundingSource: 'Funded via Coinbase 20 days ago',
-        color: 'rgba(168, 85, 247, 0.25)',
-        borderColor: '#A78BFA',
-      },
-      {
-        id: 'node_sniper_cluster',
-        label: 'Early Sniper Cluster (4 Wallets)',
-        tag: 'sniper',
-        address: '8tV3...1m44 + 3 linked',
-        balanceTokens: `29,400,000 $${symbol}`,
-        supplyPct: 2.94,
-        valueUsd: `$${(29400000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 480,
-        y: 140,
-        r: 26,
-        fundingSource: 'Funded via FixedFloat router',
-        color: 'rgba(245, 158, 11, 0.25)',
-        borderColor: '#E5A23D',
-      },
-      {
-        id: 'node_insider_cluster',
-        label: 'Connected Trader Group',
-        tag: 'insider',
-        address: '3kL0...5v91 + 2 linked',
-        balanceTokens: `22,500,000 $${symbol}`,
-        supplyPct: 2.25,
-        valueUsd: `$${(22500000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 230,
-        y: 200,
-        r: 24,
-        fundingSource: 'Funded via OKX 8 days ago',
-        color: 'rgba(56, 189, 248, 0.25)',
-        borderColor: '#3B8FF0',
-      },
-      {
-        id: 'node_retail_holders',
-        label: '1.4K Decentralized Retail Holders',
-        tag: 'retail',
-        address: '1,380 Individual Wallets',
-        balanceTokens: `672,100,000 $${symbol}`,
-        supplyPct: 67.21,
-        valueUsd: `$${(672100000 * price).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-        x: 100,
-        y: 190,
-        r: 38,
-        fundingSource: 'Organic Solana Mainnet Inflows',
-        color: 'rgba(71, 85, 105, 0.25)',
-        borderColor: '#98A3B3',
-      },
-    ];
+    const rpcUrl = process.env.HELIUS_RPC_URL?.trim();
+    if (!rpcUrl) throw new ApiError('No Solana RPC is configured', 503);
 
-    const edges = [
-      { source: 'node_dev_creator', target: 'node_sniper_cluster', type: 'funding_link', stroke: 'rgba(245, 158, 11, 0.4)' },
-      { source: 'node_dev_creator', target: 'node_insider_cluster', type: 'transfer_link', stroke: 'rgba(56, 189, 248, 0.4)' },
-      { source: 'node_dex_raydium', target: 'node_dev_creator', type: 'genesis_lp', stroke: 'rgba(6, 182, 212, 0.3)' },
-    ];
+    const concentration = await fetchHolderConcentration(rpcUrl, address);
+    if (!concentration) {
+      throw new ApiError('Holder distribution is unavailable for this token right now', 503);
+    }
 
-    return jsonResponse({
+    const payload = {
       token: address,
       chain: chain.toLowerCase(),
-      stats,
-      nodes,
-      edges,
+      nodes: layout(concentration.holders),
+      top10ConcentrationPct: concentration.top10Pct,
+      totalSupply: concentration.totalSupply,
+      // Clustering requires the funding graph, which is not built. Reporting 0
+      // would read as "checked, none found".
+      suspiciousClustersDetected: null,
+      coverage: 'Top 20 token accounts by balance. Funding relationships are not mapped.',
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    cache.set(address, { at: Date.now(), payload });
+    return jsonResponse(payload);
   } catch (error) {
-    return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch bubble map', 500));
+    return errorResponse(
+      error instanceof Error ? error : new ApiError('Failed to build distribution map', 500),
+    );
   }
 }

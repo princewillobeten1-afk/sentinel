@@ -31,6 +31,10 @@ export const env = {
   HELIUS_API_KEY: process.env.HELIUS_API_KEY ?? '',
   BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY ?? '',
   HELIUS_WS_URL: process.env.HELIUS_WS_URL ?? 'wss://devnet.helius-rpc.com',
+  // Mainnet RPC for the parsed-transaction enricher. Separate from
+  // NEXT_PUBLIC_SOLANA_RPC_URL, which stays on devnet because wallet transfers
+  // are devnet-only — market data is read from mainnet, funds never move there.
+  HELIUS_RPC_URL: process.env.HELIUS_RPC_URL ?? '',
   HELIUS_GRPC_URL: process.env.HELIUS_GRPC_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',
   HELIUS_GRPC_TOKEN: process.env.HELIUS_GRPC_TOKEN ?? '',
   HELIUS_LASERSTREAM_URL: process.env.HELIUS_LASERSTREAM_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',

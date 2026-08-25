@@ -11,6 +11,7 @@ import type {
 import { birdeyeGet } from './birdeye-rest-client';
 import { resolveMint } from './mint-resolver';
 import { logger } from '@/lib/server/logger';
+import { getTokenPriceUsd, SOL_MINT as CANONICAL_SOL_MINT } from './canonical-price';
 
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
@@ -182,19 +183,29 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
       if (cachedSummary) {
         return { ...cachedSummary.data, freshness: 'delayed' };
       }
+      // Birdeye is the primary here and its quota is exhausted, so this branch
+      // runs on essentially every call. It used to answer with a block of
+      // literals — SOL at $142.50, a 3.45% change, a "SENT" trending token —
+      // which is how the status bar came to disagree with every other price on
+      // the site by roughly 50%.
+      //
+      // The price now comes from the same canonical source Discover uses, and
+      // anything genuinely unavailable is reported as unavailable rather than
+      // invented.
+      const sol = await getTokenPriceUsd(CANONICAL_SOL_MINT);
       return {
-        solPriceUsd: 142.50,
-        solChange24h: 3.45,
-        totalMarketCapUsd: 64200000000,
-        totalLiquidityUsd: 840000000,
-        totalVolume24hUsd: 2150000000,
-        activePools: 48,
-        trendingTokens: ['SENT', 'SOL', 'BONK', 'JUP', 'WIF'],
-        averageSpread: 0.05,
-        marketSentiment: 'bullish',
-        dataSource: 'solana',
+        solPriceUsd: sol?.usdPrice ?? null,
+        solChange24h: sol?.priceChange24h ?? null,
+        totalMarketCapUsd: null,
+        totalLiquidityUsd: null,
+        totalVolume24hUsd: null,
+        activePools: null,
+        trendingTokens: [],
+        averageSpread: null,
+        marketSentiment: null,
+        dataSource: 'jupiter',
         updatedAt: new Date().toISOString(),
-        freshness: 'delayed',
+        freshness: sol ? 'delayed' : 'unavailable',
       };
     }
   }

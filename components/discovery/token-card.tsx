@@ -20,13 +20,18 @@ import {
   Flame,
   Info,
   AlertTriangle,
+  Globe,
+  Send,
+  BarChart2,
 } from 'lucide-react';
-import { useAppActions } from '@/lib/store';
+import { useAppState, useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { DiscoveryToken } from '@/lib/discovery/types';
 import { Decimal } from '@/lib/math/decimal';
 import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase } from '@/lib/discovery/format';
 import { TokenAvatar } from '@/components/ui/token-avatar';
+import { MetricValue } from '@/components/ui/metric-value';
+import { toValueState } from '@/lib/ui/value-state';
 
 interface TokenDiscoveryCardProps {
   token: DiscoveryToken;
@@ -69,8 +74,11 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   onQuickBuy,
 }: TokenDiscoveryCardProps) {
   const router = useRouter();
-  const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
+  const { primaryWallet, connectedWallet } = useAppState();
+  const { setQuickBuyOpen, setWalletModalOpen, addNotification, setSelectedToken, setActiveView } = useAppActions();
   const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
+
+  const activeWallet = primaryWallet || connectedWallet;
 
   const [copied, setCopied] = useState(false);
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
@@ -105,12 +113,39 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const handleToggleWatchlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    toggleWatchlist(token.mint);
+    const willWatchlist = !isWatchlisted;
+    toggleWatchlist(token.mint, {
+      mint: token.mint,
+      symbol: token.symbol,
+      name: token.name,
+      priceUsd: formatSmartPrice(token.priceUsd),
+      priceChange24h: priceChange,
+      marketCapUsd: formatCompactUSD(token.marketCapUsd),
+      liquidityUsd: formatCompactUSD(token.liquidityUsd),
+      riskRating: (token.riskTier as any) || 'low',
+      chain: token.chain || 'solana',
+    });
+    addNotification({
+      title: willWatchlist ? 'Added to Watchlist' : 'Removed from Watchlist',
+      message: `${token.name} ($${token.symbol}) was ${willWatchlist ? 'added to' : 'removed from'} your watchlist.`,
+      type: 'system',
+    });
   };
 
   const handleTriggerBuy = (e: React.MouseEvent, amount?: number) => {
     e.preventDefault();
     e.stopPropagation();
+
+    if (!activeWallet) {
+      setWalletModalOpen(true);
+      addNotification({
+        title: 'Connect Wallet',
+        message: 'Please connect your Solana wallet to buy tokens.',
+        type: 'system',
+      });
+      return;
+    }
+
     if (onQuickBuy && amount) {
       onQuickBuy(token, amount);
       return;
@@ -121,6 +156,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       mint: token.mint,
       price: priceDec.formatUSD(4),
       mcap: mcapDec.formatUSD(0),
+      customAmountSol: quickBuyMode === 'sol' ? amount : undefined,
     });
   };
 
@@ -149,6 +185,20 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const buyPct = buyRatio !== null ? Math.round(buyRatio * 100) : null;
   const sellPct = buyPct !== null ? 100 - buyPct : null;
 
+  /**
+   * Four states, not one dash.
+   *
+   * `T10: —` read as "checked, nothing to report" whether the value was zero,
+   * still computing, or never obtainable. `auditPending` marks the case where
+   * the row rendered ahead of its analysis — the ownership pipeline fills these
+   * in behind the feed.
+   */
+  const top10State = toValueState(token.top10HoldingsPct ?? null, {
+    isPending: token.auditPending === true,
+  });
+  const devState = toValueState(token.devHoldingsPct ?? null, {
+    isPending: token.auditPending === true,
+  });
   const top10 = token.top10HoldingsPct ?? null;
   const devHoldings = token.devHoldingsPct ?? null;
   const riskScore = token.riskScore ?? token.discoveryScore?.totalScore ?? null;
@@ -208,6 +258,17 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               <span className="text-2xs text-slate-400 truncate max-w-[55px]" title={token.symbol}>
                 ${token.symbol}
               </span>
+              {/* Copycat swarm. Ten near-identical launches inside one 30-row
+                  response is the finding — collapsing them silently would throw
+                  the signal away along with the noise. */}
+              {(token.duplicateCount ?? 1) > 1 && (
+                <span
+                  className="shrink-0 px-1 py-px rounded bg-amber-950/60 border border-amber-900/60 text-2xs font-mono font-bold text-amber-400"
+                  title={`${token.duplicateCount} launches with this name and symbol appeared together. The most liquid is shown.`}
+                >
+                  ×{token.duplicateCount}
+                </span>
+              )}
               <button
                 onClick={handleCopyAddress}
                 className="text-slate-500 hover:text-slate-200 transition-colors p-0.5 shrink-0 ml-auto"
@@ -218,13 +279,15 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               </button>
               <button
                 onClick={handleToggleWatchlist}
-                className={`transition-colors p-0.5 shrink-0 ${
-                  isWatchlisted ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'
+                className={`transition-all p-1 rounded-md shrink-0 border ${
+                  isWatchlisted
+                    ? 'text-amber-400 bg-amber-500/15 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                    : 'text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 border-transparent'
                 }`}
-                title={isWatchlisted ? 'In Watchlist' : 'Add to Watchlist'}
+                title={isWatchlisted ? 'In Watchlist (Click to remove)' : 'Add to Watchlist'}
                 aria-label="Toggle Watchlist"
               >
-                <Star className={`w-2.5 h-2.5 ${isWatchlisted ? 'fill-current' : ''}`} />
+                <Star className={`w-3.5 h-3.5 ${isWatchlisted ? 'fill-amber-400' : ''}`} />
               </button>
             </div>
 
@@ -325,37 +388,32 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             reads as "not known", where a green badge would read as "safe". */}
         <div
           className={`flex items-center gap-0.5 px-1 py-0.5 rounded border ${
-            top10 === null
+            top10State.kind !== 'value'
               ? 'bg-slate-900/80 border-slate-800 text-slate-500'
-              : top10 > 60
+              : top10State.value > 60
               ? 'bg-rose-950/40 border-rose-900/50 text-rose-400'
-              : top10 > 30
+              : top10State.value > 30
               ? 'bg-amber-950/40 border-amber-900/50 text-amber-400'
               : 'bg-emerald-950/40 border-emerald-900/50 text-emerald-400'
           }`}
-          title={
-            top10 === null
-              ? 'Top 10 holder concentration has not been measured for this token'
-              : `Top 10 holders own ${top10}% of total supply`
-          }
         >
           <span className="text-2xs text-slate-500">T10:</span>
-          <span className="font-semibold">{top10 === null ? '—' : `${top10}%`}</span>
+          <MetricValue
+            state={top10State}
+            label="Top 10 holder concentration"
+            format={(v) => `${v.toFixed(v < 10 ? 1 : 0)}%`}
+          />
         </div>
 
         {/* Dev Holdings */}
-        <div
-          className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-900/80 border border-slate-800 text-slate-300"
-          title={
-            devHoldings === null
-              ? 'Developer holdings have not been measured for this token'
-              : `Developer owns ${devHoldings}%`
-          }
-        >
+        <div className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-900/80 border border-slate-800 text-slate-300">
           <span className="text-2xs text-slate-500">DEV:</span>
-          <span className={`font-semibold ${devHoldings === null ? 'text-slate-500' : 'text-cyan-400'}`}>
-            {devHoldings === null ? '—' : `${devHoldings}%`}
-          </span>
+          <MetricValue
+            state={devState}
+            label="Developer holdings"
+            format={(v) => `${v.toFixed(v < 10 ? 1 : 0)}%`}
+            colorize={() => 'text-cyan-400'}
+          />
         </div>
 
         {/* Safety Score. An unscored token is explicitly unscored, never "low risk". */}
@@ -369,14 +427,13 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               ? 'bg-amber-950/40 border-amber-900/50 text-amber-400'
               : 'bg-rose-950/40 border-rose-900/50 text-rose-400'
           }`}
-          title={
-            riskScore === null
-              ? 'This token has not been scored yet'
-              : `Safety score ${riskScore}/100: ${String(riskTier).toUpperCase()} risk`
-          }
         >
           <Shield className="w-2.5 h-2.5" />
-          <span>{riskScore === null ? '—' : riskScore}</span>
+          <MetricValue
+            state={toValueState(riskScore, { isPending: token.auditPending === true })}
+            label="Safety score"
+            format={(v) => `${v}`}
+          />
         </div>
 
         {/* AI Signal Badge */}
@@ -393,25 +450,83 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
       {/* 5. Quick Buy Action Bar (Requirement 15 & 16) */}
       <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-800/60">
-        {/* Social / Contract Quick Icons */}
-        <div className="flex items-center gap-1 text-slate-500">
+        {/* Social, DEX & Explorer Links */}
+        <div className="flex items-center gap-1 text-slate-500 shrink-0">
           <button
             onClick={handleCopyAddress}
             className="px-1 py-0.5 rounded hover:bg-slate-800 text-2xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
-            title="Copy Contract Address"
+            title="Copy Contract Address (CA)"
           >
             CA
           </button>
+
+          {/* Twitter / X */}
           <Link
-            href={`https://x.com/search?q=${encodeURIComponent(token.symbol)}`}
+            href={token.twitterUrl || `https://x.com/search?q=${encodeURIComponent(token.symbol)}`}
             target="_blank"
             rel="noreferrer"
-            className="p-1 hover:text-slate-300 transition-colors"
-            title="Twitter/X Search"
+            className="p-1 hover:text-sky-400 text-slate-400 transition-colors"
+            title={token.twitterUrl ? 'Official Twitter/X' : 'Search on Twitter/X'}
             onClick={(e) => e.stopPropagation()}
           >
             <Twitter className="w-2.5 h-2.5" />
           </Link>
+
+          {/* Telegram */}
+          {token.telegramUrl && (
+            <Link
+              href={token.telegramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1 hover:text-sky-400 text-slate-400 transition-colors"
+              title="Official Telegram Channel"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Send className="w-2.5 h-2.5" />
+            </Link>
+          )}
+
+          {/* Official Website */}
+          {token.websiteUrl && (
+            <Link
+              href={token.websiteUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1 hover:text-emerald-400 text-slate-400 transition-colors"
+              title="Official Project Website"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Globe className="w-2.5 h-2.5" />
+            </Link>
+          )}
+
+          {/* DexScreener */}
+          <Link
+            href={`https://dexscreener.com/solana/${token.mint}`}
+            target="_blank"
+            rel="noreferrer"
+            className="p-1 hover:text-emerald-400 text-slate-400 transition-colors"
+            title="View Live Chart on DexScreener"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BarChart2 className="w-2.5 h-2.5" />
+          </Link>
+
+          {/* Pump.fun Link if applicable */}
+          {isPumpFun && (
+            <Link
+              href={`https://pump.fun/coin/${token.mint}`}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1 hover:text-emerald-400 text-slate-400 transition-colors font-bold text-2xs leading-none"
+              title="View on Pump.fun"
+              onClick={(e) => e.stopPropagation()}
+            >
+              💊
+            </Link>
+          )}
+
+          {/* Solscan Explorer */}
           <Link
             href={`https://solscan.io/token/${token.mint}`}
             target="_blank"

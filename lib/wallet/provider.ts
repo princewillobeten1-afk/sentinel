@@ -1,6 +1,6 @@
-export type WalletProviderId = 'phantom' | 'solflare' | 'embedded' | 'standard';
+export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'okx' | 'embedded' | 'manual' | 'standard';
 
-export type WalletType = 'extension' | 'standard' | 'embedded';
+export type WalletType = 'extension' | 'standard' | 'embedded' | 'manual';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -27,7 +27,7 @@ export interface WalletProvider {
   status: ConnectionStatus;
   
   // Core connection
-  connect(): Promise<string>;
+  connect(customAddress?: string): Promise<string>;
   disconnect(): Promise<void>;
   getAddress(): string | null;
   
@@ -36,6 +36,8 @@ export interface WalletProvider {
   isAvailable?(): boolean;
   /** Official install page, so "not installed" can be made actionable. */
   getInstallUrl?(): string | undefined;
+  /** Export private key for embedded smart wallets */
+  exportPrivateKey?(): string | null;
 
   // Capabilities
   getCapabilities(): WalletCapabilities;

@@ -71,7 +71,15 @@ export function calculateTrendingScore(token: DiscoveryToken, window: TimeWindow
   const momentumScore = Math.min(100, Math.max(0, pChange * 3.5));
 
   // 5. Market Attention & Holder Growth (13%)
-  const attentionScore = Math.min(100, Math.max(0, token.holderGrowth1hPct * 3.0));
+  //
+  // Holder growth is not published for every token. Scoring an unknown as 0
+  // would rank it below a token measured at zero growth — penalising a gap in
+  // the data as though it were a finding. Instead the component is dropped and
+  // its weight redistributed across the others, so tokens are compared on what
+  // is actually known about them.
+  const holderGrowth = token.holderGrowth1hPct;
+  const hasAttention = holderGrowth !== undefined;
+  const attentionScore = hasAttention ? Math.min(100, Math.max(0, holderGrowth * 3.0)) : 0;
 
   // 6. Liquidity Depth & Stability (8%)
   const liqNum = parseFloat(token.liquidityUsd);
@@ -81,17 +89,20 @@ export function calculateTrendingScore(token: DiscoveryToken, window: TimeWindow
   const recencyScore = token.ageMinutes <= 60 ? 100 : Math.max(10, 100 - token.ageMinutes / 20);
 
   // Composite Weighted Sum (raw, before decay)
+  const ATTENTION_WEIGHT = 0.13;
   const weightedTotal =
     activityScore * 0.18 +
     volumeAccelScore * 0.18 +
     txCountScore * 0.12 +
     txAccelScore * 0.12 +
     momentumScore * 0.15 +
-    attentionScore * 0.13 +
+    (hasAttention ? attentionScore * ATTENTION_WEIGHT : 0) +
     liquidityScore * 0.08 +
     recencyScore * 0.06;
 
-  const rawScore = Math.min(100, Math.max(0, Math.round(weightedTotal)));
+  // Renormalise when attention was dropped, so the score still spans 0-100.
+  const appliedWeight = hasAttention ? 1 : 1 - ATTENTION_WEIGHT;
+  const rawScore = Math.min(100, Math.max(0, Math.round(weightedTotal / appliedWeight)));
 
   // Apply exponential time-decay based on token age
   const decayFactor = calculateDecayFactor(token.ageMinutes);

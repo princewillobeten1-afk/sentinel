@@ -3,8 +3,8 @@ import { parseDiscoveryQuery, queryToFilter } from '@/lib/discovery/query-model'
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
 import { DiscoveryToken } from '@/lib/discovery/types';
-import { resolveOffset, nextCursorFor, computeFilterFingerprint } from '@/lib/discovery/cursor';
-import { getMockDiscoveryTokens } from '@/lib/discovery/service';
+import { computeFilterFingerprint, resolveOffset, nextCursorFor } from '@/lib/discovery/cursor';
+import { getLiveDiscoveryTokens } from '@/lib/discovery/live-solana-feed';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +17,7 @@ export const GET = withApiGateway(
       const fingerprint = computeFilterFingerprint({ section: 'smart-money', chain: params.chain, timeWindow: params.timeWindow });
       const offset = resolveOffset(params.offset, params.cursor, fingerprint);
 
-      const allTokens = getMockDiscoveryTokens({ ...queryToFilter(params), section: 'smart-money' });
+      const allTokens = await getLiveDiscoveryTokens({ ...queryToFilter(params), section: 'smart-money' });
       const mappedTokens: DiscoveryToken[] = allTokens.slice(offset, offset + params.limit);
 
       const nextCursor = nextCursorFor(
@@ -33,14 +33,14 @@ export const GET = withApiGateway(
         chain: params.chain,
         timeWindow: params.timeWindow,
         updatedAt: new Date().toISOString(),
-        totalCount: mappedTokens.length,
+        totalCount: allTokens.length,
         limit: params.limit,
         offset,
         nextCursor,
         tokens: mappedTokens,
       }, 200);
     } catch (error) {
-      return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch smart money tokens', 500));
+      return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch smart-money tokens', 500));
     }
   },
   { scopes: ['READ_MARKET_DATA'], optionalAuth: true },

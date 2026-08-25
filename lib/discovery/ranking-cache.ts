@@ -1,5 +1,5 @@
 import type { DiscoveryToken, DiscoveryFilter, TimeWindow, DiscoverySection } from './types';
-import { getMockDiscoveryTokens } from './service';
+import { getLiveDiscoveryTokens } from './live-solana-feed';
 import { calculateTrendingScore } from './trending-engine';
 
 interface CachedRankList {
@@ -43,51 +43,38 @@ export class RankingCache {
   /**
    * Get cached or compute Global Ranking.
    */
-  public getGlobalRanking(chain = 'solana', window: TimeWindow = '15m'): DiscoveryToken[] {
-    const key = this.getCacheKey('global', chain, window);
-    return this.getOrCompute(key, () => {
-      return getMockDiscoveryTokens({ chain, timeWindow: window });
-    });
+  public async getGlobalRanking(chain = 'solana', window: TimeWindow = '15m'): Promise<DiscoveryToken[]> {
+    return getLiveDiscoveryTokens({ chain, timeWindow: window, section: 'trending' });
   }
 
   /**
    * Get cached or compute Chain Ranking.
    */
-  public getChainRanking(chain: string, window: TimeWindow = '15m'): DiscoveryToken[] {
-    const key = this.getCacheKey('chain', chain, window);
-    return this.getOrCompute(key, () => {
-      return getMockDiscoveryTokens({ chain, timeWindow: window });
-    });
+  public async getChainRanking(chain: string, window: TimeWindow = '15m'): Promise<DiscoveryToken[]> {
+    return getLiveDiscoveryTokens({ chain, timeWindow: window, section: 'trending' });
   }
 
   /**
    * Get cached or compute Category Ranking (trending, new, momentum, etc.).
    */
-  public getCategoryRanking(section: DiscoverySection, chain = 'solana', window: TimeWindow = '15m'): DiscoveryToken[] {
-    const key = this.getCacheKey('category', chain, window, section);
-    return this.getOrCompute(key, () => {
-      return getMockDiscoveryTokens({ section, chain, timeWindow: window });
-    });
+  public async getCategoryRanking(section: DiscoverySection, chain = 'solana', window: TimeWindow = '15m'): Promise<DiscoveryToken[]> {
+    return getLiveDiscoveryTokens({ section, chain, timeWindow: window });
   }
 
   /**
    * Get cached or compute Time-Window Ranking.
    */
-  public getTimeWindowRanking(window: TimeWindow, chain = 'solana', section?: DiscoverySection): DiscoveryToken[] {
-    const key = this.getCacheKey('timewindow', chain, window, section);
-    return this.getOrCompute(key, () => {
-      return getMockDiscoveryTokens({ section: section || 'trending', chain, timeWindow: window });
-    });
+  public async getTimeWindowRanking(window: TimeWindow, chain = 'solana', section?: DiscoverySection): Promise<DiscoveryToken[]> {
+    return getLiveDiscoveryTokens({ section: section || 'trending', chain, timeWindow: window });
   }
 
   /**
    * Get cached or compute Personalized Ranking.
    * Boosts score of tokens in user's watchlist or interacting history.
    */
-  public getPersonalizedRanking(userId: string, watchlistMints: string[], chain = 'solana', window: TimeWindow = '15m'): DiscoveryToken[] {
-    const key = this.getCacheKey('personalized', chain, window, undefined, userId);
-    return this.getOrCompute(key, () => {
-      const baseList = getMockDiscoveryTokens({ chain, timeWindow: window });
+  public async getPersonalizedRanking(userId: string, watchlistMints: string[], chain = 'solana', window: TimeWindow = '15m'): Promise<DiscoveryToken[]> {
+    {
+      const baseList = await getLiveDiscoveryTokens({ chain, timeWindow: window, section: 'trending' });
       const watchlistSet = new Set(watchlistMints);
 
       return [...baseList].sort((a, b) => {
@@ -97,7 +84,7 @@ export class RankingCache {
         const scoreB = b.discoveryScore.totalScore + bWatch;
         return scoreB - scoreA;
       });
-    });
+    }
   }
 
   /**

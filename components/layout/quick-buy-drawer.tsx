@@ -16,13 +16,15 @@ import {
   XCircle,
   Sparkles,
   TrendingUp,
+  Wallet,
+  Star,
 } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { TokenSocials } from '@/components/ui/token-socials';
-import { useAppState, useAppActions } from '@/lib/store';
+import { useAppState, useAppActions, useWatchlist } from '@/lib/store';
 
 /* ── Types ─────────────────────────────────────────────────── */
 
@@ -178,8 +180,11 @@ function resolveContractAddress(address: string): Promise<ResolvedToken | null> 
 /* ── Component ─────────────────────────────────────────────── */
 
 export function QuickBuyDrawer() {
-  const { isQuickBuyOpen, quickBuyToken, connectedWallet } = useAppState();
-  const { setQuickBuyOpen, addNotification, addExecutionLog } = useAppActions();
+  const { isQuickBuyOpen, quickBuyToken, connectedWallet, primaryWallet } = useAppState();
+  const { setQuickBuyOpen, setWalletModalOpen, addNotification, addExecutionLog, recordTradeExecution } = useAppActions();
+  const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
+
+  const activeWallet = primaryWallet || connectedWallet;
 
   /* ── Contract Address Resolution ── */
   const [contractInput, setContractInput] = useState('');
@@ -197,7 +202,7 @@ export function QuickBuyDrawer() {
   const [isExecuting, setIsExecuting] = useState(false);
 
   const presets = ['0.1', '0.5', '1.0', '5.0'];
-  const balance = connectedWallet?.balanceSol ?? 42.85;
+  const balance = activeWallet?.balanceSol ?? 0;
 
   // If the drawer receives a quickBuyToken from outside, use it
   useEffect(() => {
@@ -327,6 +332,17 @@ export function QuickBuyDrawer() {
   /* ── Execute order ── */
   const handleExecuteOrder = () => {
     if (!resolvedToken) return;
+
+    if (!activeWallet) {
+      setWalletModalOpen(true);
+      addNotification({
+        title: 'Wallet Required',
+        message: 'Please connect your Solana wallet before buying tokens.',
+        type: 'system',
+      });
+      return;
+    }
+
     setIsExecuting(true);
 
     addExecutionLog({
@@ -350,6 +366,19 @@ export function QuickBuyDrawer() {
       setIsExecuting(false);
       setQuickBuyOpen(false);
 
+      if (recordTradeExecution) {
+        recordTradeExecution({
+          side: 'buy',
+          tokenSymbol: resolvedToken.symbol,
+          tokenMint: resolvedToken.mint,
+          tokenName: resolvedToken.name,
+          amountSol: solVal,
+          tokenAmount: estimatedTokens,
+          priceUsd: resolvedToken.priceUsd || 0.042,
+          txHash: `Tx_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+        });
+      }
+
       addNotification({
         title: 'Quick Trade Executed',
         message: `Successfully bought ~${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${resolvedToken.symbol} for ${solAmount} SOL (Slippage: ${slippage}%, ${priorityFee})`,
@@ -357,7 +386,7 @@ export function QuickBuyDrawer() {
       });
 
       addExecutionLog({
-        text: `[EXECUTION-ENGINE] ✓ CONFIRMED: Tx hash 4zW8...9kL2 on Solana Mainnet — ${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${resolvedToken.symbol} acquired`,
+        text: `[EXECUTION-ENGINE] ✓ CONFIRMED: Tx hash on Solana Mainnet — ${estimatedTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${resolvedToken.symbol} acquired`,
         level: 'success',
       });
     }, 1200);
@@ -396,17 +425,30 @@ export function QuickBuyDrawer() {
                 </span>
               </div>
             )}
-            <Button
-              onClick={handleExecuteOrder}
-              variant="buy"
-              size="lg"
-              isLoading={isExecuting}
-              disabled={!solVal || solVal > balance}
-              className="w-full text-base py-3 shadow-glow-buy"
-              rightIcon={<ArrowRight className="h-4 w-4" />}
-            >
-              Execute Market Buy ({solAmount} SOL)
-            </Button>
+            {!activeWallet ? (
+              <Button
+                onClick={() => setWalletModalOpen(true)}
+                variant="buy"
+                size="lg"
+                className="w-full text-base py-3 shadow-glow-buy font-bold"
+                leftIcon={<Wallet className="h-4 w-4" />}
+                rightIcon={<ArrowRight className="h-4 w-4" />}
+              >
+                Connect Wallet to Buy
+              </Button>
+            ) : (
+              <Button
+                onClick={handleExecuteOrder}
+                variant="buy"
+                size="lg"
+                isLoading={isExecuting}
+                disabled={!solVal || solVal > balance}
+                className="w-full text-base py-3 shadow-glow-buy font-bold"
+                rightIcon={<ArrowRight className="h-4 w-4" />}
+              >
+                Execute Market Buy ({solAmount} SOL)
+              </Button>
+            )}
             <p className="text-2xs text-center text-slate-500 font-mono">
               Hotkey: Shift + B | Press ESC to cancel
             </p>
@@ -532,7 +574,49 @@ export function QuickBuyDrawer() {
                     {resolvedToken.symbol.replace('$', '').slice(0, 3)}
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-100 text-base">{resolvedToken.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-100 text-base">{resolvedToken.name}</h4>
+                      <button
+                        onClick={() => {
+                          const isW = checkWatchlisted(resolvedToken.mint);
+                          toggleWatchlist(resolvedToken.mint, {
+                            mint: resolvedToken.mint,
+                            symbol: resolvedToken.symbol,
+                            name: resolvedToken.name,
+                            priceUsd: resolvedToken.price.replace('$', ''),
+                            priceChange24h: resolvedToken.priceChange24h || 0,
+                            marketCapUsd: resolvedToken.mcap,
+                            liquidityUsd: resolvedToken.liquidity,
+                            riskRating: (resolvedToken.riskLevel as any) === 'critical' ? 'critical' : (resolvedToken.riskLevel as any) === 'high' ? 'high' : 'low',
+                            chain: 'solana',
+                          });
+                          addNotification({
+                            title: !isW ? 'Added to Watchlist' : 'Removed from Watchlist',
+                            message: `${resolvedToken.name} ($${resolvedToken.symbol}) was ${
+                              !isW ? 'added to' : 'removed from'
+                            } your watchlist.`,
+                            type: 'system',
+                          });
+                        }}
+                        className={`p-1 rounded-md transition-all shrink-0 border ${
+                          checkWatchlisted(resolvedToken.mint)
+                            ? 'text-amber-400 bg-amber-500/15 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                            : 'text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 border-transparent'
+                        }`}
+                        title={
+                          checkWatchlisted(resolvedToken.mint)
+                            ? 'In Watchlist (Click to remove)'
+                            : 'Add to Watchlist'
+                        }
+                        aria-label="Toggle Watchlist"
+                      >
+                        <Star
+                          className={`w-3.5 h-3.5 ${
+                            checkWatchlisted(resolvedToken.mint) ? 'fill-amber-400' : ''
+                          }`}
+                        />
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-slate-400 font-mono">{resolvedToken.symbol}</span>
                       <TokenSocials symbol={resolvedToken.symbol} showHandles={false} size="xs" />
@@ -609,7 +693,18 @@ export function QuickBuyDrawer() {
               <div className="flex items-center justify-between text-xs">
                 <label className="font-medium text-slate-300">Buy Amount (SOL)</label>
                 <span className="font-numeric text-slate-400">
-                  Balance: <span className="text-slate-200 font-bold">{balance} SOL</span>
+                  Balance:{' '}
+                  {activeWallet ? (
+                    <span className="text-slate-200 font-bold">{balance.toFixed(2)} SOL</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setWalletModalOpen(true)}
+                      className="text-sky-400 font-bold hover:underline"
+                    >
+                      Connect Wallet
+                    </button>
+                  )}
                 </span>
               </div>
 

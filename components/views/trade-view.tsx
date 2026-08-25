@@ -303,7 +303,17 @@ export function TradeView({ tokenMint: propTokenMint, tokenSymbol: propTokenSymb
                 {copied && <span className="text-emerald-400 text-2xs">Copied</span>}
               </p>
               {/* Token Social Media Handles */}
-              <TokenSocials symbol={currentToken.symbol} showHandles={true} size="xs" />
+              <TokenSocials
+                symbol={currentToken.symbol}
+                mint={currentToken.mint}
+                socials={{
+                  twitter: tokenOverview?.twitterUrl || tokenOverview?.socials?.twitter,
+                  telegram: tokenOverview?.telegramUrl || tokenOverview?.socials?.telegram,
+                  website: tokenOverview?.websiteUrl || tokenOverview?.socials?.website,
+                }}
+                showHandles={true}
+                size="xs"
+              />
             </div>
           </div>
         </div>
@@ -532,7 +542,7 @@ export function TradeView({ tokenMint: propTokenMint, tokenSymbol: propTokenSymb
           walletId={activeWalletAddress}
           tokenId={quoteSymbol}
           action={orderType === 'buy' ? 'BUY' : 'SELL'}
-          amountUsd={parseFloat(solAmount) * n(marketSummary?.solPriceUsd)}
+          amountUsd={parseFloat(solAmount) * n(marketSummary?.solPriceUsd ?? undefined)}
           simulation={
             pendingQuote
               ? {
@@ -540,7 +550,7 @@ export function TradeView({ tokenMint: propTokenMint, tokenSymbol: propTokenSymb
                   expectedReceiveUsd: Math.max(
                     0,
                     parseFloat(solAmount) *
-                      n(marketSummary?.solPriceUsd) *
+                      n(marketSummary?.solPriceUsd ?? undefined) *
                       (1 - pendingQuote.priceImpactPct / 100) -
                       pendingQuote.networkFeeUsd,
                   ),

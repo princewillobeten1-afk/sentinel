@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Sparkles,
   Flame,
@@ -41,6 +41,7 @@ interface TerminalColumnProps {
 const SECTION_ICONS: Record<DiscoverySection, React.ReactNode> = {
   new: <Sparkles className="w-3.5 h-3.5 text-sky-400" />,
   trending: <Flame className="w-3.5 h-3.5 text-amber-400" />,
+  hot: <Zap className="w-3.5 h-3.5 text-rose-400" />,
   migrating: <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />,
   graduated: <GraduationCap className="w-3.5 h-3.5 text-purple-400" />,
   watchlist: <Star className="w-3.5 h-3.5 text-amber-400" />,
@@ -99,7 +100,32 @@ export function TerminalColumn({
     error,
     refresh,
     liveConnected,
+    state: feedState,
+    lastUpdatedAt,
   } = useDiscoveryFeed(config.type, timeWindow, combinedFilters);
+
+  /**
+   * How stale this column's rows are.
+   *
+   * A failed fetch keeps the previous rows rather than blanking the column —
+   * but they must not go on looking current. This ticks so the age advances
+   * visibly instead of freezing at whatever it was when React last rendered.
+   */
+  const [ageTick, setAgeTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAgeTick((n) => n + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // `ageTick` is a genuine dependency: without it this recomputes only when
+  // React happens to re-render, and the age would freeze mid-count.
+  const staleForSec = useMemo(
+    () =>
+      feedState === 'stale' && lastUpdatedAt
+        ? Math.floor((Date.now() - lastUpdatedAt) / 1000)
+        : null,
+    [feedState, lastUpdatedAt, ageTick],
+  );
 
   // Handle real-time buffer & scroll detection
   useEffect(() => {
@@ -176,6 +202,17 @@ export function TerminalColumn({
           <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-2xs font-bold text-slate-400 shrink-0">
             {sortedTokens.length}
           </span>
+          {/* Says the rows are old rather than letting them pass as current. */}
+          {staleForSec !== null && (
+            <span
+              className="px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-900/50 text-2xs font-mono text-amber-400 shrink-0 whitespace-nowrap"
+              title={`This column's last successful update was ${staleForSec}s ago. Rows shown are from then.`}
+            >
+              {staleForSec < 60
+                ? `${staleForSec}s old`
+                : `${Math.floor(staleForSec / 60)}m ${staleForSec % 60}s old`}
+            </span>
+          )}
         </div>
 
         {/* Column Header Controls: Sort Dropdown & Actions */}
@@ -297,8 +334,11 @@ export function TerminalColumn({
             <p className="text-2xs text-slate-500">Try loosening your filter parameters</p>
           </div>
         ) : (
-          /* Dense Cards List */
-          sortedTokens.map((token) => (
+          /* Dense Cards List.
+             Desaturated while stale: the header badge states the age, and the
+             rows themselves stop looking live. */
+          <div className={feedState === 'stale' ? 'opacity-60 saturate-50 transition-opacity' : undefined}>
+          {sortedTokens.map((token) => (
             <TokenDiscoveryCard
               key={token.id || token.mint}
               token={token}
@@ -307,7 +347,8 @@ export function TerminalColumn({
               quickBuyMode={quickBuyMode}
               onQuickBuy={onQuickBuy}
             />
-          ))
+          ))}
+          </div>
         )}
       </div>
     </div>

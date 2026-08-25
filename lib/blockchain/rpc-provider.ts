@@ -271,7 +271,8 @@ export const defaultRpcPool = new RpcProviderPool([
     id: 'solana_secondary',
     name: 'Helius Laserstream Cluster',
     chainId: 'solana',
-    url: `https://devnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || 'ba0b20f1-f08d-4949-b128-2be4eff7fe2c'}`,
+    // See lib/chain/rpc-pool.ts — same removed hardcoded credential.
+    url: `https://devnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY ?? ''}`,
     tier: 'secondary',
     weight: 95,
     maxRps: 100,

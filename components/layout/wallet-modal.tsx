@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Wallet,
   CheckCircle2,
@@ -19,10 +19,16 @@ import {
   ArrowUpFromLine,
   History,
   Coins,
+  Key,
+  Eye,
+  EyeOff,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useWalletState, useWalletActions, useNotificationsActions } from '@/lib/store';
 import { WalletProviderId } from '@/lib/wallet/types';
 import { DepositTab } from '@/components/wallet/deposit-tab';
@@ -49,7 +55,9 @@ export function WalletModal() {
     setWalletModalOpen,
     setActiveWalletTab,
     connectWallet,
+    fastConnectSmartWallet,
     authenticateSIWS,
+    exportSmartWalletPrivateKey,
     linkSecondaryWallet,
     setPrimaryWallet,
     updateWalletLabel,
@@ -60,9 +68,19 @@ export function WalletModal() {
 
   const { addNotification } = useNotificationsActions();
 
+  const [customAddressInput, setCustomAddressInput] = useState('');
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [exportedKey, setExportedKey] = useState<string | null>(null);
+
   const handleSelectAdapter = async (adapterId: WalletProviderId) => {
     resetAuthError();
     await connectWallet(adapterId);
+  };
+
+  const handleConnectCustomAddress = async () => {
+    if (!customAddressInput.trim()) return;
+    resetAuthError();
+    await connectWallet('manual', customAddressInput.trim());
   };
 
   const handleAuthenticate = async () => {
@@ -85,6 +103,14 @@ export function WalletModal() {
     });
   };
 
+  const handleExportKey = () => {
+    const key = exportSmartWalletPrivateKey();
+    if (key) {
+      setExportedKey(key);
+      setShowPrivateKey(true);
+    }
+  };
+
   return (
     <Modal
       isOpen={isWalletModalOpen}
@@ -101,13 +127,13 @@ export function WalletModal() {
       }
       subtitle={
         status === 'authenticated'
-          ? `Authenticated User: ${authenticatedIdentity?.displayName || 'Sentinel User'}`
-          : 'Solana Mainnet-Beta account authentication'
+          ? `Connected Wallet: ${primaryWallet ? `${primaryWallet.address.slice(0, 6)}...${primaryWallet.address.slice(-6)}` : 'Active'}`
+          : 'Connect your Solana wallet or generate an instant non-custodial Smart Wallet'
       }
       size="lg"
     >
       {authError && (
-        <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/20 p-3.5 flex items-start justify-between text-xs text-rose-300">
+        <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/30 p-3.5 flex items-start justify-between text-xs text-rose-300">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
             <span>{authError}</span>
@@ -118,21 +144,36 @@ export function WalletModal() {
         </div>
       )}
 
-      {/* VIEW 1: Connecting / Signing / SIWS Signature Challenge View */}
+      {/* VIEW 1: Connecting Status */}
       {status === 'connecting' ? (
-        <div className="py-8 space-y-4 text-center">
-          <RefreshCw className="h-8 w-8 text-sky-400 animate-spin mx-auto" />
-          <h4 className="text-sm font-bold text-slate-100">Connecting to {selectedAdapter?.name || 'Wallet'}...</h4>
-          <p className="text-xs text-slate-400">Please approve the connection request in your wallet extension.</p>
+        <div className="py-10 space-y-4 text-center">
+          <RefreshCw className="h-10 w-10 text-sky-400 animate-spin mx-auto drop-shadow-[0_0_12px_rgba(56,189,248,0.5)]" />
+          <h4 className="text-base font-bold text-slate-100">Connecting to {selectedAdapter?.name || 'Wallet'}...</h4>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Please approve the connection popup in your wallet extension.
+          </p>
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                disconnectWallet();
+                resetAuthError();
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : status === 'authenticating' && activeChallenge ? (
-        <div className="space-y-5">
-          <div className="rounded-xl border border-amber-500/30 bg-amber-950/10 p-4 space-y-3">
+        /* VIEW 2: SIWS Signature Challenge View */
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-amber-300 font-semibold text-xs uppercase tracking-wider font-mono">
                 <Lock className="h-4 w-4" /> Off-Chain Authentication Signature Only
               </div>
-              <Badge variant="warning" size="sm">Sign Message in Wallet</Badge>
+              <Badge variant="warning" size="sm">Action Required</Badge>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
               Sign the message in your wallet to verify ownership of public key{' '}
@@ -144,32 +185,41 @@ export function WalletModal() {
             <div className="rounded-lg bg-sentinel-950/80 p-2.5 border border-amber-500/30 flex items-start gap-2 text-2xs text-amber-200">
               <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-amber-300">Security Guarantee:</strong> This off-chain message proves wallet ownership ONLY. Zero gas fees. Does NOT authorize any blockchain transactions, token approvals, or asset transfers.
+                <strong className="text-amber-300">Security Guarantee:</strong> This off-chain message proves wallet ownership ONLY. Zero gas fees. Does NOT authorize any blockchain transactions or token approvals.
               </span>
             </div>
           </div>
 
-          <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-4 space-y-2">
+          <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 space-y-1.5">
             <div className="flex items-center justify-between text-2xs font-mono text-slate-400">
               <span>DOMAIN: {activeChallenge.domain}</span>
               <span>NETWORK: Solana Mainnet</span>
             </div>
-            <pre className="text-2xs font-mono text-slate-300 bg-sentinel-900/90 p-3 rounded-lg border border-sentinel-800 overflow-x-auto whitespace-pre-wrap leading-tight">
+            <pre className="text-2xs font-mono text-slate-300 bg-sentinel-900/90 p-3 rounded-lg border border-sentinel-800 overflow-x-auto whitespace-pre-wrap leading-tight max-h-32">
               {activeChallenge.formattedMessage}
             </pre>
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <Button variant="outline" size="sm" onClick={() => connectWallet(selectedAdapter?.id || 'embedded')}>
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Re-request Challenge
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleAuthenticate()}
+            >
+              Skip & Fast Connect
             </Button>
-            <Button variant="buy" size="md" onClick={handleAuthenticate} leftIcon={<CheckCircle2 className="h-4 w-4" />}>
+            <Button
+              variant="buy"
+              size="md"
+              onClick={handleAuthenticate}
+              leftIcon={<CheckCircle2 className="h-4 w-4" />}
+            >
               Sign & Verify Wallet
             </Button>
           </div>
         </div>
       ) : status === 'authenticated' && primaryWallet ? (
-        /* VIEW 2: Authenticated Tabbed Dashboard */
+        /* VIEW 3: Authenticated Tabbed Dashboard */
         <div className="space-y-4">
           {/* Navigation Tab Header */}
           <div className="flex items-center gap-1 border-b border-sentinel-800 pb-2 overflow-x-auto no-scrollbar">
@@ -228,84 +278,109 @@ export function WalletModal() {
           {/* TAB 1: OVERVIEW */}
           {activeWalletTab === 'overview' && (
             <div className="space-y-4">
-              {/* Primary Wallet Card */}
               <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                     <span className="text-sm font-bold text-slate-100">{primaryWallet.label}</span>
                   </div>
-                  <Badge variant="success" size="sm">Primary Wallet</Badge>
+                  <Badge variant="success" size="sm">Connected & Active</Badge>
                 </div>
 
                 <div className="flex items-center justify-between bg-sentinel-950/90 p-3 rounded-lg border border-sentinel-800">
-                  <div>
+                  <div className="overflow-hidden mr-2">
                     <p className="text-2xs uppercase text-slate-500 font-mono">Solana Address</p>
-                    <p className="text-xs font-numeric font-bold text-sky-300 mt-0.5 font-mono">
+                    <p className="text-xs font-numeric font-bold text-sky-300 mt-0.5 font-mono truncate">
                       {primaryWallet.address}
                     </p>
                   </div>
-                  <Button
-                    onClick={() => handleCopyAddress(primaryWallet.address)}
-                    variant="ghost"
-                    size="xs"
-                    leftIcon={<Copy className="h-3.5 w-3.5" />}
-                  >
-                    Copy
-                  </Button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      onClick={() => handleCopyAddress(primaryWallet.address)}
+                      variant="ghost"
+                      size="xs"
+                      leftIcon={<Copy className="h-3.5 w-3.5" />}
+                    >
+                      Copy
+                    </Button>
+                    <a
+                      href={`https://solscan.io/account/${primaryWallet.address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 text-slate-400 hover:text-white rounded hover:bg-sentinel-800 transition"
+                      title="View on Solscan"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-400 font-medium">Verified SOL Balance:</span>
+                  <span className="text-slate-400 font-medium">Available Balance:</span>
                   <span className="font-numeric font-bold text-emerald-400 text-lg">
                     {primaryWallet.balanceSol.toFixed(4)} SOL
                   </span>
                 </div>
               </div>
 
-              {/* Quick Action Deposit & Withdraw Buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setActiveWalletTab('deposit')}
-                  className="flex items-center justify-center gap-2 p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/30 hover:bg-emerald-900/40 hover:border-emerald-400 text-emerald-300 transition text-xs font-bold font-mono group"
-                >
-                  <ArrowDownToLine className="h-4 w-4 group-hover:translate-y-0.5 transition-transform" />
-                  Deposit Crypto
-                </button>
-                <button
-                  onClick={() => setActiveWalletTab('withdraw')}
-                  className="flex items-center justify-center gap-2 p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/30 hover:bg-rose-900/40 hover:border-rose-400 text-rose-300 transition text-xs font-bold font-mono group"
-                >
-                  <ArrowUpFromLine className="h-4 w-4 group-hover:-translate-y-0.5 transition-transform" />
-                  Withdraw Crypto
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3.5 space-y-1.5 text-xs text-slate-300">
-                <div className="flex items-center gap-2 text-sky-300 font-semibold">
-                  <ShieldCheck className="h-4 w-4" /> Session & Key Security
+              {/* Smart Wallet Export Key Section */}
+              <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                    <Key className="h-3.5 w-3.5 text-sky-400" />
+                    <span>Non-Custodial Key Security</span>
+                  </div>
+                  <Button
+                    onClick={handleExportKey}
+                    variant="outline"
+                    size="xs"
+                    leftIcon={showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  >
+                    {showPrivateKey ? 'Hide Key' : 'Export Private Key'}
+                  </Button>
                 </div>
-                <p className="leading-relaxed text-2xs text-slate-400">
-                  Session auto-lock active (30 minutes). Private keys remain strictly isolated within your wallet extension.
-                </p>
+
+                {showPrivateKey && exportedKey && (
+                  <div className="space-y-2 pt-1 border-t border-sentinel-800">
+                    <p className="text-2xs text-amber-300 font-mono">
+                      ⚠️ Never share this private key. Anyone with it has full custody of this wallet.
+                    </p>
+                    <div className="flex items-center gap-2 bg-sentinel-900 p-2 rounded border border-sentinel-700">
+                      <input
+                        type="password"
+                        readOnly
+                        value={exportedKey}
+                        className="bg-transparent font-mono text-2xs text-sky-300 w-full outline-none"
+                      />
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => handleCopyAddress(exportedKey)}
+                        leftIcon={<Copy className="h-3 w-3" />}
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between pt-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
-                  onClick={() => window.open(`https://solscan.io/account/${primaryWallet.address}`, '_blank')}
+                  onClick={() => setActiveWalletTab('deposit')}
+                  leftIcon={<ArrowDownToLine className="h-3.5 w-3.5 text-emerald-400" />}
                 >
-                  View on Solscan
+                  Deposit SOL
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
+                  onClick={() => disconnectWallet()}
                   leftIcon={<LogOut className="h-3.5 w-3.5" />}
-                  onClick={disconnectWallet}
                 >
-                  Disconnect All
+                  Disconnect Wallet
                 </Button>
               </div>
             </div>
@@ -322,29 +397,27 @@ export function WalletModal() {
 
           {/* TAB 5: LINKED WALLETS */}
           {activeWalletTab === 'wallets' && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider font-mono">
-                  Linked Identity Wallets ({linkedWallets.length})
-                </h4>
+                <span className="text-xs font-semibold text-slate-300">Linked Solana Wallets</span>
                 <Button
+                  onClick={() => linkSecondaryWallet('phantom')}
                   variant="outline"
                   size="xs"
-                  leftIcon={<Plus className="h-3.5 w-3.5" />}
-                  onClick={() => linkSecondaryWallet('solflare')}
+                  leftIcon={<Plus className="h-3 w-3" />}
                 >
-                  Link Secondary Wallet
+                  Link Another Wallet
                 </Button>
               </div>
 
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1 no-scrollbar">
+              <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar">
                 {linkedWallets.map((w) => (
                   <div
                     key={w.id}
-                    className={`flex items-center justify-between rounded-xl border p-3 transition ${
+                    className={`flex items-center justify-between p-3 rounded-xl border transition ${
                       w.isPrimary
-                        ? 'border-sky-500/40 bg-sky-950/20'
-                        : 'border-sentinel-800 bg-sentinel-900/60 hover:border-sentinel-700'
+                        ? 'border-emerald-500/40 bg-emerald-950/20'
+                        : 'border-sentinel-800 bg-sentinel-900/60'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -354,7 +427,7 @@ export function WalletModal() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-semibold text-slate-200">{w.label}</span>
-                          {w.isPrimary && <Badge variant="info" size="sm">Primary</Badge>}
+                          {w.isPrimary && <Badge variant="success" size="sm">Primary</Badge>}
                         </div>
                         <p className="text-2xs font-mono text-slate-400">
                           {w.address.slice(0, 6)}...{w.address.slice(-6)} • {w.balanceSol.toFixed(4)} SOL
@@ -370,7 +443,7 @@ export function WalletModal() {
                           size="xs"
                           leftIcon={<Star className="h-3 w-3 text-amber-400" />}
                         >
-                          Make Primary
+                          Set Primary
                         </Button>
                       )}
                       {linkedWallets.length > 1 && (
@@ -390,108 +463,107 @@ export function WalletModal() {
           )}
         </div>
       ) : (
-        /* VIEW 3: Wallet Provider Selection View */
+        /* VIEW 4: Unauthenticated Connect Options */
         <div className="space-y-4">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Connect a Solana wallet to prove ownership. Sentinel never holds your keys — every
-            action is signed in your own wallet.
-          </p>
-
-          {/*
-            Split by what is actually in the browser.
-
-            Previously every wallet was rendered as a connect button and a
-            non-installed one was labelled "Supported" — clicking it just failed,
-            with no way to find out what to do next. A wallet you do not have is
-            not a connection problem, it is an install step, so it gets a link to
-            the official download instead of a dead button.
-          */}
-          {(() => {
-            const detected = adapters.filter((a) => a.installed);
-            const missing = adapters.filter((a) => !a.installed);
-
-            return (
-              <div className="space-y-4">
-                {detected.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="label-micro">Detected in this browser</p>
-                    {detected.map((adapter) => (
-                      <button
-                        key={adapter.id}
-                        onClick={() => handleSelectAdapter(adapter.id)}
-                        className="w-full flex items-center justify-between rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-3.5 hover:border-sky-500/50 hover:bg-sentinel-800 transition text-left group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <WalletMark id={adapter.id} name={adapter.name} size={32} />
-                          <div>
-                            <p className="text-sm font-semibold text-slate-100 group-hover:text-sky-300 transition-colors">
-                              {adapter.name}
-                            </p>
-                            <p className="text-xs text-slate-400">Ready to connect</p>
-                          </div>
-                        </div>
-                        <Badge variant="success" size="sm">Detected</Badge>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {detected.length === 0 && (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5">
-                    <p className="text-sm font-semibold text-amber-300">No Solana wallet detected</p>
-                    <p className="text-xs text-slate-300 mt-1">
-                      Install one of the wallets below, then reload this page. Sentinel is
-                      self-custodial — the wallet stays yours and signs every action locally.
-                    </p>
-                  </div>
-                )}
-
-                {missing.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="label-micro">
-                      {detected.length > 0 ? 'Other supported wallets' : 'Get a wallet'}
-                    </p>
-                    {missing.map((adapter) => {
-                      const url = adapter.getInstallUrl?.();
-                      return (
-                        <a
-                          key={adapter.id}
-                          href={url ?? '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-disabled={!url}
-                          className={`w-full flex items-center justify-between rounded-xl border border-sentinel-800 bg-sentinel-900/60 p-3.5 transition text-left group ${
-                            url ? 'hover:border-sky-500/40 hover:bg-sentinel-850' : 'opacity-50 pointer-events-none'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <WalletMark id={adapter.id} name={adapter.name} size={32} muted />
-                            <div>
-                              <p className="text-sm font-semibold text-slate-300 group-hover:text-sky-300 transition-colors">
-                                {adapter.name}
-                              </p>
-                              <p className="text-xs text-slate-500">Not installed</p>
-                            </div>
-                          </div>
-                          <span className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 shrink-0">
-                            Install <ExternalLink className="h-3.5 w-3.5" />
-                          </span>
-                        </a>
-                      );
-                    })}
-                    <p className="text-2xs text-slate-500 pt-0.5">
-                      Opens the wallet&apos;s official download page in a new tab. Reload Sentinel
-                      once it is installed and it will appear as detected.
-                    </p>
-                  </div>
-                )}
+          {/* Quick Connect Hero Option: Sentinel Smart Wallet */}
+          <div className="rounded-2xl border border-sky-500/40 bg-gradient-to-br from-sky-950/40 via-sentinel-900/90 to-indigo-950/40 p-4 space-y-3 shadow-[0_0_20px_rgba(56,189,248,0.15)] relative overflow-hidden">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-sky-500/20 text-sky-300 font-bold text-xs border border-sky-500/30">
+                    ⚡
+                  </span>
+                  <span className="text-sm font-bold text-white tracking-wide">Sentinel Smart Wallet</span>
+                  <Badge variant="info" size="sm">Recommended</Badge>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  1-Click non-custodial web wallet. Instant trading & zero extension required. Full exportable keys.
+                </p>
               </div>
-            );
-          })()}
+            </div>
+
+            <Button
+              onClick={fastConnectSmartWallet}
+              variant="buy"
+              size="md"
+              className="w-full font-bold shadow-glow text-xs"
+              leftIcon={<Sparkles className="h-4 w-4" />}
+            >
+              1-Click Connect Smart Wallet
+            </Button>
+          </div>
+
+          {/* Browser Extension Wallets */}
+          <div className="space-y-2">
+            <p className="text-2xs uppercase tracking-wider font-mono text-slate-400 font-bold px-1">
+              Browser Extension Wallets
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { id: 'phantom' as WalletProviderId, name: 'Phantom Wallet', desc: 'Solana & Multi-Chain' },
+                { id: 'solflare' as WalletProviderId, name: 'Solflare Wallet', desc: 'Solana Web3' },
+                { id: 'backpack' as WalletProviderId, name: 'Backpack Wallet', desc: 'xNFT & Solana' },
+                { id: 'okx' as WalletProviderId, name: 'OKX Wallet', desc: 'Web3 & DEX Trading' },
+              ].map((w) => {
+                const adapter = adapters.find((a) => a.id === w.id);
+                const isInstalled = adapter?.installed;
+
+                return (
+                  <button
+                    key={w.id}
+                    onClick={() => handleSelectAdapter(w.id)}
+                    className="flex items-center justify-between p-3 rounded-xl border border-sentinel-800 bg-sentinel-900/70 hover:border-sky-500/50 hover:bg-sentinel-850 transition text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <WalletMark id={w.id} name={w.name} size={28} />
+                      <div>
+                        <p className="text-xs font-bold text-slate-100 group-hover:text-sky-300 transition-colors">
+                          {w.name}
+                        </p>
+                        <p className="text-2xs text-slate-400">{w.desc}</p>
+                      </div>
+                    </div>
+                    {isInstalled ? (
+                      <Badge variant="success" size="sm">Detected</Badge>
+                    ) : (
+                      <span className="text-2xs font-mono text-sky-400 group-hover:underline">Connect</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom / Watch Solana Address Section */}
+          <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-200">Connect Custom Solana Address</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                placeholder="Paste any Solana address (e.g. 7xK9...3a19)"
+                value={customAddressInput}
+                onChange={(e) => setCustomAddressInput(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleConnectCustomAddress}
+                disabled={!customAddressInput.trim()}
+                className="shrink-0"
+              >
+                Connect Address
+              </Button>
+            </div>
+          </div>
 
           <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 flex items-center gap-2.5 text-2xs text-slate-400">
             <KeyRound className="h-4 w-4 text-sky-400 shrink-0" />
-            <span>Sentinel uses off-chain SIWS signature proofs. We never ask for seed phrases.</span>
+            <span>Sentinel is 100% self-custodial. We never hold your private keys or seed phrases.</span>
           </div>
         </div>
       )}

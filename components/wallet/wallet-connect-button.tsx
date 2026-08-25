@@ -1,71 +1,96 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Wallet, LogOut, ExternalLink, ShieldCheck, ChevronDown } from 'lucide-react';
+import { Wallet, LogOut, ChevronDown, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { masterWalletProvider, WalletConnectionState } from '@/lib/wallet/wallet-provider';
+import { useWalletState, useWalletActions } from '@/lib/store';
 
 interface WalletConnectButtonProps {
   onConnect?: (address: string) => void;
   onDisconnect?: () => void;
+  className?: string;
+  size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
 export function WalletConnectButton({
   onConnect,
   onDisconnect,
+  className = '',
+  size = 'sm',
 }: WalletConnectButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [state, setState] = useState<WalletConnectionState>(masterWalletProvider.getState());
-  const [address, setAddress] = useState<string | null>(masterWalletProvider.getAddress());
+  const [copied, setCopied] = useState(false);
+  const { primaryWallet, status } = useWalletState();
+  const { setWalletModalOpen, disconnectWallet } = useWalletActions();
 
-  const handleConnect = async (chainFamily: 'solana' | 'evm' = 'solana') => {
-    try {
-      const res = await masterWalletProvider.connect(chainFamily);
-      setState('CONNECTED');
-      setAddress(res.address);
-      onConnect?.(res.address);
-      setIsOpen(false);
-    } catch (err) {
-      console.error('Wallet connect error:', err);
-    }
+  const handleCopy = (address: string) => {
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDisconnect = async () => {
-    await masterWalletProvider.disconnect();
-    setState('DISCONNECTED');
-    setAddress(null);
+    await disconnectWallet();
     onDisconnect?.();
     setIsOpen(false);
   };
 
-  if (state === 'CONNECTED' && address) {
-    const shortAddr = `${address.slice(0, 6)}...${address.slice(-4)}`;
+  if (primaryWallet && status === 'authenticated') {
+    const shortAddr = `${primaryWallet.address.slice(0, 4)}...${primaryWallet.address.slice(-4)}`;
 
     return (
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sentinel-800/80 border border-emerald-500/30 hover:border-emerald-400/50 transition font-mono text-xs text-white shadow-[0_0_15px_rgba(52,211,153,0.1)]"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sentinel-900 border border-emerald-500/30 hover:border-emerald-400 transition font-mono text-xs text-white shadow-[0_0_15px_rgba(52,211,153,0.15)] ${className}`}
         >
           <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-bold">{shortAddr}</span>
+          <span className="font-bold text-sky-300">{shortAddr}</span>
+          <span className="font-numeric font-bold text-emerald-400 border-l border-emerald-500/30 pl-2">
+            {primaryWallet.balanceSol.toFixed(2)} SOL
+          </span>
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-2 w-56 p-2 rounded-2xl bg-sentinel-900 border border-white/10 shadow-2xl backdrop-blur-xl z-50 font-mono text-xs space-y-1">
-            <div className="p-2 border-b border-white/5">
-              <span className="text-2xs text-slate-500 block uppercase">Connected Wallet</span>
-              <p className="font-bold text-white truncate text-2xs">{address}</p>
+          <div className="absolute right-0 mt-2 w-60 p-2.5 rounded-2xl bg-sentinel-900 border border-sentinel-700/80 shadow-2xl backdrop-blur-xl z-50 font-mono text-xs space-y-2">
+            <div className="p-2 bg-sentinel-950/80 rounded-xl border border-sentinel-800">
+              <span className="text-2xs text-slate-500 block uppercase font-bold">Active Solana Wallet</span>
+              <p className="font-bold text-white truncate text-2xs mt-0.5">{primaryWallet.address}</p>
+              <div className="flex items-center justify-between text-2xs text-emerald-400 font-bold mt-1">
+                <span>Balance:</span>
+                <span>{primaryWallet.balanceSol.toFixed(4)} SOL</span>
+              </div>
             </div>
 
-            <button
-              onClick={handleDisconnect}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/10 transition text-left"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>Disconnect</span>
-            </button>
+            <div className="space-y-1">
+              <button
+                onClick={() => handleCopy(primaryWallet.address)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-300 hover:bg-sentinel-800 transition text-left"
+              >
+                <span>Copy Address</span>
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-400" />}
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  setWalletModalOpen(true);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sky-400 hover:bg-sky-500/10 transition text-left"
+              >
+                <span>Manage & Deposit</span>
+                <Wallet className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                onClick={handleDisconnect}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/10 transition text-left"
+              >
+                <span>Disconnect</span>
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -73,53 +98,14 @@ export function WalletConnectButton({
   }
 
   return (
-    <div className="relative">
-      <Button
-        onClick={() => setIsOpen(!isOpen)}
-        size="sm"
-        className="bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-mono text-xs font-bold gap-2 px-4 shadow-[0_0_20px_rgba(56,189,248,0.2)] rounded-xl"
-      >
-        <Wallet className="h-3.5 w-3.5" />
-        <span>Connect Wallet</span>
-      </Button>
-
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 p-3 rounded-2xl bg-sentinel-900 border border-white/10 shadow-2xl backdrop-blur-xl z-50 font-mono text-xs space-y-2">
-          <span className="text-2xs text-slate-400 uppercase font-bold tracking-wider block px-1">
-            Select Wallet Network
-          </span>
-
-          <button
-            onClick={() => handleConnect('solana')}
-            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] hover:bg-sky-500/10 border border-white/5 hover:border-sky-500/30 transition text-left group"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center font-bold text-purple-300 text-2xs">
-                SOL
-              </div>
-              <div>
-                <p className="font-bold text-white group-hover:text-sky-300">Solana Wallet</p>
-                <p className="text-2xs text-slate-500">Phantom, Solflare, Backpack</p>
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleConnect('evm')}
-            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] hover:bg-sky-500/10 border border-white/5 hover:border-sky-500/30 transition text-left group"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center font-bold text-blue-300 text-2xs">
-                EVM
-              </div>
-              <div>
-                <p className="font-bold text-white group-hover:text-sky-300">EVM Wallet</p>
-                <p className="text-2xs text-slate-500">Base, Ethereum, Arbitrum</p>
-              </div>
-            </div>
-          </button>
-        </div>
-      )}
-    </div>
+    <Button
+      onClick={() => setWalletModalOpen(true)}
+      variant="buy"
+      size={size}
+      className={`font-bold shadow-glow ${className}`}
+      leftIcon={<Wallet className="h-3.5 w-3.5" />}
+    >
+      Connect Wallet
+    </Button>
   );
 }

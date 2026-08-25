@@ -25,6 +25,8 @@ export const sortSchema = z.enum([
  * Query parameters accepted on GET discovery endpoints via URL search params.
  */
 export const discoveryQuerySchema = z.object({
+  /** Show launches with no pool. Off by default — they cannot be traded. */
+  includeZeroLiquidity: z.coerce.boolean().optional(),
   chain: chainSchema,
   timeWindow: timeWindowSchema,
   sort: sortSchema,
@@ -112,6 +114,7 @@ export function queryToFilter(params: DiscoveryQueryParams | DiscoveryScreenPara
   return {
     chain: params.chain,
     timeWindow: params.timeWindow,
+    includeZeroLiquidity: (params as { includeZeroLiquidity?: boolean }).includeZeroLiquidity,
     searchQuery: params.searchQuery,
     marketCapMin: params.minMarketCap,
     marketCapMax: params.maxMarketCap,

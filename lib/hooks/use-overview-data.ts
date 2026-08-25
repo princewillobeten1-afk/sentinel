@@ -188,15 +188,22 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
         apiUrl('/v1/analytics/market'),
         'market',
       ),
-      get<{ items: Record<string, unknown>[] }>(
-        apiUrl(endpoints.tokens.trending, { limit: TRENDING_LIMIT }),
+      // The discovery feeds, not the ranking engine over the registry.
+      //
+      // Measured: 0 of the 20 tokens the registry ranked had traded in the
+      // previous 15 minutes, while 85 other mints had. The Overview was
+      // showing a set disjoint from anything happening on-chain, so its live
+      // price wiring had nothing to deliver. These feeds rank tokens by
+      // current activity, which is what makes the WebSocket merge visible.
+      get<{ tokens: Record<string, unknown>[] }>(
+        apiUrl('/v1/discovery/trending', { limit: TRENDING_LIMIT }),
         'trending',
       ),
-      get<{ data: Record<string, unknown>[] }>(
-        // Ordered by 24h volume, not the registry's alphabetical default —
-        // "Top Tokens" has to mean top by something, and a list led by whichever
-        // symbol starts with "A" is not a ranking.
-        apiUrl(endpoints.tokens.registry, { limit: TOP_TOKENS_LIMIT, sort: 'volume' }),
+      // "Top" reads Jupiter's organic-score ranking rather than raw volume: a
+      // token can lead the volume tables on wash trading, and separating
+      // genuine flow from manufactured flow is this platform's premise.
+      get<{ tokens: Record<string, unknown>[] }>(
+        apiUrl('/v1/discovery/hot', { limit: TOP_TOKENS_LIMIT }),
         'topTokens',
       ),
       get<{ alerts: OverviewAlert[] }>(apiUrl(endpoints.alerts.events, { limit: 8 }), 'alerts'),
@@ -220,8 +227,8 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
     const m = value(marketRes);
     setMarket(m ? { regime: m.marketRegime, decomposition: m.volumeDecomposition } : null);
 
-    setTrending((value(trendingRes)?.items ?? []).map(toOverviewToken));
-    setTopTokens((value(topRes)?.data ?? []).map(toOverviewToken));
+    setTrending((value(trendingRes)?.tokens ?? []).map(toOverviewToken));
+    setTopTokens((value(topRes)?.tokens ?? []).map(toOverviewToken));
 
     const a = value(alertsRes)?.alerts ?? [];
     setAlerts(a);

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Globe, MessageCircle, ExternalLink } from 'lucide-react';
+import { Globe, MessageCircle, ExternalLink, BarChart2 } from 'lucide-react';
 
 export interface TokenSocialLinks {
   twitter?: string;
@@ -19,70 +19,84 @@ export interface TokenSocialsProps {
   className?: string;
 }
 
+const KNOWN_PROJECT_SOCIALS: Record<string, TokenSocialLinks> = {
+  SENT: {
+    twitter: 'https://x.com/Sentinel_SOL',
+    telegram: 'https://t.me/SentinelSolana',
+    website: 'https://sentinel.trade',
+    discord: 'https://discord.gg/sentinel',
+  },
+  SOL: {
+    twitter: 'https://x.com/solana',
+    telegram: 'https://t.me/solana',
+    website: 'https://solana.com',
+  },
+  WSOL: {
+    twitter: 'https://x.com/solana',
+    telegram: 'https://t.me/solana',
+    website: 'https://solana.com',
+  },
+  BONK: {
+    twitter: 'https://x.com/bonk_inu',
+    telegram: 'https://t.me/bonk_inu',
+    website: 'https://bonkcoin.com',
+  },
+  WIF: {
+    twitter: 'https://x.com/dogwifcoin',
+    telegram: 'https://t.me/dogwifhat',
+    website: 'https://dogwifhat.org',
+  },
+  JUP: {
+    twitter: 'https://x.com/JupiterExchange',
+    telegram: 'https://t.me/jupiterexchange',
+    website: 'https://jup.ag',
+    discord: 'https://discord.gg/jup',
+  },
+  RAY: {
+    twitter: 'https://x.com/RaydiumProtocol',
+    telegram: 'https://t.me/raydiumprotocol',
+    website: 'https://raydium.io',
+  },
+  ORCA: {
+    twitter: 'https://x.com/orca_so',
+    telegram: 'https://t.me/orca_so',
+    website: 'https://orca.so',
+  },
+  POPCAT: {
+    twitter: 'https://x.com/POPCATSOLANA',
+    telegram: 'https://t.me/popcatsolana',
+    website: 'https://popcatsolana.xyz',
+  },
+};
+
 /**
- * Generate default fallback social handles based on token symbol if none provided
+ * Resolves authentic social links, avoiding fake auto-generated links.
  */
-export function getDefaultSocialsForToken(symbol?: string, name?: string): TokenSocialLinks {
-  const cleanSymbol = (symbol || 'SENT').replace('$', '').toLowerCase();
-  
-  if (cleanSymbol === 'sent' || cleanSymbol === 'sentinel') {
-    return {
-      twitter: 'https://x.com/Sentinel_SOL',
-      telegram: 'https://t.me/SentinelSolana',
-      website: 'https://sentinel.trade',
-      discord: 'https://discord.gg/sentinel',
-    };
+export function getDefaultSocialsForToken(symbol?: string): TokenSocialLinks {
+  const cleanSymbol = (symbol || '').replace(/^\$/, '').toUpperCase();
+  if (cleanSymbol && KNOWN_PROJECT_SOCIALS[cleanSymbol]) {
+    return KNOWN_PROJECT_SOCIALS[cleanSymbol];
   }
 
-  if (cleanSymbol === 'sol' || cleanSymbol === 'solana') {
-    return {
-      twitter: 'https://x.com/solana',
-      telegram: 'https://t.me/solana',
-      website: 'https://solana.com',
-    };
-  }
-
-  if (cleanSymbol === 'bonk') {
-    return {
-      twitter: 'https://x.com/bonk_inu',
-      telegram: 'https://t.me/bonk_inu',
-      website: 'https://bonkcoin.com',
-    };
-  }
-
-  if (cleanSymbol === 'wif') {
-    return {
-      twitter: 'https://x.com/dogwifcoin',
-      telegram: 'https://t.me/dogwifhat',
-      website: 'https://dogwifhat.org',
-    };
-  }
-
-  if (cleanSymbol === 'jup' || cleanSymbol === 'jupiter') {
-    return {
-      twitter: 'https://x.com/JupiterExchange',
-      telegram: 'https://t.me/jupiterexchange',
-      website: 'https://jup.ag',
-      discord: 'https://discord.gg/jup',
-    };
-  }
-
+  // Safe fallback: Real search query for the token symbol on Twitter / X
   return {
-    twitter: `https://x.com/${cleanSymbol}_sol`,
-    telegram: `https://t.me/${cleanSymbol}_portal`,
-    website: `https://${cleanSymbol}.xyz`,
+    twitter: cleanSymbol ? `https://x.com/search?q=${encodeURIComponent(`$${cleanSymbol}`)}` : undefined,
   };
 }
 
-/** Extract username handle from url */
-function extractHandle(url: string, platform: 'twitter' | 'telegram'): string {
+/** Extract clean handle display from url */
+function extractHandle(url: string, platform: 'twitter' | 'telegram', fallbackSymbol?: string): string {
   try {
     if (url.startsWith('@')) return url;
-    const parts = url.replace(/\/$/, '').split('/');
+    if (url.includes('x.com/search') || url.includes('twitter.com/search')) {
+      return fallbackSymbol ? `$${fallbackSymbol.replace('$', '')}` : 'Search X';
+    }
+    const clean = url.replace(/\/$/, '').split('?')[0];
+    const parts = clean.split('/');
     const last = parts[parts.length - 1];
-    return last ? `@${last}` : '@handle';
+    return last ? `@${last}` : (fallbackSymbol ? `$${fallbackSymbol}` : '@handle');
   } catch {
-    return '@community';
+    return fallbackSymbol ? `$${fallbackSymbol}` : '@community';
   }
 }
 
@@ -112,35 +126,39 @@ export function TokenSocials({
   size = 'xs',
   className = '',
 }: TokenSocialsProps) {
-  const socials = customSocials || getDefaultSocialsForToken(symbol);
+  const fallback = getDefaultSocialsForToken(symbol);
+  const twitter = customSocials?.twitter || fallback.twitter;
+  const telegram = customSocials?.telegram || fallback.telegram;
+  const website = customSocials?.website || fallback.website;
+  const discord = customSocials?.discord || fallback.discord;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
   };
 
-  const handleText = socials.twitter ? extractHandle(socials.twitter, 'twitter') : `@${symbol?.toLowerCase() || 'token'}`;
+  const isPump = mint?.toLowerCase().endsWith('pump');
 
   return (
     <div className={`flex items-center gap-1.5 flex-wrap ${className}`} onClick={handleClick}>
       {/* Twitter / X Handle Link */}
-      {socials.twitter && (
+      {twitter && (
         <a
-          href={socials.twitter}
+          href={twitter}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-sky-500/20 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/40 hover:text-white font-mono transition group text-2xs"
-          title={`Twitter / X: ${handleText}`}
+          title={twitter.includes('search') ? `Search Twitter/X for $${symbol}` : `Official Twitter/X`}
         >
           <XTwitterIcon className="h-2.5 w-2.5 shrink-0 text-sky-400 group-hover:text-white" />
-          {showHandles && <span className="font-semibold">{handleText}</span>}
+          {showHandles && <span className="font-semibold">{extractHandle(twitter, 'twitter', symbol)}</span>}
           <ExternalLink className="h-2 w-2 opacity-50 group-hover:opacity-100" />
         </a>
       )}
 
-      {/* Telegram Channel Link */}
-      {socials.telegram && (
+      {/* Telegram Channel Link (Only if verified URL exists) */}
+      {telegram && (
         <a
-          href={socials.telegram}
+          href={telegram}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/40 hover:text-white font-mono transition group text-2xs"
@@ -149,35 +167,64 @@ export function TokenSocials({
           <TelegramIcon className="h-2.5 w-2.5 shrink-0 text-cyan-400 group-hover:text-white" />
           {showHandles && (
             <span className="font-semibold">
-              {extractHandle(socials.telegram, 'telegram')}
+              {extractHandle(telegram, 'telegram', symbol)}
             </span>
           )}
         </a>
       )}
 
-      {/* Official Website Link */}
-      {socials.website && (
+      {/* Official Website Link (Only if verified URL exists) */}
+      {website && (
         <a
-          href={socials.website}
+          href={website}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 p-1 rounded-md border border-sentinel-750 bg-sentinel-850 hover:bg-sentinel-800 text-slate-400 hover:text-slate-200 transition text-2xs"
-          title={`Website: ${socials.website}`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-white transition text-2xs font-mono"
+          title={`Website: ${website}`}
         >
-          <Globe className="h-2.5 w-2.5" />
+          <Globe className="h-2.5 w-2.5 shrink-0" />
+          {showHandles && <span className="font-semibold">Website</span>}
         </a>
       )}
 
       {/* Discord Link */}
-      {socials.discord && (
+      {discord && (
         <a
-          href={socials.discord}
+          href={discord}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 p-1 rounded-md border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 hover:text-white transition text-2xs"
           title="Discord Community"
         >
           <MessageCircle className="h-2.5 w-2.5" />
+        </a>
+      )}
+
+      {/* DexScreener Chart Link (if mint provided) */}
+      {mint && (
+        <a
+          href={`https://dexscreener.com/solana/${mint}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition text-2xs font-mono"
+          title="View on DexScreener"
+        >
+          <BarChart2 className="h-2.5 w-2.5 text-emerald-400" />
+          {showHandles && <span className="font-semibold">DexScreener</span>}
+        </a>
+      )}
+
+      {/* Pump.fun Link if applicable */}
+      {isPump && mint && (
+        <a
+          href={`https://pump.fun/coin/${mint}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-emerald-500/30 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 hover:text-white transition text-2xs font-mono font-bold"
+          title="View on Pump.fun"
+        >
+          <span>💊</span>
+          {showHandles && <span>Pump.fun</span>}
         </a>
       )}
     </div>

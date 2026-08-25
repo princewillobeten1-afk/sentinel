@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { parseJsonBody, validateSchema } from '@/lib/server/validation';
-import { quoteRouter } from '@/lib/quote/router';
+import { getSwapQuote } from '@/lib/trading/jupiter-quote';
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
 import { PreTradeRiskEngine } from '@/lib/order/risk';
@@ -15,8 +15,11 @@ const riskEngine = new PreTradeRiskEngine();
 
 const prepareSchema = z.object({
   quoteId: z.string().min(1, 'Quote ID is required'),
-  inputToken: z.string().min(1),
-  outputToken: z.string().min(1),
+  // Mints, not symbols. Symbols collide constantly on Solana, and the router
+  // this replaced ignored them anyway — it applied one hardcoded rate to every
+  // pair it was handed.
+  inputToken: z.string().min(32, 'inputToken must be a mint address'),
+  outputToken: z.string().min(32, 'outputToken must be a mint address'),
   amount: z.string().min(1),
   slippage: z.number().min(0.01).max(15.0),
   walletAddress: z.string().min(20, 'Valid wallet address is required'),
@@ -46,13 +49,23 @@ export const POST = withApiGateway(
     }
 
     // Re-verify parameters on backend
-    const quote = await quoteRouter.getQuote({
-      inputToken: data.inputToken,
-      outputToken: data.outputToken,
+    const swap = await getSwapQuote({
+      inputMint: data.inputToken,
+      outputMint: data.outputToken,
       amount: data.amount,
-      slippage: data.slippage,
-      walletAddress: data.walletAddress,
+      slippageBps: Math.round(data.slippage * 100),
     });
+
+    // The gateway checks below were always real; only the numbers they guarded
+    // were not. `priceImpact` now comes from the route Jupiter would actually
+    // take, and an unmeasured impact is treated as the cautious end rather than
+    // as zero.
+    const quote = {
+      priceImpact: swap.priceImpactPct ?? 100,
+      outputAmount: swap.outputAmount,
+      minimumReceived: swap.minimumReceived,
+      provider: swap.route.length ? `Jupiter (${swap.route.join(' → ')})` : 'Jupiter',
+    };
 
     const pairKey = `${data.inputToken}/${data.outputToken}`;
     const breaker = recordPriceImpactSample(pairKey, quote.priceImpact);

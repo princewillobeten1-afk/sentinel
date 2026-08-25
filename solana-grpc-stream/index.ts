@@ -13,7 +13,7 @@ dotenv.config();
 
 // Endpoint & Authentication
 const ENDPOINT = process.env.HELIUS_GRPC_URL || 'https://laserstream-devnet-ewr.helius-rpc.com';
-const TOKEN = process.env.HELIUS_GRPC_TOKEN || process.env.HELIUS_API_KEY || 'ba0b20f1-f08d-4949-b128-2be4eff7fe2c';
+const TOKEN = process.env.HELIUS_GRPC_TOKEN || process.env.HELIUS_API_KEY || '';
 
 console.log('='.repeat(60));
 console.log('🚀 Solana Yellowstone gRPC Stream (Helius Laserstream)');

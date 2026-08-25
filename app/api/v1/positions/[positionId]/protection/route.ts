@@ -1,3 +1,4 @@
+import { ApiError } from '@/lib/server/errors';
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { protectionService } from '@/lib/protection/protection-service';
@@ -31,18 +32,34 @@ export async function POST(
   try {
     const { positionId } = params;
     const body = await req.json();
+    // These defaults invented an entire position — a `$SENT` token at an entry
+    // of $0.035 and 10,000 units held — for any caller that omitted them, and
+    // then computed stop-loss and take-profit levels against it. Protection
+    // levels have to be derived from the caller's real position or not at all.
     const {
-      walletId = 'w-solana-primary',
-      tokenId = 'SENT',
-      tokenSymbol = '$SENT',
-      entryPrice = 0.035,
-      currentPrice = 0.0425,
-      positionTokens = 10000,
+      walletId,
+      tokenId,
+      tokenSymbol,
+      entryPrice,
+      currentPrice,
+      positionTokens,
       protectionMode = 'BALANCED',
       autoBreakEven = true,
       stopLoss,
       takeProfits
     } = body;
+
+    for (const [field, value] of [
+      ['tokenId', tokenId],
+      ['entryPrice', entryPrice],
+      ['currentPrice', currentPrice],
+      ['positionTokens', positionTokens],
+    ] as const) {
+      const numeric = field === 'tokenId' ? null : Number(value);
+      if (value === undefined || (numeric !== null && (!Number.isFinite(numeric) || numeric <= 0))) {
+        throw new ApiError(`${field} is required to compute protection levels`, 400);
+      }
+    }
 
     const protection = protectionService.setProtection({
       positionId,

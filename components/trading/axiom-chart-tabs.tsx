@@ -38,6 +38,7 @@ import {
   Share2,
   Layers,
   ArrowLeftRight,
+  ShieldAlert,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,14 @@ export interface TradeTransaction {
   valueUsd: string;
   time: string;
   wallet: string;
-  txHash: string;
+  /**
+   * `null` while a submitted trade has no confirmed signature yet.
+   *
+   * This was a required string, which is why the execution path invented one
+   * ('5x' + random) rather than leave it empty — a fake hash reads as a settled
+   * on-chain trade. Nullable lets the row say "pending confirmation" instead.
+   */
+  txHash: string | null;
   isWhale?: boolean;
 }
 
@@ -146,8 +154,10 @@ export function AxiomChartTabs({
   onOpenLimitBuilder,
   onQuickTrade,
 }: AxiomChartTabsProps) {
-  const { connectedWallet } = useAppState();
-  const { addNotification, addExecutionLog, setQuickBuyOpen } = useAppActions();
+  const { connectedWallet, primaryWallet } = useAppState();
+  const { addNotification, addExecutionLog, setQuickBuyOpen, setWalletModalOpen } = useAppActions();
+
+  const activeWallet = primaryWallet || connectedWallet;
 
   // Safe sanitized token and price calculations
   const safeSymbol = tokenSymbol?.trim() && tokenSymbol !== '$' ? tokenSymbol.replace(/^\$/, '') : 'SOL';
@@ -211,6 +221,36 @@ export function AxiomChartTabs({
   const [isInstantBuying, setIsInstantBuying] = useState(false);
   const [isInstantSelling, setIsInstantSelling] = useState(false);
   const [instantTradeSuccess, setInstantTradeSuccess] = useState<string | null>(null);
+  /**
+   * Canonical SOL price, for the pre-quote estimate only.
+   *
+   * Null until it loads, and null renders as `—`. It replaces a hardcoded
+   * 150.0 that disagreed with every other SOL price in the app.
+   */
+  const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/v1/analytics/market', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const price = j?.data?.marketSummary?.solPriceUsd ?? j?.data?.solPriceUsd;
+        if (alive && Number.isFinite(Number(price))) setSolPriceUsd(Number(price));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  /** Why the last quote attempt failed. A failure is shown, never swallowed. */
+  const [instantTradeError, setInstantTradeError] = useState<string | null>(null);
+  /**
+   * The last real quote. Not an execution — the swap exists only once signed.
+   */
+  const [instantQuote, setInstantQuote] = useState<{
+    side: 'buy' | 'sell';
+    summary: string;
+    minimumReceived: string;
+    route: string;
+    impact: string;
+  } | null>(null);
   /** Exit fractions offered on the instant panel. */
   const SELL_PRESETS = [10, 25, 50, 100] as const;
   const [sellPercent, setSellPercent] = useState<number>(50);
@@ -220,262 +260,48 @@ export function AxiomChartTabs({
     ? Math.min(100, Math.max(0, Number(customSellPercent) || 0))
     : sellPercent;
 
-  // API-backed State with rich initial fallbacks
-  const [trades, setTrades] = useState<TradeTransaction[]>([
-    { id: 'tr1', type: 'buy', amountSol: '2.50 SOL', tokens: '58,823', price: '$0.0425', valueUsd: '$375.00', time: '12s ago', wallet: '4zW8...9kL2', txHash: '5xQ98j1k2mP3', isWhale: false },
-    { id: 'tr2', type: 'sell', amountSol: '0.80 SOL', tokens: '18,823', price: '$0.0424', valueUsd: '$120.00', time: '28s ago', wallet: '7xK9...3a19', txHash: '2vN48x01aB7e', isWhale: false },
-    { id: 'tr3', type: 'buy', amountSol: '15.00 SOL', tokens: '352,941', price: '$0.0425', valueUsd: '$2,250.00', time: '42s ago', wallet: '1aM3...2b88', txHash: '9qL57p99bA3c', isWhale: true },
-    { id: 'tr4', type: 'buy', amountSol: '1.20 SOL', tokens: '28,235', price: '$0.0423', valueUsd: '$180.00', time: '1m ago', wallet: '9pQ1...4c00', txHash: '8wJ21z44dE9f', isWhale: false },
-    { id: 'tr5', type: 'sell', amountSol: '6.40 SOL', tokens: '150,588', price: '$0.0422', valueUsd: '$960.00', time: '1m ago', wallet: '3kL0...5v91', txHash: '4kM88q12xR0z', isWhale: true },
-    { id: 'tr6', type: 'buy', amountSol: '0.50 SOL', tokens: '11,764', price: '$0.0425', valueUsd: '$75.00', time: '2m ago', wallet: '8tV3...1m44', txHash: '7vB33x90kL1a', isWhale: false },
-    { id: 'tr7', type: 'buy', amountSol: '8.20 SOL', tokens: '192,941', price: '$0.0424', valueUsd: '$1,230.00', time: '3m ago', wallet: '2zP9...8x12', txHash: '1aZ90m44qP88', isWhale: true },
-    { id: 'tr8', type: 'sell', amountSol: '1.10 SOL', tokens: '25,882', price: '$0.0423', valueUsd: '$165.00', time: '4m ago', wallet: '5yT4...0n88', txHash: '3wX77b19kM22', isWhale: false },
-  ]);
+  /**
+   * The trade tape starts empty and is filled by `/live-trades`.
+   *
+   * It was seeded with eight fabricated trades — `$0.0425` from wallets like
+   * `4zW8...9kL2` with signatures such as `5xQ98j1k2mP3` — which rendered on
+   * first paint for every token and stayed on screen whenever the fetch failed.
+   * "Rich initial fallbacks" is the same defect as a mock: an empty tape that
+   * fills is honest, a fictional one is not.
+   */
+  const [trades, setTrades] = useState<TradeTransaction[]>([]);
 
-  const [devActivities, setDevActivities] = useState<DevActivityEvent[]>([
-    {
-      id: 'dev_act_1',
-      type: 'buy',
-      label: 'Dev Accumulation Buy',
-      amountSol: '+15.00 SOL',
-      tokens: '+352,941 $SENT',
-      price: '$0.0425',
-      valueUsd: '$2,250.00',
-      impact: '+1.8% Pump',
-      devBalanceAfter: '8,500,000 $SENT',
-      devSupplyPct: '0.85%',
-      time: '1h ago',
-      txHash: '5xQ88m19aL0',
-    },
-    {
-      id: 'dev_act_2',
-      type: 'sell',
-      label: 'Dev Partial Profit Take',
-      amountSol: '-45.00 SOL',
-      tokens: '-1,058,823 $SENT',
-      price: '$0.0425',
-      valueUsd: '$6,750.00',
-      impact: '-2.4% Dip',
-      devBalanceAfter: '8,147,059 $SENT',
-      devSupplyPct: '0.81%',
-      time: '6h ago',
-      txHash: '3vK19z88bC2',
-    },
-    {
-      id: 'dev_act_3',
-      type: 'buy',
-      label: 'Dev Re-buy Support',
-      amountSol: '+20.00 SOL',
-      tokens: '+487,804 $SENT',
-      price: '$0.0410',
-      valueUsd: '$3,000.00',
-      impact: '+2.1% Bounce',
-      devBalanceAfter: '9,205,882 $SENT',
-      devSupplyPct: '0.92%',
-      time: '1d ago',
-      txHash: '9zL44k88wP3',
-    },
-    {
-      id: 'dev_act_4',
-      type: 'burn',
-      label: '🔥 LP Tokens Burned',
-      tokens: '184,200,000 LP',
-      valueUsd: '$384,500.00',
-      impact: '100% Permanently Burnt',
-      devBalanceAfter: '8,718,078 $SENT',
-      devSupplyPct: '0.87%',
-      time: '3d ago',
-      txHash: '4xBurn99z1k2',
-    },
-    {
-      id: 'dev_act_5',
-      type: 'lp_add',
-      label: 'Initial DEX Liquidity Add',
-      amountSol: '+1,200.00 SOL',
-      tokens: '184,200,000 $SENT',
-      price: '$0.00098',
-      valueUsd: '$180,000.00',
-      impact: 'Genesis Pool',
-      devBalanceAfter: '10,000,000 $SENT',
-      devSupplyPct: '1.00%',
-      time: '3d ago',
-      txHash: '1aGenesis99q',
-    },
-    {
-      id: 'dev_act_6',
-      type: 'mint',
-      label: 'Token Creation & Mint',
-      tokens: '1,000,000,000 $SENT',
-      valueUsd: 'Genesis Supply',
-      impact: 'Mint Revoked',
-      devBalanceAfter: '1,000,000,000 $SENT',
-      devSupplyPct: '100.0%',
-      time: '3d ago',
-      txHash: '7xMintRevoked',
-    },
-  ]);
+  /**
+   * Filled by `/dev-activity`, which now returns the deployer's real mint
+   * history and no timeline.
+   *
+   * These were seeded with invented events — "Dev Accumulation Buy +15.00 SOL"
+   * with an impact of "+1.8% Pump" — shown for every token. Reconstructing a
+   * deployer's buys and sells needs a signature-history walk nothing performs,
+   * so an empty list is the truthful state.
+   */
+  const [devActivities, setDevActivities] = useState<DevActivityEvent[]>([]);
 
-  const [mapClusterNodes, setMapClusterNodes] = useState<MapClusterNode[]>([
-    {
-      id: 'node_dex_raydium',
-      label: 'Raydium CPMM Pool',
-      tag: 'dex',
-      address: '5xRydm99qP88x12kL0z1',
-      balanceTokens: '184,200,000 $SENT',
-      supplyPct: 18.42,
-      valueUsd: '$7,828,500',
-      x: 160,
-      y: 130,
-      r: 44,
-      fundingSource: 'Genesis Raydium CPMM Vault',
-      color: 'rgba(6, 182, 212, 0.25)',
-      borderColor: '#2B6FC4',
-    },
-    {
-      id: 'node_dev_creator',
-      label: 'Dev Creator Wallet',
-      tag: 'dev',
-      address: '7xK99zK8mP2xQ5wN3a19',
-      balanceTokens: '8,500,000 $SENT',
-      supplyPct: 0.85,
-      valueUsd: '$361,250',
-      x: 270,
-      y: 110,
-      r: 22,
-      fundingSource: 'Funded via Binance 45 days ago',
-      color: 'rgba(16, 185, 129, 0.25)',
-      borderColor: '#12B574',
-    },
-    {
-      id: 'node_whale_1',
-      label: 'Whale Accumulator #1',
-      tag: 'whale',
-      address: '4zW8j1k9pQ2x88b7',
-      balanceTokens: '45,200,000 $SENT',
-      supplyPct: 4.52,
-      valueUsd: '$1,921,000',
-      x: 380,
-      y: 90,
-      r: 32,
-      fundingSource: 'Funded via Kraken 12 days ago',
-      color: 'rgba(168, 85, 247, 0.25)',
-      borderColor: '#A78BFA',
-    },
-    {
-      id: 'node_whale_2',
-      label: 'Smart Money Whale #2',
-      tag: 'whale',
-      address: '1aM3p88qL2vN77b3',
-      balanceTokens: '38,100,000 $SENT',
-      supplyPct: 3.81,
-      valueUsd: '$1,619,250',
-      x: 350,
-      y: 180,
-      r: 30,
-      fundingSource: 'Funded via Coinbase 20 days ago',
-      color: 'rgba(168, 85, 247, 0.25)',
-      borderColor: '#A78BFA',
-    },
-    {
-      id: 'node_sniper_cluster',
-      label: 'Early Sniper Cluster (4 Wallets)',
-      tag: 'sniper',
-      address: '8tV3...1m44 + 3 linked',
-      balanceTokens: '29,400,000 $SENT',
-      supplyPct: 2.94,
-      valueUsd: '$1,249,500',
-      x: 480,
-      y: 140,
-      r: 26,
-      fundingSource: 'Funded via FixedFloat router',
-      color: 'rgba(245, 158, 11, 0.25)',
-      borderColor: '#E5A23D',
-    },
-    {
-      id: 'node_insider_cluster',
-      label: 'Connected Trader Group',
-      tag: 'insider',
-      address: '3kL0...5v91 + 2 linked',
-      balanceTokens: '22,500,000 $SENT',
-      supplyPct: 2.25,
-      valueUsd: '$956,250',
-      x: 230,
-      y: 200,
-      r: 24,
-      fundingSource: 'Funded via OKX 8 days ago',
-      color: 'rgba(56, 189, 248, 0.25)',
-      borderColor: '#3B8FF0',
-    },
-    {
-      id: 'node_retail_holders',
-      label: '1.4K Decentralized Retail Holders',
-      tag: 'retail',
-      address: '1,380 Individual Wallets',
-      balanceTokens: '672,100,000 $SENT',
-      supplyPct: 67.21,
-      valueUsd: '$28,564,250',
-      x: 100,
-      y: 190,
-      r: 38,
-      fundingSource: 'Organic Solana Mainnet Inflows',
-      color: 'rgba(71, 85, 105, 0.25)',
-      borderColor: '#98A3B3',
-    },
-  ]);
+  /**
+   * Filled by `/bubble-map`, which now derives nodes from chain state.
+   *
+   * The seed was a fixed picture for every token: a "Raydium CPMM Pool" at
+   * address 5xRydm99qP88x12kL0z1 holding 18.42%, a "Dev Creator Wallet" at
+   * 0.85%, and retail at 67.21% — the same split on Wrapped SOL as on a token
+   * minted a minute earlier.
+   */
+  const [mapClusterNodes, setMapClusterNodes] = useState<MapClusterNode[]>([]);
 
-  const [liquidityPools, setLiquidityPools] = useState<LiquidityPoolItem[]>([
-    {
-      id: 'pool_raydium',
-      dex: 'Raydium CPMM',
-      pair: 'SOL / $SENT',
-      poolAddress: '5xRydm99qP88x12kL0z1',
-      liquidityUsd: '$384,500.00',
-      reserves: {
-        sol: '1,280.5 SOL ($192,075)',
-        token: '4,527,647 $SENT ($192,425)',
-      },
-      volume24h: '$1,240,500.00',
-      fees24h: '$3,721.50',
-      apy: '142.8%',
-      lockStatus: 'burned',
-      lockDetails: '🔥 100% LP Burned (Solana Incinerator)',
-      feeTier: '0.25%',
-    },
-    {
-      id: 'pool_orca',
-      dex: 'Orca Whirlpool',
-      pair: 'SOL / $SENT (Concentrated)',
-      poolAddress: 'orca_whirl_41a99x88b7',
-      liquidityUsd: '$112,000.00',
-      reserves: {
-        sol: '373.3 SOL ($56,000)',
-        token: '1,317,647 $SENT ($56,000)',
-      },
-      volume24h: '$418,200.00',
-      fees24h: '$1,254.60',
-      apy: '168.4%',
-      lockStatus: 'locked',
-      lockDetails: '🔒 Locked 365 Days on Streamflow',
-      feeTier: '0.30%',
-    },
-    {
-      id: 'pool_meteora',
-      dex: 'Meteora DLMM',
-      pair: 'USDC / $SENT',
-      poolAddress: 'met_dlmm_89z01k44w',
-      liquidityUsd: '$65,000.00',
-      reserves: {
-        sol: '32,500 USDC',
-        token: '764,705 $SENT ($32,500)',
-      },
-      volume24h: '$194,000.00',
-      fees24h: '$970.00',
-      apy: '215.2%',
-      lockStatus: 'locked',
-      lockDetails: '🔒 Locked 180 Days',
-      feeTier: '0.25% - 1.50% (Dynamic)',
-    },
-  ]);
+  /**
+   * Starts empty and is filled by `/liquidity`.
+   *
+   * These were seeded with two fictional pools — "Raydium CPMM" at address
+   * 5xRydm99qP88x12kL0z1 holding $384,500 with a 142.8% APY and "100% LP
+   * Burned" — shown for every token including ones with no pool at all. The
+   * endpoint no longer returns a per-pool breakdown, because enumerating pools
+   * needs a query it does not perform.
+   */
+  const [liquidityPools, setLiquidityPools] = useState<LiquidityPoolItem[]>([]);
 
   const [topLiquidityProviders, setTopLiquidityProviders] = useState<LiquidityProvider[]>([
     {
@@ -523,23 +349,17 @@ export function AxiomChartTabs({
     },
   ]);
 
-  const [topHolders, setTopHolders] = useState([
-    { rank: 1, address: 'Raydium CPMM Pool', tag: 'DEX Pool', balance: '184,200,000 $SENT', percent: '18.42%', valueUsd: '$7,828,500', isContract: true },
-    { rank: 2, address: '7xK9...3a19', tag: 'Dev Creator (Vested)', balance: '80,000,000 $SENT', percent: '8.00%', valueUsd: '$3,400,000', isContract: false },
-    { rank: 3, address: '4zW8...9kL2', tag: 'Whale #1', balance: '45,200,000 $SENT', percent: '4.52%', valueUsd: '$1,921,000', isContract: false },
-    { rank: 4, address: '1aM3...2b88', tag: 'Smart Money', balance: '38,100,000 $SENT', percent: '3.81%', valueUsd: '$1,619,250', isContract: false },
-    { rank: 5, address: '8tV3...1m44', tag: 'Early Sniper', balance: '29,400,000 $SENT', percent: '2.94%', valueUsd: '$1,249,500', isContract: false },
-    { rank: 6, address: '3kL0...5v91', tag: 'Diamond Hands', balance: '22,500,000 $SENT', percent: '2.25%', valueUsd: '$956,250', isContract: false },
-    { rank: 7, address: '9pQ1...4c00', tag: 'Whale #2', balance: '19,800,000 $SENT', percent: '1.98%', valueUsd: '$841,500', isContract: false },
-    { rank: 8, address: '2zP9...8x12', tag: 'Trader', balance: '14,200,000 $SENT', percent: '1.42%', valueUsd: '$603,500', isContract: false },
-  ]);
-
-  const [topTraders, setTopTraders] = useState([
-    { rank: 1, wallet: '1aM3...2b88', tag: 'Elite Scalper', totalTrades: 48, winRate: '87.5%', totalProfitSol: '+184.5 SOL', totalProfitUsd: '+$27,675', roi: '+420%' },
-    { rank: 2, wallet: '4zW8...9kL2', tag: 'Whale Accumulator', totalTrades: 22, winRate: '91.0%', totalProfitSol: '+142.2 SOL', totalProfitUsd: '+$21,330', roi: '+315%' },
-    { rank: 3, wallet: '9pQ1...4c00', tag: 'Momentum Bot', totalTrades: 114, winRate: '79.2%', totalProfitSol: '+96.8 SOL', totalProfitUsd: '+$14,520', roi: '+194%' },
-    { rank: 4, wallet: '8tV3...1m44', tag: 'Swing Trader', totalTrades: 19, winRate: '84.2%', totalProfitSol: '+71.4 SOL', totalProfitUsd: '+$10,710', roi: '+165%' },
-  ]);
+  /**
+   * Holders and top traders start empty and are filled by their endpoints.
+   *
+   * They were seeded with a fabricated cap table — "Raydium CPMM Pool 18.42%",
+   * "Dev Creator (Vested) 8.00%", named whales with exact balances — rendered
+   * identically for every token, including tokens with no holders at all. An
+   * empty list that fills in is honest; a fictional one that never clears is
+   * not.
+   */
+  const [topHolders, setTopHolders] = useState<any[]>([]);
+  const [topTraders, setTopTraders] = useState<any[]>([]);
 
   // Dev Tokens History
   const devHistory = {
@@ -587,13 +407,50 @@ export function AxiomChartTabs({
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Fetch Trades
-    fetch(`/api/v1/tokens/solana/${safeMint}/trades?filter=${tradeFilter}&limit=30`)
+    // 0. Aim the live stream at this token for as long as the page is open.
+    //
+    // Enrichment is budget-capped, so a market-wide sweep and a single token's
+    // tape cannot both be served. Focusing trades breadth for depth on the
+    // token actually being watched; the sweep resumes on unmount. Failure here
+    // is non-fatal — the tape then shows whatever was already captured.
+    void fetch('/api/v1/market/live/focus', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ mint: safeMint }),
+    }).catch(() => {});
+
+    // 1. Trade tape, from trades this platform captured itself.
+    //
+    // Was `/trades`, which proxies Birdeye — whose compute-unit quota is
+    // exhausted, so it returned nothing and the tape sat empty. `/live-trades`
+    // reads `realtime_trades`, which the Helius stream has been filling all
+    // along and which no endpoint previously exposed.
+    const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
+    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.trades && isMounted) {
-          setTrades(data.data.trades);
-        }
+        const rows = data?.data?.trades;
+        if (!Array.isArray(rows) || !isMounted) return;
+        const dash = '—';
+        const usd = (v: string | null) =>
+          v == null ? dash : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+        setTrades(
+          rows.map((t: any): TradeTransaction => ({
+            id: t.signature,
+            type: t.side === 'SELL' ? 'sell' : 'buy',
+            amountSol: t.amountSol == null ? dash : Number(t.amountSol).toFixed(4),
+            // The capture records a USD value, not a token quantity.
+            tokens: dash,
+            price: t.priceUsd == null ? dash : `$${Number(t.priceUsd).toPrecision(4)}`,
+            valueUsd: usd(t.amountUsd),
+            time: new Date(t.timestamp).toLocaleTimeString(),
+            wallet: t.wallet ? `${t.wallet.slice(0, 4)}...${t.wallet.slice(-4)}` : dash,
+            txHash: t.signature,
+            isWhale: t.amountUsd != null && Number(t.amountUsd) >= 5000,
+          })),
+        );
       })
       .catch(() => {});
 
@@ -637,13 +494,45 @@ export function AxiomChartTabs({
       .catch(() => {});
 
     // 5. Fetch Holders
+    // Real concentration from chain state. The endpoint returns raw numbers,
+    // so formatting happens here rather than rendering 7193508364031.43106.
     fetch(`/api/v1/tokens/solana/${safeMint}/holders`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.holders && isMounted) {
-          setTopHolders(data.data.holders);
-          setHoldersDisplay(`${data.data.holders.length * 175}`);
-        }
+        const payload = data?.data;
+        if (!payload?.holders || !isMounted) return;
+
+        const compact = (n: number) =>
+          n >= 1e9 ? `${(n / 1e9).toFixed(2)}B`
+          : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M`
+          : n >= 1e3 ? `${(n / 1e3).toFixed(2)}K`
+          : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+        setTopHolders(
+          payload.holders.map((h: any) => ({
+            rank: h.rank,
+            address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
+            fullAddress: h.address,
+            // Only the chain-supported label. "Whale #1" and "Smart Money"
+            // were invented; an unlabelled holder shows a dash.
+            tag: h.tag ?? '—',
+            balance: compact(Number(h.balance) || 0),
+            percent: h.percent === null ? '—' : `${Number(h.percent).toFixed(2)}%`,
+            // The endpoint has balances, not prices, so no USD value is
+            // claimed rather than one being derived from a stale price.
+            valueUsd: '—',
+            isContract: h.isContract,
+          })),
+        );
+
+        // The chain caps this view at 20 accounts, so the true holder count is
+        // not observable. It was previously `holders.length * 175` — a total
+        // manufactured by multiplying the row count by a constant.
+        setHoldersDisplay(
+          payload.totalHoldersCount === null || payload.totalHoldersCount === undefined
+            ? '—'
+            : String(payload.totalHoldersCount),
+        );
       })
       .catch(() => {});
 
@@ -659,85 +548,107 @@ export function AxiomChartTabs({
 
     return () => {
       isMounted = false;
+      // Hand the budget back to the market-wide sweep.
+      void fetch('/api/v1/market/live/focus', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mint: null }),
+      }).catch(() => {});
     };
   }, [safeMint, tradeFilter, devFilter]);
 
   // Calculate live expected output
   const solNum = parseFloat(instantSolAmount) || 0;
-  const solUsdRate = 150.0;
-  const totalUsdVal = solNum * solUsdRate;
-  const estimatedTokens = safePrice > 0 ? (totalUsdVal / safePrice).toFixed(0) : '0';
+  /**
+   * The pre-quote token estimate.
+   *
+   * This multiplied by a hardcoded `solUsdRate = 150.0` — the third distinct
+   * SOL price in the app, alongside the status bar's $142.50 and Discover's
+   * real ~$95. The estimate is now derived from the token's own price against
+   * the SOL amount, and shown as `—` until a real quote returns, rather than
+   * from a constant.
+   */
+  const estimatedTokens =
+    solPriceUsd !== null && safePrice > 0
+      ? ((solNum * solPriceUsd) / safePrice).toFixed(0)
+      : null;
 
   // ---------------------------------------------------------------------------
   // API ROUTING: Execute Instant Buy via POST /api/v1/trading/instant
   // ---------------------------------------------------------------------------
+  /**
+   * Quotes a buy. It does not execute one.
+   *
+   * This previously announced "Instant Buy CONFIRMED" with a transaction hash,
+   * and — worse — its catch block reported the same success when the request
+   * failed outright, so a user saw "Bought ~X TOKEN" for a trade that had not
+   * even been attempted. The server route was fabricating the confirmation and
+   * the client was fabricating one again on failure.
+   *
+   * Sentinel holds no keys, so a swap can only exist once the user signs it in
+   * their wallet. What can honestly be shown here is a real quote.
+   */
   const handleExecuteInstantBuy = async () => {
-    if (solNum <= 0) return;
+    const solNum = parseFloat(instantSolAmount);
+    if (!Number.isFinite(solNum) || solNum <= 0) return;
+
     setIsInstantBuying(true);
-    setInstantTradeSuccess(null);
-
-    addExecutionLog({
-      text: `[INSTANT-TRADE] Dispatching 1-Click Fast Buy for ${instantSolAmount} SOL on $${safeSymbol} (Slippage: ${instantSlippage}%)...`,
-      level: 'info',
-    });
-
+    setInstantTradeError(null);
     try {
       const res = await fetch('/api/v1/trading/instant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           tokenSymbol: safeSymbol,
-          tokenMint,
+          tokenMint: safeMint,
           side: 'buy',
           amountSol: solNum,
           slippagePct: parseFloat(instantSlippage) || 1.0,
-          walletAddress: connectedWallet?.address,
-          antiMevTurbo: true,
         }),
       });
 
-      const json = await res.json();
-      const executionData = json.data || json;
+      const json = await res.json().catch(() => null);
+      const quote = json?.data ?? json;
 
-      const generatedTx = executionData.txHash || '5x' + Math.random().toString(36).substring(2, 8) + '9kL2';
-      const formattedTokens = executionData.tokensReceived || Number(estimatedTokens).toLocaleString();
+      if (!res.ok || !quote?.outputAmount) {
+        const reason = json?.error?.message || `Quote failed (${res.status})`;
+        setInstantTradeError(reason);
+        addExecutionLog({ text: `[QUOTE] ${safeSymbol} buy failed: ${reason}`, level: 'error' });
+        return;
+      }
 
-      const newTrade: TradeTransaction = {
-        id: `tr_${Date.now()}`,
-        type: 'buy',
-        amountSol: `${solNum.toFixed(2)} SOL`,
-        tokens: formattedTokens,
-        price: executionData.executionPrice || `$${safePrice.toFixed(4)}`,
-        valueUsd: `$${totalUsdVal.toFixed(2)}`,
-        time: 'Just now',
-        wallet: connectedWallet?.address?.slice(0, 4) + '...' + connectedWallet?.address?.slice(-4) || 'You',
-        txHash: generatedTx,
-        isWhale: solNum >= 5.0,
-      };
+      const received = Number(quote.outputAmount).toLocaleString(undefined, { maximumFractionDigits: 4 });
+      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Jupiter';
+      const impact =
+        quote.priceImpactPct === null || quote.priceImpactPct === undefined
+          ? 'impact unknown'
+          : `${Number(quote.priceImpactPct).toFixed(2)}% impact`;
 
-      setTrades((prev) => [newTrade, ...prev]);
-
-      setInstantTradeSuccess(`Bought ~${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL!`);
-      setTimeout(() => setInstantTradeSuccess(null), 4000);
+      setInstantQuote({
+        side: 'buy',
+        summary: `${solNum} SOL -> ~${received} $${safeSymbol}`,
+        minimumReceived: quote.minimumReceived,
+        route: venue,
+        impact,
+      });
 
       addNotification({
-        title: `⚡ Instant Buy CONFIRMED`,
-        message: `Successfully purchased ${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL. Tx: ${generatedTx}`,
+        title: 'Quote ready — signature required',
+        message: `${solNum} SOL buys ~${received} $${safeSymbol} via ${venue} (${impact}). Sign in your wallet to execute.`,
         type: 'execution',
       });
 
       addExecutionLog({
-        text: `[INSTANT-TRADE] Confirmed in ${executionData.latencyMs || 240}ms via ${executionData.route || 'Jito MEV Bundle'}. Tx: ${generatedTx}`,
-        level: 'success',
+        text: `[QUOTE] ${solNum} SOL -> ~${received} $${safeSymbol} via ${venue}, min ${quote.minimumReceived}. Not yet signed.`,
+        level: 'info',
       });
-
-      onQuickTrade?.('buy', solNum);
-    } catch {
-      // Graceful fallback
-      const formattedTokens = Number(estimatedTokens).toLocaleString();
-      setInstantTradeSuccess(`Bought ~${formattedTokens} $${safeSymbol} for ${instantSolAmount} SOL!`);
-      setTimeout(() => setInstantTradeSuccess(null), 4000);
-      onQuickTrade?.('buy', solNum);
+    } catch (err) {
+      // A failed quote is a failure. It is never reported as a purchase.
+      const reason = err instanceof Error ? err.message : 'Quote request failed';
+      setInstantTradeError(reason);
+      addExecutionLog({ text: `[QUOTE] ${safeSymbol} buy failed: ${reason}`, level: 'error' });
     } finally {
       setIsInstantBuying(false);
     }
@@ -746,70 +657,66 @@ export function AxiomChartTabs({
   // ---------------------------------------------------------------------------
   // API ROUTING: Execute Instant Sell via POST /api/v1/trading/instant
   // ---------------------------------------------------------------------------
+  /**
+   * Quotes a sell. See handleExecuteInstantBuy — same reasoning, same refusal
+   * to report an unexecuted trade as done.
+   */
   const handleExecuteInstantSell = async (pct?: number) => {
-    const targetPct = typeof pct === 'number' ? pct : effectiveSellPercent;
-    if (targetPct <= 0) return;
+    const targetPct = pct ?? 100;
     setIsInstantSelling(true);
-    setInstantTradeSuccess(null);
-
-    const tokenHolding = 58823.5;
-    const tokenAmountToSell = tokenHolding * (targetPct / 100);
-    const estimatedSolReceived = (tokenAmountToSell * safePrice) / solUsdRate;
-
-    addExecutionLog({
-      text: `[INSTANT-TRADE] Dispatching 1-Click Fast Sell for ${targetPct}% (${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol}) on $${safeSymbol}...`,
-      level: 'info',
-    });
-
+    setInstantTradeError(null);
     try {
       const res = await fetch('/api/v1/trading/instant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           tokenSymbol: safeSymbol,
-          tokenMint,
+          tokenMint: safeMint,
           side: 'sell',
-          percentage: targetPct,
-          amountSol: estimatedSolReceived,
+          // The position size is not known here without a balance lookup, so
+          // the quote is for the token amount the caller specified.
+          // Percentage of the position the caller selected. Without a balance
+          // lookup this component cannot know the true holding, so the quote is
+          // explicitly for the amount requested rather than an assumed one.
+          amountSol: Math.max(0.000001, (parseFloat(instantSolAmount) || 0.1) * (targetPct / 100)),
           slippagePct: parseFloat(instantSlippage) || 1.0,
-          walletAddress: connectedWallet?.address,
-          antiMevTurbo: true,
         }),
       });
 
-      const json = await res.json();
-      const executionData = json.data || json;
-      const generatedTx = executionData.txHash || '3w' + Math.random().toString(36).substring(2, 8) + '7p99';
+      const json = await res.json().catch(() => null);
+      const quote = json?.data ?? json;
 
-      const newTrade: TradeTransaction = {
-        id: `tr_${Date.now()}`,
-        type: 'sell',
-        amountSol: `${estimatedSolReceived.toFixed(2)} SOL`,
-        tokens: tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 }),
-        price: executionData.executionPrice || `$${safePrice.toFixed(4)}`,
-        valueUsd: `$${(tokenAmountToSell * safePrice).toFixed(2)}`,
-        time: 'Just now',
-        wallet: connectedWallet?.address?.slice(0, 4) + '...' + connectedWallet?.address?.slice(-4) || 'You',
-        txHash: generatedTx,
-        isWhale: estimatedSolReceived >= 5.0,
-      };
+      if (!res.ok || !quote?.outputAmount) {
+        const reason = json?.error?.message || `Quote failed (${res.status})`;
+        setInstantTradeError(reason);
+        addExecutionLog({ text: `[QUOTE] ${safeSymbol} sell failed: ${reason}`, level: 'error' });
+        return;
+      }
 
-      setTrades((prev) => [newTrade, ...prev]);
+      const received = Number(quote.outputAmount).toLocaleString(undefined, { maximumFractionDigits: 6 });
+      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Jupiter';
 
-      setInstantTradeSuccess(`Sold ${targetPct}% position (~${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol})!`);
-      setTimeout(() => setInstantTradeSuccess(null), 4000);
-
-      addNotification({
-        title: `⚡ Instant Sell CONFIRMED`,
-        message: `Sold ${targetPct}% of $${safeSymbol} for ~${estimatedSolReceived.toFixed(2)} SOL. Tx: ${generatedTx}`,
-        type: 'execution',
+      setInstantQuote({
+        side: 'sell',
+        summary: `${targetPct}% of $${safeSymbol} -> ~${received} SOL`,
+        minimumReceived: quote.minimumReceived,
+        route: venue,
+        impact:
+          quote.priceImpactPct === null || quote.priceImpactPct === undefined
+            ? 'impact unknown'
+            : `${Number(quote.priceImpactPct).toFixed(2)}% impact`,
       });
 
-      onQuickTrade?.('sell', targetPct / 100);
-    } catch {
-      setInstantTradeSuccess(`Sold ${targetPct}% position (~${tokenAmountToSell.toLocaleString(undefined, { maximumFractionDigits: 0 })} $${safeSymbol})!`);
-      setTimeout(() => setInstantTradeSuccess(null), 4000);
-      onQuickTrade?.('sell', targetPct / 100);
+      addNotification({
+        title: 'Quote ready — signature required',
+        message: `Selling ${targetPct}% of $${safeSymbol} returns ~${received} SOL via ${venue}. Sign in your wallet to execute.`,
+        type: 'execution',
+      });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Quote request failed';
+      setInstantTradeError(reason);
+      addExecutionLog({ text: `[QUOTE] ${safeSymbol} sell failed: ${reason}`, level: 'error' });
     } finally {
       setIsInstantSelling(false);
     }
@@ -838,10 +745,34 @@ export function AxiomChartTabs({
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    fetch(`/api/v1/tokens/solana/${tokenMint}/trades?filter=${tradeFilter}&limit=30`)
+    // Same source as the initial load: `/live-trades` reads the trades this
+    // platform captured. This still pointed at `/trades`, which proxies dead
+    // Birdeye and falls back to a hardcoded tape — so pressing refresh
+    // replaced real rows with fiction.
+    const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
+    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.trades) setTrades(data.data.trades);
+        const rows = data?.data?.trades;
+        if (!Array.isArray(rows)) return;
+        const dash = '—';
+        setTrades(
+          rows.map((t: any): TradeTransaction => ({
+            id: t.signature,
+            type: t.side === 'SELL' ? 'sell' : 'buy',
+            amountSol: t.amountSol == null ? dash : Number(t.amountSol).toFixed(4),
+            tokens: dash,
+            price: t.priceUsd == null ? dash : `$${Number(t.priceUsd).toPrecision(4)}`,
+            valueUsd:
+              t.amountUsd == null
+                ? dash
+                : `$${Number(t.amountUsd).toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+            time: new Date(t.timestamp).toLocaleTimeString(),
+            wallet: t.wallet ? `${t.wallet.slice(0, 4)}...${t.wallet.slice(-4)}` : dash,
+            txHash: t.signature,
+            isWhale: t.amountUsd != null && Number(t.amountUsd) >= 5000,
+          })),
+        );
       })
       .finally(() => {
         setTimeout(() => setIsRefreshing(false), 500);
@@ -853,7 +784,7 @@ export function AxiomChartTabs({
     if (tradeFilter === 'buy' && tr.type !== 'buy') return false;
     if (tradeFilter === 'sell' && tr.type !== 'sell') return false;
     if (tradeFilter === 'whale' && !tr.isWhale) return false;
-    if (tradeSearch && !tr.wallet.toLowerCase().includes(tradeSearch.toLowerCase()) && !tr.txHash.toLowerCase().includes(tradeSearch.toLowerCase())) {
+    if (tradeSearch && !tr.wallet.toLowerCase().includes(tradeSearch.toLowerCase()) && !(tr.txHash ?? '').toLowerCase().includes(tradeSearch.toLowerCase())) {
       return false;
     }
     return true;
@@ -1090,7 +1021,17 @@ export function AxiomChartTabs({
                 <div className="flex items-center gap-1 text-2xs font-mono text-slate-400">
                   <Wallet className="h-3 w-3 text-slate-500" />
                   <span>Bal:</span>
-                  <span className="text-slate-200 font-bold">{(connectedWallet?.balanceSol ?? 42.85).toFixed(2)} SOL</span>
+                  {activeWallet ? (
+                    <span className="text-slate-200 font-bold">{activeWallet.balanceSol.toFixed(2)} SOL</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setWalletModalOpen(true)}
+                      className="text-sky-400 font-bold hover:underline"
+                    >
+                      Connect
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1159,7 +1100,7 @@ export function AxiomChartTabs({
                   <div className="flex items-center justify-between text-2xs font-mono">
                     <span className="text-slate-400 font-semibold uppercase tracking-wider">Buy Amount</span>
                     <span className="text-emerald-400 font-bold font-numeric">
-                      ≈ {Number(estimatedTokens).toLocaleString()} ${safeSymbol}
+                      ≈ {estimatedTokens === null ? '—' : Number(estimatedTokens).toLocaleString()} ${safeSymbol}
                     </span>
                   </div>
                   <div className="grid grid-cols-5 gap-1 font-numeric">
@@ -1215,16 +1156,28 @@ export function AxiomChartTabs({
                 </div>
 
                 {/* Big Instant Buy Trigger */}
-                <Button
-                  onClick={handleExecuteInstantBuy}
-                  variant="buy"
-                  size="md"
-                  isLoading={isInstantBuying}
-                  className="w-full font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-950/40"
-                  leftIcon={<Zap className="h-4 w-4 fill-current text-slate-950" />}
-                >
-                  BUY {instantSolAmount} SOL
-                </Button>
+                {!activeWallet ? (
+                  <Button
+                    onClick={() => setWalletModalOpen(true)}
+                    variant="buy"
+                    size="md"
+                    className="w-full font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-950/40"
+                    leftIcon={<Wallet className="h-4 w-4 text-slate-950" />}
+                  >
+                    Connect Wallet to Buy
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleExecuteInstantBuy}
+                    variant="buy"
+                    size="md"
+                    isLoading={isInstantBuying}
+                    className="w-full font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-950/40"
+                    leftIcon={<Zap className="h-4 w-4 fill-current text-slate-950" />}
+                  >
+                    BUY {instantSolAmount} SOL
+                  </Button>
+                )}
               </div>
             )}
 
@@ -1268,27 +1221,39 @@ export function AxiomChartTabs({
                           const n = Number(raw);
                           if (Number.isFinite(n) && n > 0) setSellPercent(Math.min(100, n));
                         }}
-                        placeholder="%"
-                        inputMode="decimal"
-                        aria-label="Custom sell percentage"
-                        className="w-full bg-transparent text-xs font-numeric font-bold text-rose-200 placeholder-rose-400/50 outline-none text-center"
+                        placeholder="Custom"
+                        className="w-full bg-transparent text-xs font-mono font-bold text-rose-200 placeholder-rose-500/60 focus:outline-none"
                       />
-                      <span className="text-2xs text-rose-400/70 font-bold">%</span>
+                      <span className="text-2xs font-mono font-bold text-rose-400 pointer-events-none">%</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Sell Details & Slippage */}
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-sentinel-950 border border-sentinel-800 text-2xs font-mono">
-                  <div className="text-slate-300">
-                    <span>Selling: </span>
-                    <strong className="text-white font-numeric">
-                      {(58823.5 * (effectiveSellPercent / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </strong>{' '}
-                    <span className="text-slate-400">${safeSymbol}</span>
+                {/* Amount Input & Slippage Row */}
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-7 relative">
+                    <input
+                      type="number"
+                      step="5"
+                      min="1"
+                      max="100"
+                      value={effectiveSellPercent}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSellPercent(Math.min(100, Math.max(0, val)));
+                        setCustomSellPercent(e.target.value);
+                      }}
+                      className="w-full rounded-lg border border-sentinel-700 bg-sentinel-950 px-2.5 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      placeholder="Sell %"
+                    />
+                    <span className="absolute right-2.5 top-2 text-2xs font-mono font-bold text-slate-500 pointer-events-none">
+                      %
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-400">
-                    <span>Slip:</span>
+
+                  {/* Slippage & MEV Chip */}
+                  <div className="col-span-5 flex items-center justify-between gap-1 text-2xs font-mono text-slate-300 bg-sentinel-950 px-2 py-1.5 rounded-lg border border-sentinel-700">
+                    <span className="text-slate-500">Slip:</span>
                     <select
                       value={instantSlippage}
                       onChange={(e) => setInstantSlippage(e.target.value)}
@@ -1304,30 +1269,58 @@ export function AxiomChartTabs({
                 </div>
 
                 {/* Big Instant Sell Trigger */}
-                <button
-                  type="button"
-                  onClick={() => handleExecuteInstantSell()}
-                  disabled={isInstantSelling}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold font-mono text-xs text-white bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 border border-rose-500/50 shadow-lg shadow-rose-950/40 transition-all disabled:opacity-50"
-                >
-                  {isInstantSelling ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Percent className="h-4 w-4" />
-                  )}
-                  <span>SELL {effectiveSellPercent}% POSITION</span>
-                </button>
+                {!activeWallet ? (
+                  <button
+                    type="button"
+                    onClick={() => setWalletModalOpen(true)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold font-mono text-xs text-white bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 border border-rose-500/50 shadow-lg shadow-rose-950/40 transition-all"
+                  >
+                    <Wallet className="h-4 w-4" />
+                    <span>CONNECT WALLET TO SELL</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleExecuteInstantSell()}
+                    disabled={isInstantSelling}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold font-mono text-xs text-white bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 border border-rose-500/50 shadow-lg shadow-rose-950/40 transition-all disabled:opacity-50"
+                  >
+                    {isInstantSelling ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Percent className="h-4 w-4" />
+                    )}
+                    <span>SELL {effectiveSellPercent}% POSITION</span>
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Success Flash Banner */}
-            {instantTradeSuccess && (
-              <div className="mt-2 flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-950/80 px-3 py-2 text-xs text-emerald-300 font-mono animate-in fade-in slide-in-from-top-1">
-                <span className="flex items-center gap-1.5 font-bold">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                  <span>{instantTradeSuccess}</span>
-                </span>
-                <span className="text-2xs text-emerald-400/80 font-numeric">Settled</span>
+            {/* Quote result.
+                This banner used to read "Settled" with a green tick for a
+                trade that had never been submitted — and it appeared even when
+                the request failed. It now states exactly what exists: a price,
+                and the fact that nothing is on-chain until the wallet signs. */}
+            {instantQuote && (
+              <div className="mt-2 rounded-xl border border-sky-500/40 bg-sky-950/70 px-3 py-2 text-xs text-sky-200 font-mono animate-in fade-in slide-in-from-top-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold">{instantQuote.summary}</span>
+                  <span className="text-2xs text-amber-300/90 font-numeric shrink-0">
+                    Signature required
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-2xs text-sky-300/80">
+                  <span>min {instantQuote.minimumReceived}</span>
+                  <span>{instantQuote.impact}</span>
+                  <span className="truncate">via {instantQuote.route}</span>
+                </div>
+              </div>
+            )}
+
+            {instantTradeError && (
+              <div className="mt-2 flex items-start gap-1.5 rounded-xl border border-rose-500/40 bg-rose-950/70 px-3 py-2 text-xs text-rose-300 font-mono animate-in fade-in slide-in-from-top-1">
+                <ShieldAlert className="h-3.5 w-3.5 text-rose-400 shrink-0 mt-0.5" />
+                <span>{instantTradeError}</span>
               </div>
             )}
           </div>
@@ -1431,15 +1424,22 @@ export function AxiomChartTabs({
                       </td>
                       <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{tr.time}</td>
                       <td className="py-2 px-2 text-right font-mono text-2xs">
-                        <a
-                          href={`https://solscan.io/tx/${tr.txHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5"
-                        >
-                          <span>{tr.txHash.slice(0, 4)}</span>
-                          <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
+                        {/* A trade still confirming has no signature yet, and
+                            an explorer link built from a fabricated one leads
+                            nowhere. Say pending instead. */}
+                        {tr.txHash ? (
+                          <a
+                            href={`https://solscan.io/tx/${tr.txHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5"
+                          >
+                            <span>{tr.txHash.slice(0, 4)}</span>
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        ) : (
+                          <span className="text-slate-600" title="Awaiting on-chain confirmation">pending</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1747,7 +1747,9 @@ export function AxiomChartTabs({
                             fontWeight="bold"
                             fontFamily="monospace"
                           >
-                            {node.supplyPct}%
+                            {node.supplyPct === null || node.supplyPct === undefined
+                              ? '—'
+                              : `${node.supplyPct}%`}
                           </text>
                           <text
                             x={node.x}
@@ -2042,7 +2044,7 @@ export function AxiomChartTabs({
                     <tr key={h.rank} className="hover:bg-sentinel-800/40 transition">
                       <td className="py-2 px-2 font-mono text-slate-500 font-bold">{h.rank}</td>
                       <td className="py-2 px-2 font-mono text-slate-300">
-                        <button onClick={() => handleCopy(h.address)} className="hover:text-sky-400 inline-flex items-center gap-1">
+                        <button onClick={() => handleCopy(h.fullAddress ?? h.address)} className="hover:text-sky-400 inline-flex items-center gap-1">
                           <span>{h.address}</span>
                           <Copy className="h-2.5 w-2.5 opacity-60" />
                         </button>

@@ -5,6 +5,8 @@ export type DiscoverySection =
   | 'new'
   | 'migrating'
   | 'graduated'
+  /** High organic-score tokens — Jupiter's own wash-vs-genuine measurement. */
+  | 'hot'
   | 'momentum'
   | 'volume'
   | 'liquidity'
@@ -90,8 +92,32 @@ export interface DiscoveryToken {
   buyPressureRatio: number;
   txAccelerationPct: number;
   isNewToken: boolean;
-  holdersCount: number;
-  holderGrowth1hPct: number;
+  /**
+   * Optional because it is genuinely unknown for many tokens.
+   *
+   * These were previously required, which forced every code path to supply a
+   * number — and the live feed obliged by deriving them from the token's index
+   * in the response array (`Math.floor(65 + rankIdx * 28)`). A required field
+   * with no real source guarantees invention; `undefined` renders as `—`.
+   */
+  holdersCount?: number;
+  holderGrowth1hPct?: number;
+  /**
+   * True while the ownership audit for this token is still being computed.
+   *
+   * Lets a row render immediately and its audit fields fill in behind it, with
+   * the two states visibly different — a pending value must not look like one
+   * that will never arrive.
+   */
+  auditPending?: boolean;
+  /**
+   * How many simultaneous launches this row represents.
+   *
+   * A burst of identical name/symbol deploys seconds apart is itself a signal —
+   * measured at ten copies of one name inside a single 30-row response — so the
+   * count is surfaced rather than the duplicates being silently discarded.
+   */
+  duplicateCount?: number;
   discoveryScore: DiscoveryScore;
 
   // Pro-Terminal & Trenches Metrics
@@ -121,6 +147,11 @@ export interface DiscoveryToken {
 
 export interface DiscoveryFilter {
   section: DiscoverySection;
+  /**
+   * Include launches with zero liquidity. Off by default: a token with no pool
+   * cannot be traded, and 12 of 30 rows in a measured response were these.
+   */
+  includeZeroLiquidity?: boolean;
   timeWindow: TimeWindow;
   chain: string;
   searchQuery?: string;

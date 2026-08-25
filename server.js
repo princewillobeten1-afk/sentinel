@@ -70,6 +70,21 @@ app.prepare().then(() => {
 
   server.on('error', (err) => {
     console.error('> Server error:', err);
+
+    // A listen failure must end the process, not just be logged.
+    //
+    // `app.prepare()` has already run by this point, which fires
+    // instrumentation.ts and starts the market stream — the Helius WebSocket
+    // and the transaction enricher. Merely logging EADDRINUSE left a server
+    // with no listener still holding those connections and still spending RPC
+    // quota. Three such zombies were found running at once, together consuming
+    // three times the configured call budget, which is the most likely reason
+    // an API key reached "max usage reached" far sooner than its rate implied.
+    if (err && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
+      console.error(`> Cannot bind ${hostname}:${port} (${err.code}) — exiting so no`);
+      console.error('> background stream keeps running against the API quota.');
+      process.exit(1);
+    }
   });
 
   server.listen(port, () => {

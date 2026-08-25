@@ -73,11 +73,11 @@ export class MockMarketDataProvider implements MarketDataProvider {
       try {
         this.currentMarketSummary = {
           ...this.currentMarketSummary,
-          solPriceUsd: Number(randomDelta(this.currentMarketSummary.solPriceUsd, 0.014).toFixed(5)),
-          solChange24h: Number(randomDelta(this.currentMarketSummary.solChange24h, 0.02).toFixed(2)),
-          totalVolume24hUsd: Number(randomDelta(this.currentMarketSummary.totalVolume24hUsd, 0.03).toFixed(0)),
-          totalLiquidityUsd: Number(randomDelta(this.currentMarketSummary.totalLiquidityUsd, 0.02).toFixed(0)),
-          averageSpread: Number(randomDelta(this.currentMarketSummary.averageSpread, 0.1).toFixed(2)),
+          solPriceUsd: Number(randomDelta(this.currentMarketSummary.solPriceUsd ?? 0, 0.014).toFixed(5)),
+          solChange24h: Number(randomDelta(this.currentMarketSummary.solChange24h ?? 0, 0.02).toFixed(2)),
+          totalVolume24hUsd: Number(randomDelta(this.currentMarketSummary.totalVolume24hUsd ?? 0, 0.03).toFixed(0)),
+          totalLiquidityUsd: Number(randomDelta(this.currentMarketSummary.totalLiquidityUsd ?? 0, 0.02).toFixed(0)),
+          averageSpread: Number(randomDelta(this.currentMarketSummary.averageSpread ?? 0, 0.1).toFixed(2)),
           updatedAt: new Date().toISOString(),
           freshness: 'fresh',
         };

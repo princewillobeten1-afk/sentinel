@@ -16,7 +16,7 @@ import { TokenAvatar } from '@/components/ui/token-avatar';
 import { Decimal } from '@/lib/math/decimal';
 import { formatPercent } from '@/lib/discovery/format';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
-import { useAppState } from '@/lib/store';
+import { useAppState, useAppActions, useWatchlist } from '@/lib/store';
 import type { TokenOverview } from '@/lib/api/birdeye/stats';
 
 export default function DynamicTokenPage() {
@@ -24,10 +24,11 @@ export default function DynamicTokenPage() {
   const chain = (params?.chain as string) || 'solana';
   const tokenMint = (params?.token as string) || '';
   const { selectedToken } = useAppState();
+  const { addNotification } = useAppActions();
+  const { isWatchlisted: checkWatchlisted, toggleWatchlist } = useWatchlist();
 
   const isSelectedMatch = selectedToken?.mint?.toLowerCase() === tokenMint.toLowerCase();
-
-  const [isWatchlisted, setIsWatchlisted] = useState(false);
+  const isWatchlisted = checkWatchlisted(tokenMint);
   const [copied, setCopied] = useState(false);
   const [tokenOverview, setTokenOverview] = useState<TokenOverview | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
@@ -69,7 +70,10 @@ export default function DynamicTokenPage() {
           numberMarkets: 1,
           priceChange24hPercent: Number(token.priceChange24h) || 0,
           v24hUSD: Number(token.volume24hUsd) || 0,
-        });
+          twitterUrl: token.twitterUrl || token.socials?.twitter,
+          telegramUrl: token.telegramUrl || token.socials?.telegram,
+          websiteUrl: token.websiteUrl || token.socials?.website,
+        } as any);
       } else {
         setOverviewError('Market data provider returned no data for this token.');
       }
@@ -179,7 +183,17 @@ export default function DynamicTokenPage() {
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Explorer
                 </a>
-                <TokenSocials symbol={tokenData.symbol} showHandles={false} size="xs" />
+                <TokenSocials
+                  symbol={tokenData.symbol}
+                  mint={tokenMint}
+                  socials={{
+                    twitter: (tokenOverview as any)?.twitterUrl,
+                    telegram: (tokenOverview as any)?.telegramUrl,
+                    website: (tokenOverview as any)?.websiteUrl,
+                  }}
+                  showHandles={true}
+                  size="xs"
+                />
               </div>
             </div>
           </div>
@@ -189,10 +203,30 @@ export default function DynamicTokenPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsWatchlisted(!isWatchlisted)}
-              leftIcon={<Star className={`h-4 w-4 ${isWatchlisted ? 'fill-amber-400 text-amber-400' : ''}`} />}
+              onClick={() => {
+                toggleWatchlist(tokenMint, {
+                  mint: tokenMint,
+                  symbol: tokenData.symbol,
+                  name: tokenData.name,
+                  priceUsd: tokenData.priceUsd.toString(),
+                  priceChange24h: tokenData.priceChange24h,
+                  marketCapUsd: tokenData.marketCapUsd.formatUSD(0),
+                  liquidityUsd: tokenData.liquidityUsd.formatUSD(0),
+                  chain,
+                  riskRating: 'low',
+                });
+                addNotification({
+                  title: isWatchlisted ? 'Removed from Watchlist' : 'Added to Watchlist',
+                  message: `${tokenData.name} ($${tokenData.symbol}) has been ${
+                    isWatchlisted ? 'removed from' : 'added to'
+                  } your watchlist.`,
+                  type: 'system',
+                });
+              }}
+              leftIcon={<Star className={`h-4 w-4 ${isWatchlisted ? 'fill-amber-400 text-amber-400' : 'text-slate-400'}`} />}
+              className={isWatchlisted ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : ''}
             >
-              {isWatchlisted ? 'Watchlisted' : 'Watchlist'}
+              {isWatchlisted ? 'Watchlisted' : 'Add to Watchlist'}
             </Button>
           </div>
         </header>

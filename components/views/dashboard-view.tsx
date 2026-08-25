@@ -24,7 +24,9 @@ import { MetricTile } from '@/components/ui/metric-tile';
 import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
 import { PriceChange } from '@/components/ui/price-change';
+import { clsx } from 'clsx';
 import { TokenCard, TokenCardData } from '@/components/ui/token-card';
+import { useLiveTokenUpdates } from '@/lib/hooks/use-live-token-updates';
 import { AlertCard, AlertCardData } from '@/components/ui/alert-card';
 import { IntelligenceScore } from '@/components/ui/intelligence-score';
 import { Progress } from '@/components/ui/progress';
@@ -78,14 +80,42 @@ export function DashboardView() {
   const overview = useOverviewData(activeWallet?.address ?? null);
   const isLoading = overview.isLoading;
 
-  /** Maps an API token onto the card shape, without inventing anything. */
-  const toCard = (t: OverviewToken): TokenCardData => ({
+  /**
+   * Tokens currently on screen. Only the active tab is rendered, so this is at
+   * most 20 mints — which matters, because a browser session is capped at 30
+   * WebSocket topics (see lib/ws/topic-plan.ts).
+   */
+  const visibleTokens =
+    marketTab === 'trending'
+      ? overview.trending
+      : marketTab === 'top'
+        ? overview.topTokens
+        : [...overview.trending, ...overview.topTokens].filter((t) =>
+            watchlistedMints.includes(t.mint),
+          );
+
+  const live = useLiveTokenUpdates(visibleTokens.map((t) => t.mint));
+
+  /**
+   * Maps an API token onto the card shape, without inventing anything.
+   *
+   * Live WebSocket values are merged over the REST snapshot where they exist:
+   * the REST poll is a periodic baseline, and a token that trades between
+   * polls would otherwise show a stale price until the next cycle. A token
+   * with no live message keeps its REST value rather than being blanked.
+   */
+  const toCard = (t: OverviewToken): TokenCardData => {
+    const update = live.updates.get(t.mint);
+    const priceUsd = update?.priceUsd ?? (t.priceUsd === null ? null : Number(t.priceUsd));
+    const change = update?.priceChange24h ?? t.priceChange24h ?? undefined;
+
+    return {
     name: t.name,
     symbol: t.symbol.startsWith('$') ? t.symbol : `$${t.symbol}`,
     mint: t.mint,
     logoURI: t.logoURI ?? undefined,
-    price: t.priceUsd === null ? dash : money(Number(t.priceUsd), Number(t.priceUsd) < 1 ? 6 : 2),
-    priceChange24h: n(t.priceChange24h ?? undefined),
+    price: priceUsd === null ? dash : money(priceUsd, priceUsd < 1 ? 6 : 2),
+    priceChange24h: n(change),
     mcap: t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0),
     liquidity: t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0),
     volume24h: t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0),
@@ -95,7 +125,11 @@ export function DashboardView() {
     intelligenceScore: t.intelligenceScore,
     badges: [],
     sparklineData: undefined,
-  });
+    // Drives the brief highlight on the card when a live update lands.
+    liveUpdatedAt: update?.updatedAt,
+    lastTradeSide: update?.lastTradeSide,
+    };
+  };
 
   // Curated High-Cap & High-Volume Top Solana Ecosystem Tokens
   /**
@@ -252,6 +286,38 @@ export function DashboardView() {
             title={
               <span className="flex items-center gap-2 text-sky-400 font-bold text-xs sm:text-sm">
                 <Compass className="h-4 w-4" /> Market Overview Tokens
+                {/* States the actual delivery mode. "Live" only appears when a
+                    socket is genuinely open — otherwise the panel says it is
+                    polling, rather than implying a stream that isn't there. */}
+                <span
+                  className={clsx(
+                    'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-mono font-semibold uppercase tracking-wide border',
+                    live.status === 'live'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                      : live.status === 'connecting'
+                        ? 'border-slate-600/40 bg-slate-500/10 text-slate-400'
+                        : 'border-slate-700/50 bg-slate-800/40 text-slate-500',
+                  )}
+                  title={
+                    live.status === 'live'
+                      ? 'Streaming price and trade updates over WebSocket'
+                      : live.status === 'connecting'
+                        ? 'Connecting to the live stream'
+                        : 'Live stream unavailable — showing periodically refreshed data'
+                  }
+                >
+                  <span
+                    className={clsx(
+                      'h-1.5 w-1.5 rounded-full',
+                      live.status === 'live'
+                        ? 'bg-emerald-400 animate-pulse'
+                        : live.status === 'connecting'
+                          ? 'bg-slate-400'
+                          : 'bg-slate-600',
+                    )}
+                  />
+                  {live.status === 'live' ? 'Live' : live.status === 'connecting' ? 'Connecting' : 'Polled'}
+                </span>
               </span>
             }
             headerActions={

@@ -134,8 +134,10 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
         valB = b.buyPressureRatio;
         break;
       case 'holdersCount':
-        valA = a.holdersCount;
-        valB = b.holdersCount;
+        // Unknown sorts as -1 so it sinks below any real count, rather than
+        // tying with a genuine zero-holder token.
+        valA = a.holdersCount ?? -1;
+        valB = b.holdersCount ?? -1;
         break;
       case 'ageMinutes':
         valA = a.ageMinutes;
@@ -551,7 +553,7 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
                   {/* Holders */}
                   {visibleColumns.holders && (
                     <td style={{ width: COLUMN_WIDTHS.holders, flexShrink: 0 }} className="p-3 text-slate-400">
-                      {token.holdersCount.toLocaleString()}
+                      {token.holdersCount === undefined ? '—' : token.holdersCount.toLocaleString()}
                     </td>
                   )}
 

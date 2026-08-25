@@ -26,6 +26,11 @@ import type { WalletProviderId } from './types';
 const NAME_TO_ID: Record<string, WalletProviderId> = {
   phantom: 'phantom',
   solflare: 'solflare',
+  backpack: 'backpack',
+  okx: 'okx',
+  'okx wallet': 'okx',
+  embedded: 'embedded',
+  manual: 'manual',
 };
 
 /**

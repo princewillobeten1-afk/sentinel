@@ -4,8 +4,9 @@ import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
 import type { RawMarketEvent } from '@/lib/market/event-pipeline';
 import { ReconnectingWebSocketClient } from './ws-client';
-import { matchLogsForProgram } from './helius-log-matchers';
+import { matchLogsForProgram, matchLogsAnyProgram } from './helius-log-matchers';
 import { normalizeHeliusLogMatch } from './normalizers';
+import { enrichSignature } from './transaction-enricher';
 import type { ConnectionHealth, HeliusLogsNotification, HeliusMessage, HeliusSubscribeResponse } from './types';
 
 function isSubscribeResponse(message: HeliusMessage): message is HeliusSubscribeResponse {
@@ -33,6 +34,17 @@ export class HeliusClient {
   /** Subscription id (from the RPC response) → program label. */
   private subscriptions = new Map<number, string>();
   private nextRequestId = 1;
+
+  /**
+   * The mint the enrichment budget is currently aimed at, if any.
+   *
+   * At the configured call rate the enricher cannot both sweep every DEX
+   * program and keep up with one token's tape. When a token page is open the
+   * broad program subscriptions are dropped and a single `mentions:[mint]`
+   * subscription takes their place, so the whole budget goes to the token the
+   * user is actually watching. Closing the page restores the sweep.
+   */
+  private focusedMint: string | null = null;
 
   constructor(options: HeliusClientOptions) {
     this.programIds = options.programIds;
@@ -64,9 +76,63 @@ export class HeliusClient {
     return this.client.getHealth();
   }
 
+  getFocusedMint(): string | null {
+    return this.focusedMint;
+  }
+
+  /**
+   * Aim the stream at one mint. Idempotent for the same mint.
+   *
+   * Re-subscribes from scratch rather than layering a subscription on top:
+   * leaving the program subscriptions active would keep the enricher's queue
+   * saturated with unrelated swaps and starve the focused token of budget,
+   * which is the entire problem this solves.
+   */
+  focusMint(mint: string): void {
+    if (this.focusedMint === mint) return;
+    this.focusedMint = mint;
+    logger.info('[helius] focusing stream on a single mint', { mint });
+    this.resubscribe();
+  }
+
+  /** Return to sweeping the tracked DEX programs. */
+  clearFocus(): void {
+    if (this.focusedMint === null) return;
+    logger.info('[helius] releasing mint focus, resuming program sweep', { mint: this.focusedMint });
+    this.focusedMint = null;
+    this.resubscribe();
+  }
+
+  /** Drops every live subscription, then rebuilds for the current mode. */
+  private resubscribe(): void {
+    for (const subscriptionId of this.subscriptions.keys()) {
+      this.client.send({
+        jsonrpc: '2.0',
+        id: this.nextRequestId++,
+        method: 'logsUnsubscribe',
+        params: [subscriptionId],
+      });
+    }
+    this.subscribeAll();
+  }
+
   private subscribeAll(): void {
     this.pendingRequests.clear();
     this.subscriptions.clear();
+
+    // Focused mode: one subscription, every matching transaction enriched.
+    if (this.focusedMint) {
+      const id = this.nextRequestId++;
+      this.pendingRequests.set(id, `focus:${this.focusedMint}`);
+      this.client.send({
+        jsonrpc: '2.0',
+        id,
+        method: 'logsSubscribe',
+        params: [{ mentions: [this.focusedMint] }, { commitment: 'confirmed' }],
+      });
+      logger.info('[helius] logsSubscribe sent (focused)', { mint: this.focusedMint });
+      return;
+    }
 
     for (const [label, programId] of Object.entries(this.programIds)) {
       const id = this.nextRequestId++;
@@ -112,18 +178,51 @@ export class HeliusClient {
     const { signature, logs, err } = result.value;
     if (err) return; // Only classify successful transactions.
 
-    const match = matchLogsForProgram(label, logs);
+    // A focused subscription is by mint, so its notifications can come from
+    // any venue and there is no program label to pick a matcher with.
+    const isFocused = label.startsWith('focus:');
+    const match = isFocused ? matchLogsAnyProgram(logs) : matchLogsForProgram(label, logs);
     if (!match) return;
 
     const event = normalizeHeliusLogMatch(signature, label, match);
     if (event) {
       this.onRawEvent(event);
-    } else {
-      // Classified but no mint could be derived from raw logs — expected in
-      // v1 (see helius-log-matchers.ts). Logged at debug so operators can see
-      // the connection is live and classifying even though most matches are
-      // dropped before reaching the pipeline.
-      logger.debug('[helius] classified match dropped (no mint derivable)', { label, eventType: match.eventType, signature });
+      return;
     }
+
+    // No mint in the log text — the normal case, since `logsNotification`
+    // carries no instruction data. Rather than drop the match (which left
+    // `realtime_trades` empty while the socket looked healthy), fetch the
+    // parsed transaction and read the mint and amounts out of its token
+    // balance deltas.
+    //
+    // Fire-and-forget: this callback is driven by the socket and must not wait
+    // on an RPC round-trip. The enricher is queue-bounded and rate-limited, so
+    // a burst of matches cannot become a burst of requests — it drops rather
+    // than queues without limit, and reports what it dropped.
+    void enrichSignature(signature)
+      .then((trade) => {
+        if (!trade) return;
+        this.onRawEvent({
+          eventId: `helius_${signature}_${label}`,
+          providerId: `helius_logs_${label}`,
+          mint: trade.mint,
+          eventType: match.eventType,
+          priceUsd: trade.priceUsd,
+          volumeUsd: trade.volumeUsd,
+          // Measured from which way the token crossed the transaction
+          // boundary, not assumed.
+          side: match.eventType === 'SWAP' ? (trade.isBuy ? 'BUY' : 'SELL') : undefined,
+          signature,
+          wallet: trade.wallet,
+          timestamp: new Date().toISOString(),
+        });
+      })
+      .catch((err) => {
+        logger.debug('[helius] enrichment failed', {
+          signature,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
   }
 }
