@@ -36,6 +36,7 @@ COPY --from=builder /usr/src/app/server.js ./server.js
 COPY --from=builder /usr/src/app/package.json ./package.json
 COPY --from=builder /usr/src/app/public ./public
 COPY --from=builder /usr/src/app/app ./app
+COPY --from=builder /usr/src/app/pages ./pages
 COPY --from=builder /usr/src/app/lib ./lib
 COPY --from=builder /usr/src/app/components ./components
 COPY --from=builder /usr/src/app/db ./db

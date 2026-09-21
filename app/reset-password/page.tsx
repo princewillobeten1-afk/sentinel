@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
+  const token = searchParams?.get('token');
 
   if (!token) {
     return (

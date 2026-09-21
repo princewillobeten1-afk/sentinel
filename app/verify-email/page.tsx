@@ -6,7 +6,7 @@ import Link from 'next/link';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
+  const token = searchParams?.get('token');
   const [status, setStatus] = useState<'VERIFYING' | 'SUCCESS' | 'ERROR'>('VERIFYING');
   const [message, setMessage] = useState('Verifying your email address...');
 
