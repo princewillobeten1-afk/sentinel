@@ -53,7 +53,7 @@ export function AdminHeader({
   const isEmergency = emergencyMode !== 'NORMAL';
 
   return (
-    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-white/5">
+    <div data-page-header className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/5">
       {/* Title & Badge */}
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500/20 to-indigo-500/20 text-sky-400 border border-sky-500/30 shadow-[0_0_20px_rgba(56,189,248,0.2)]">
@@ -61,13 +61,10 @@ export function AdminHeader({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-white tracking-wide">Platform Operations & Control Center</h1>
-            <Badge variant="neutral" size="sm" className="font-mono text-2xs uppercase border-sky-500/30 text-sky-400">
-              Sprint 39
-            </Badge>
+            <h1 className="text-xl font-semibold text-white">Operations</h1>
           </div>
           <p className="text-xs text-slate-400">
-            Internal nervous system — Monitor, investigate, configure, secure, and operate Project Sentinel.
+            Operations preview. Overview metrics are sample data, not live infrastructure telemetry.
           </p>
         </div>
       </div>
@@ -106,6 +103,7 @@ export function AdminHeader({
           <UserCheck className="h-3.5 w-3.5 text-slate-400" />
           <span className="text-2xs text-slate-400 font-medium">Role:</span>
           <select
+            aria-label="Preview operations role"
             value={currentRole}
             onChange={(e) => onRoleChange(e.target.value as AdminRole)}
             className="bg-transparent text-xs text-sky-400 font-bold focus:outline-none cursor-pointer"

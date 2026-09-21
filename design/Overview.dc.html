@@ -1,0 +1,231 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; background: #07090D; }
+    a { color: #5A9FF3; text-decoration: none; }
+    a:hover { color: #7FB2F6; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+    .card { transition: border-color 120ms ease, background 120ms ease; }
+    .card:hover { border-color: #445366; background: #26303E; }
+    .tab:hover { color: #F2F5F9; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #33404F; border-radius: 3px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #07090D; color: #C6CEDA; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 58px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; padding: 0 18px;">
+    <div>
+      <div style="font-size: 16px; font-weight: 700; color: #F2F5F9; letter-spacing: -0.01em;">Overview</div>
+      <div style="font-size: 11px; color: #6E7A8A; margin-top: 1px;">Solana · updated {{updated}}s ago</div>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 10px; font-weight: 700; color: #2CC189; background: #04281B; border: 1px solid #0B764C; padding: 3px 9px; border-radius: 5px;">STREAM LIVE</span>
+    </div>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 16px;">
+
+    <!-- Regime tiles -->
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <sc-for list="{{tiles}}" as="k" hint-placeholder-count="4">
+        <div class="card" style="background: #1C2531; border: 1px solid #33404F; border-radius: 10px; padding: 13px 15px;">
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{k.fg}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="{{k.d}}"></path></svg>
+            <span style="font-size: 10px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600;">{{k.label}}</span>
+          </div>
+          <div class="num" style="font-size: 23px; font-weight: 700; color: #F2F5F9; margin-top: 9px; letter-spacing: -0.02em;">{{k.value}}</div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
+            <span class="num" style="font-size: 11px; font-weight: 700; color: {{k.fg}};">{{k.delta}}</span>
+            <span style="font-size: 10px; color: #6E7A8A;">{{k.sub}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- Token lists -->
+    <div style="flex: 1; min-height: 0; background: #0E131B; border: 1px solid #33404F; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="height: 44px; display: flex; align-items: center; gap: 3px; padding: 0 12px; border-bottom: 1px solid #33404F; background: #151C26;">
+        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="4">
+          <div onClick="{{tb.pick}}" class="tab" style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: {{tb.weight}}; cursor: pointer; color: {{tb.fg}}; background: {{tb.bg}};">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{tb.icon}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="{{tb.d}}"></path></svg>
+            <span>{{tb.label}}</span>
+            <span class="num" style="font-size: 10px; color: #6E7A8A;">{{tb.count}}</span>
+          </div>
+        </sc-for>
+        <span style="margin-left: auto; font-size: 10px; color: #6E7A8A;">{{note}}</span>
+      </div>
+
+      <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-content: start;">
+        <sc-for list="{{cards}}" as="c" hint-placeholder-count="10">
+          <div class="card" style="background: #1C2531; border: 1px solid #33404F; border-radius: 10px; padding: 11px; display: flex; flex-direction: column; gap: 9px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="width: 28px; height: 28px; border-radius: 7px; background: {{c.tint}}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #07090D; flex-shrink: 0;">{{c.initial}}</div>
+              <div style="min-width: 0;">
+                <div style="font-size: 12px; font-weight: 700; color: #F2F5F9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{c.symbol}}</div>
+                <div style="font-size: 10px; color: #6E7A8A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{c.name}}</div>
+              </div>
+            </div>
+
+            <div>
+              <div class="num" style="font-size: 14px; font-weight: 700; color: #F2F5F9;">{{c.price}}</div>
+              <div class="num" style="font-size: 11px; font-weight: 700; color: {{c.deltaFg}}; margin-top: 1px;">{{c.delta}}</div>
+            </div>
+
+            <div style="height: 26px; display: flex; align-items: flex-end; gap: 1px;">
+              <sc-for list="{{c.spark}}" as="p" hint-placeholder-count="16">
+                <div style="flex: 1; background: {{c.sparkFg}}; height: {{p.h}}%; border-radius: 1px; opacity: 0.75;"></div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 3px; border-top: 1px solid #33404F; padding-top: 7px;">
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">MC</span><span class="num" style="font-size: 10px; font-weight: 600; color: #FBBF24;">{{c.mc}}</span></div>
+              <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">VOL</span><span class="num" style="font-size: 10px; font-weight: 600; color: #C6CEDA;">{{c.vol}}</span></div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <sc-for list="{{c.pills}}" as="p" hint-placeholder-count="3">
+                <span class="num" style="font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 8px; border: 1px solid {{p.bd}}; background: {{p.bg}}; color: {{p.fg}};"><span style="font-family: Inter, sans-serif; opacity: 0.75;">{{p.k}}</span> {{p.v}}</span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3B8FF0","options":["#3B8FF0","#A855F7","#12B574","#FFB800"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'trending', tick: 0 };
+  }
+  componentDidMount() { this.timer = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 1000); }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  /**
+   * Icon path data, not markup. A {{hole}} renders as a text node, so an
+   * <svg> string would paint its own source; attributes interpolate, so the
+   * geometry travels and the wrapper stays in the markup.
+   */
+  icon(name) {
+    return {
+      flame: 'M12 22c4 0 7-2.7 7-6.5 0-4.5-4-6-4-10 0 0-4 2-4 6 0-1-1-2.5-2-3-1.5 1.5-4 3.5-4 7C5 19.3 8 22 12 22z',
+      bolt:  'M13 2 3 14h9l-1 8 10-12h-9l1-8z',
+      crown: 'M3 18h18M4 8l4 4 4-7 4 7 4-4v10H4z',
+      star:  'm12 3 2.7 5.6 6.3.9-4.5 4.4 1 6.1-5.5-2.9-5.5 2.9 1-6.1L3 9.5l6.3-.9z',
+      wave:  'M3 12h3l2-6 3 12 3-9 2 3h5',
+      drop:  'M12 3s6 6.4 6 10a6 6 0 0 1-12 0c0-3.6 6-10 6-10z',
+      users: 'M9 4.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4M2.5 20a6.5 6.5 0 0 1 13 0M17 11.5a3 3 0 1 0-1.5-5.6M21.5 20a5.6 5.6 0 0 0-4-5.4',
+    }[name] || '';
+  }
+
+  money(v) {
+    if (v >= 1000000000) return '$' + (v / 1000000000).toFixed(2) + 'B';
+    if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+    if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
+    return '$' + v.toFixed(0);
+  }
+
+  renderVals() {
+    const t = this.state.tick;
+
+    const pools = {
+      trending: [
+        ['IBRL', 'Increase Bandwidth', 0.0196, -1.5, 19400000, 44400000, '#5A9FF3'],
+        ['ANSEM', 'Ansem',             0.0491,  0.6, 434000000, 15200000, '#FBBF24'],
+        ['CARDS', 'Cards',             0.3308,  0.6, 330000000, 12900000, '#C084FC'],
+        ['STONK', 'Stonk',             0.0403,  0.8, 38900000,  13000000, '#2CC189'],
+        ['ZCAT',  'Z Cat',             0.00169, 88.8, 1330000,  10200000, '#EF7176'],
+      ],
+      hot: [
+        ['GOAF',  'Goaf',              0.01366, 208.4, 13600000, 2140000, '#C084FC'],
+        ['WOFI',  'Wofi',              0.00152, 62.9,  1520000,  388000,  '#FBBF24'],
+        ['POMP',  'Pomp',              0.0000963, 27.1, 96300,   71400,   '#5A9FF3'],
+        ['PIT',   'Pit Token',         0.0004551, 111.4, 54900,  41500,   '#2CC189'],
+        ['HeeHaw','Hee Haw',           0.00081, 44.2,  810000,   129000,  '#EF7176'],
+      ],
+      top: [
+        ['SOL',   'Solana',            102.13,  -1.5, 60500000000, 7510000, '#C084FC'],
+        ['USDC',  'USD Coin',          1.0000,   0.0, 8010000000,  1920000, '#5A9FF3'],
+        ['RAY',   'Raydium',           3.4820,   4.1, 1170000000,  46000,   '#2CC189'],
+        ['JUP',   'Jupiter',           0.7412,   2.8, 998000000,   31200,   '#FBBF24'],
+        ['BONK',  'Bonk',              0.0000212, 6.4, 1480000000, 88400,   '#EF7176'],
+      ],
+    };
+    pools.watchlist = [pools.trending[0], pools.hot[0], pools.top[2]];
+
+    const tabs = [
+      ['trending', 'Trending', 'flame',  '#FBBF24'],
+      ['hot',      'Hot',      'bolt',   '#EF7176'],
+      ['top',      'Top',      'crown',  '#C084FC'],
+      ['watchlist','Watchlist','star',   '#5A9FF3'],
+    ].map(([id, label, ic, col]) => ({
+      label,
+      d: this.icon(ic),
+      count: String(pools[id].length),
+      bg: this.state.tab === id ? '#1C2531' : 'transparent',
+      fg: this.state.tab === id ? '#F2F5F9' : '#98A3B3',
+      icon: this.state.tab === id ? col : '#6E7A8A',
+      weight: this.state.tab === id ? 700 : 500,
+      pick: () => this.setState({ tab: id }),
+    }));
+
+    const na = { bd: '#33404F', bg: '#151C26', fg: '#6E7A8A' };
+    const good = { bd: '#0B764C', bg: '#04281B', fg: '#2CC189' };
+    const warnTone = { bd: '#B45309', bg: '#451A03', fg: '#FBBF24' };
+
+    const cards = pools[this.state.tab].map((r, i) => {
+      const drift = Math.sin((t + i * 5) / 6) * 0.009;
+      const price = r[2] * (1 + drift);
+      const delta = r[3] + drift * 70;
+      const up = delta >= 0;
+      const measured = this.state.tab === 'top';
+      return {
+        symbol: r[0],
+        name: r[1],
+        initial: r[0].slice(0, 2).toUpperCase(),
+        tint: r[6],
+        price: price >= 1 ? '$' + price.toFixed(2) : '$' + price.toPrecision(3),
+        delta: (up ? '+' : '') + delta.toFixed(1) + '%',
+        deltaFg: up ? '#2CC189' : '#EF7176',
+        sparkFg: up ? '#12B574' : '#EC5A5F',
+        spark: Array.from({ length: 18 }, (_, k) => ({ h: String(22 + Math.abs(Math.sin((k + t + i * 3) / 3.2)) * 74) })),
+        mc: this.money(r[4]),
+        vol: this.money(r[5]),
+        pills: [
+          { k: 'T10', v: measured ? '18%' : 'n/a', ...(measured ? good : na) },
+          { k: 'DEV', v: measured ? '0%' : 'n/a',  ...(measured ? good : na) },
+          { k: 'INS', v: measured ? '6%' : 'n/a',  ...(measured ? warnTone : na) },
+        ],
+      };
+    });
+
+    const tiles = [
+      { label: 'MARKET REGIME', value: 'Risk-On',  delta: '+2.4%',   sub: 'breadth 62%',        fg: '#2CC189', d: this.icon('wave') },
+      { label: 'SOL',           value: '$' + (102.13 + Math.sin(t / 8) * 0.9).toFixed(2), delta: '-1.5%', sub: '24h', fg: '#EF7176', d: this.icon('bolt') },
+      { label: 'TRACKED',       value: String(392 + (t % 11)), delta: '+18',  sub: 'last hour', fg: '#5A9FF3', d: this.icon('users') },
+      { label: 'MIGRATIONS',    value: '14',       delta: '+3',      sub: 'last 2h',           fg: '#C084FC', d: this.icon('drop') },
+    ];
+
+    return {
+      tiles, tabs, cards,
+      updated: String(t % 5),
+      note: this.state.tab === 'top' ? 'audit measured' : 'audit pending — unmeasured fields show n/a',
+    };
+  }
+}
+</script>
+</body>
+</html>

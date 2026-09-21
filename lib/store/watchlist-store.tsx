@@ -79,21 +79,30 @@ function writeMetaCache(meta: Record<string, Partial<NormalizedSearchResult>>): 
 
 export function WatchlistProvider({ children }: { children: React.ReactNode }) {
   // No seeded defaults. An empty watchlist is the honest starting state.
-  const [watchlistedMints, setWatchlistedMints] = useState<string[]>(readCache);
-  const [tokenMetaMap, setTokenMetaMap] = useState<Record<string, Partial<NormalizedSearchResult>>>(readMetaCache);
+  const [watchlistedMints, setWatchlistedMints] = useState<string[]>([]);
+  const [tokenMetaMap, setTokenMetaMap] = useState<Record<string, Partial<NormalizedSearchResult>>>({});
+  const [cacheReady, setCacheReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   /** Signed-out users get the local cache only; there is nothing to sync to. */
   const isAuthenticatedRef = useRef(true);
 
+  // Match the server's first paint, then restore the browser cache. Do not
+  // persist the empty first render over an existing offline watchlist.
   useEffect(() => {
-    writeCache(watchlistedMints);
-  }, [watchlistedMints]);
+    setWatchlistedMints(readCache());
+    setTokenMetaMap(readMetaCache());
+    setCacheReady(true);
+  }, []);
 
   useEffect(() => {
-    writeMetaCache(tokenMetaMap);
-  }, [tokenMetaMap]);
+    if (cacheReady) writeCache(watchlistedMints);
+  }, [watchlistedMints, cacheReady]);
+
+  useEffect(() => {
+    if (cacheReady) writeMetaCache(tokenMetaMap);
+  }, [tokenMetaMap, cacheReady]);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -207,7 +216,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
           priceChange24h: cachedMeta.priceChange24h || 0,
           marketCapUsd: cachedMeta.marketCapUsd || '$1.2M',
           liquidityUsd: cachedMeta.liquidityUsd || '$250.0K',
-          riskRating: (cachedMeta.riskRating as any) || 'low',
+          riskRating: cachedMeta.riskRating || 'unknown',
         };
       }
 
@@ -221,7 +230,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         priceChange24h: 0,
         marketCapUsd: '$1.2M',
         liquidityUsd: '$250.0K',
-        riskRating: 'low',
+        riskRating: 'unknown',
       };
     });
   }, [watchlistedMints, tokenMetaMap]);

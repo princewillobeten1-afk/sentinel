@@ -7,6 +7,7 @@ import { HealthSummary } from '@/components/intelligence/health-summary';
 import { generateReport } from '@/lib/intelligence/report-generator';
 import { getMockReportInput, getAllMockSymbols } from '@/lib/mocks/intelligence';
 import { ShieldCheck, Search, ArrowRight, Activity } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 
 export default function IntelligenceOverviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,16 +33,16 @@ export default function IntelligenceOverviewPage() {
 
   return (
     <AppShell initialView="intelligence">
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div data-active-view="intelligence" className="space-y-6 max-w-7xl mx-auto">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-sentinel-900 border border-sentinel-700/60 rounded-xl p-6 shadow-card">
+        <div data-page-header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
               <ShieldCheck className="w-7 h-7 text-sky-400" />
-              <span>Token Intelligence Hub</span>
+              <span>Intelligence</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Sentinel&apos;s Token Intelligence Engine analyzes 7 independent dimensions to deliver factual, evidence-backed risk assessments for every token.
+              Explore example risk reports across seven dimensions. This preview uses sample token data.
             </p>
           </div>
 
@@ -50,6 +51,7 @@ export default function IntelligenceOverviewPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
+              aria-label="Search intelligence reports"
               placeholder="Search by token, symbol or address..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -59,13 +61,14 @@ export default function IntelligenceOverviewPage() {
         </div>
 
         {/* Token Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+        {filteredReports.length === 0 && <EmptyState icon={Search} title="No matching reports" description="Try a different token name, symbol, or address." actionLabel="Clear search" onAction={() => setSearchQuery('')} />}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {filteredReports.map((report) => {
             if (!report) return null;
             return (
               <div
                 key={report.token.id}
-                className="bg-sentinel-900 border border-sentinel-700/60 rounded-xl p-4 flex flex-col justify-between hover:border-sky-500/40 transition-all duration-200 shadow-card group"
+                className="min-w-0 bg-sentinel-900 border border-sentinel-700/60 rounded-lg p-4 flex flex-col justify-between group"
               >
                 <div>
                   {/* Token Header */}

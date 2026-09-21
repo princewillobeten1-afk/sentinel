@@ -13,8 +13,9 @@ import { useAppState } from '@/lib/store';
  */
 function ViewLoadingFallback() {
   return (
-    <div className="flex items-center justify-center py-24 text-slate-500">
-      <Loader2 className="h-6 w-6 animate-spin" />
+    <div role="status" className="flex items-center justify-center gap-3 py-24 text-slate-400">
+      <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
+      <span className="text-sm">Loading workspace…</span>
     </div>
   );
 }
@@ -64,10 +65,10 @@ const AdminView = dynamic(() => import('@/components/views/admin-view').then((m)
 });
 
 export function DashboardShell() {
-  const { activeView, density } = useAppState();
+  const { activeView } = useAppState();
 
   return (
-    <div data-density={density} className="w-full flex-1 transition-all duration-150">
+    <div data-active-view={activeView} className={activeView === 'discover' ? 'flex flex-col w-full flex-1 min-w-0 min-h-0 h-full' : 'w-full min-w-0 flex-1'}>
       {activeView === 'dashboard' && <DashboardView />}
       {activeView === 'trade' && <TradeView />}
       {activeView === 'discover' && <DiscoverView />}

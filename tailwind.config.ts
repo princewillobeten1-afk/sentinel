@@ -130,6 +130,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        background: neutral[950],
+        foreground: neutral[200],
+        card: { DEFAULT: neutral[900], foreground: neutral[100] },
+        popover: { DEFAULT: neutral[900], foreground: neutral[200] },
+        muted: { DEFAULT: neutral[850], foreground: neutral[400] },
+        primary: { DEFAULT: accent[400], foreground: neutral[950] },
+        secondary: { DEFAULT: neutral[800], foreground: neutral[200] },
+        destructive: { DEFAULT: sell[600], foreground: neutral[100] },
+        border: neutral[700],
+        input: neutral[700],
+        ring: accent[400],
         sentinel: { ...neutral, 500: accent[500], 400: accent[300], 300: accent[200] },
         surface: {
           DEFAULT: neutral[800],

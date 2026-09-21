@@ -1,5 +1,7 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
+import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
+import { getTokenCardPatch } from '@/lib/market/live/card-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,7 @@ interface JupiterSearchToken {
     devMigrations?: number;
     mintAuthorityDisabled?: boolean;
     freezeAuthorityDisabled?: boolean;
+    devBalancePercentage?: number;
   };
   firstPool?: { createdAt?: string };
 }
@@ -57,13 +60,25 @@ export async function GET(
 ) {
   try {
     const { chain, address } = params;
+    if (chain.toLowerCase() !== 'solana') {
+      throw new ApiError('Creator evidence is currently available for Solana only', 400);
+    }
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }
 
+    queueSecurityTarget(address);
+    const live = getTokenCardPatch(address)?.changedFields;
+
     const cached = cache.get(address);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-      return jsonResponse(cached.payload as Record<string, unknown>);
+      return jsonResponse({
+        ...(cached.payload as Record<string, unknown>),
+        creatorAddress: live?.devAddress ?? (cached.payload as Record<string, unknown>).creatorAddress ?? null,
+        devWalletAge: live?.devWalletAge ?? null,
+        creatorEvidence: live?.creatorEvidence ?? null,
+        devBalancePct: live?.devHoldingsPct ?? (cached.payload as Record<string, unknown>).devBalancePct ?? null,
+      });
     }
 
     const controller = new AbortController();
@@ -91,7 +106,9 @@ export async function GET(
       token: address,
       chain: chain.toLowerCase(),
       symbol: token?.symbol ?? null,
-      creatorAddress: token?.dev ?? null,
+      creatorAddress: live?.devAddress ?? token?.dev ?? null,
+      devWalletAge: live?.devWalletAge ?? null,
+      creatorEvidence: live?.creatorEvidence ?? null,
       /** Tokens this deployer has minted, across all of their launches. */
       devMints,
       /** How many of those reached a real pool. */
@@ -108,6 +125,15 @@ export async function GET(
       launchedAt: token?.firstPool?.createdAt ?? null,
       mintAuthorityDisabled: audit?.mintAuthorityDisabled ?? null,
       freezeAuthorityDisabled: audit?.freezeAuthorityDisabled ?? null,
+      /**
+       * Share of supply the deployer still holds, from Jupiter's own read of
+       * the dev wallet's balance against total supply. Real, not derived from
+       * a stale price — the field the frontend's `currentHoldingSupplyPct`
+       * has been sending `null` for since nothing supplied it.
+       */
+      devBalancePct: live?.devHoldingsPct ?? (typeof audit?.devBalancePercentage === 'number'
+        ? Number(audit.devBalancePercentage.toFixed(4))
+        : null),
       // Deliberately empty. See the module header — a deployer timeline needs a
       // signature-history walk, and the previous entries were narrative.
       events: [] as unknown[],

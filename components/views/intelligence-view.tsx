@@ -11,10 +11,10 @@ export function IntelligenceView() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <BrainCircuit className="h-6 w-6 text-sky-400" /> Sentinel Blockchain Intelligence
+          <BrainCircuit className="h-6 w-6 text-sky-400" /> Intelligence
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Effective ownership clusters, wallet-funding concentration graph, and creator history records.
+          Preview of ownership clusters, funding relationships, and creator history. Sample data is shown below.
         </p>
       </div>
 

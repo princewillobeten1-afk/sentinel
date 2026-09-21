@@ -32,7 +32,11 @@ import {
  * rows are stale rather than presenting them as current.
  */
 export function useDiscoveryFeed(
-  section: DiscoverySection = 'trending',
+  // Defaults to a section the store actually polls. It defaulted to 'trending',
+  // which `DISCOVERY_SECTIONS` does not include, so any caller relying on the
+  // default sat at `state: 'loading'` forever with no request ever made and
+  // nothing to explain why.
+  section: DiscoverySection = 'new',
   timeWindow: TimeWindow = '24h',
   filter: Partial<DiscoveryFilter> = {},
   chain = 'solana',

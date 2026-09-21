@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useId } from 'react';
+import { useDialogFocus } from '@/lib/hooks/use-dialog-focus';
 import { clsx } from 'clsx';
 import { X } from 'lucide-react';
 
@@ -23,21 +24,8 @@ export function Drawer({
   footer,
   className,
 }: DrawerProps) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  const dialogRef = useDialogFocus(isOpen, onClose);
+  const titleId = useId();
 
   if (!isOpen) return null;
 
@@ -56,6 +44,12 @@ export function Drawer({
       />
 
       <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : 'Drawer'}
         className={clsx(
           'fixed flex flex-col bg-sentinel-900 border-sentinel-700 shadow-2xl z-10 overflow-hidden',
           position === 'right' && 'border-l',
@@ -68,11 +62,12 @@ export function Drawer({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-sentinel-700/70 px-5 py-4 bg-sentinel-950/70">
           <div>
-            {title && <h3 className="text-base font-semibold text-white flex items-center gap-2">{title}</h3>}
+            {title && <h3 id={titleId} className="text-base font-semibold text-white flex items-center gap-2">{title}</h3>}
             {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
+            aria-label="Close drawer"
             className="rounded-lg p-1.5 text-slate-400 hover:bg-sentinel-800 hover:text-slate-200 transition"
           >
             <X className="h-4 w-4" />

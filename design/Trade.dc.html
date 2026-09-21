@@ -1,0 +1,282 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; background: #07090D; }
+    a { color: #5A9FF3; text-decoration: none; }
+    a:hover { color: #7FB2F6; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+    .tab:hover { color: #F2F5F9; }
+    .btn:hover { background: #26303E; }
+    .trade:hover { filter: brightness(1.12); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #33404F; border-radius: 3px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #07090D; color: #C6CEDA; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- Token header -->
+  <div style="height: 62px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; gap: 14px; padding: 0 16px;">
+    <div style="width: 38px; height: 38px; border-radius: 9px; background: #FBBF24; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #07090D;">GO</div>
+    <div>
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <span style="font-size: 17px; font-weight: 700; color: #F2F5F9; letter-spacing: -0.01em;">GOAF</span>
+        <span style="font-size: 12px; color: #6E7A8A;">Goaf</span>
+        <span style="font-size: 9px; font-weight: 700; color: #2CC189; background: #04281B; border: 1px solid #0B764C; padding: 2px 7px; border-radius: 4px;">PUMPSWAP</span>
+      </div>
+      <div class="num" style="font-size: 10px; color: #6E7A8A; margin-top: 2px;">6r67…8bGDpD · migrated 4m ago</div>
+    </div>
+
+    <div style="display: flex; align-items: baseline; gap: 10px; margin-left: 18px;">
+      <span class="num" style="font-size: 22px; font-weight: 700; color: #F2F5F9;">${{price}}</span>
+      <span class="num" style="font-size: 13px; font-weight: 700; color: {{deltaFg}};">{{delta}}</span>
+    </div>
+
+    <div style="margin-left: auto; display: flex; gap: 22px;">
+      <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+        <div style="text-align: right;">
+          <div style="font-size: 9px; letter-spacing: 0.1em; color: #6E7A8A; font-weight: 600;">{{s.k}}</div>
+          <div class="num" style="font-size: 13px; font-weight: 700; color: {{s.fg}}; margin-top: 2px;">{{s.v}}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; display: flex; min-height: 0;">
+
+    <!-- Chart + tabs -->
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #33404F;">
+
+      <div style="height: 38px; flex-shrink: 0; display: flex; align-items: center; gap: 3px; padding: 0 12px; border-bottom: 1px solid #33404F; background: #0E131B;">
+        <sc-for list="{{frames}}" as="f" hint-placeholder-count="6">
+          <div onClick="{{f.pick}}" class="tab num" style="padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: {{f.weight}}; cursor: pointer; color: {{f.fg}}; background: {{f.bg}};">{{f.label}}</div>
+        </sc-for>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 7px;">
+          <span style="font-size: 10px; color: #6E7A8A;">O <span class="num" style="color: #C6CEDA;">{{ohlc.o}}</span></span>
+          <span style="font-size: 10px; color: #6E7A8A;">H <span class="num" style="color: #2CC189;">{{ohlc.h}}</span></span>
+          <span style="font-size: 10px; color: #6E7A8A;">L <span class="num" style="color: #EF7176;">{{ohlc.l}}</span></span>
+          <span style="font-size: 10px; color: #6E7A8A;">C <span class="num" style="color: #C6CEDA;">{{ohlc.c}}</span></span>
+        </div>
+      </div>
+
+      <div style="flex: 1; background: #0E131B; padding: 14px 12px; min-height: 0; display: flex; flex-direction: column;">
+        <div style="flex: 1; display: flex; align-items: flex-end; gap: 2px; min-height: 0;">
+          <sc-for list="{{candles}}" as="c" hint-placeholder-count="40">
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%;">
+              <div style="width: 1px; background: {{c.fg}}; height: {{c.wick}}%;"></div>
+              <div style="width: 68%; background: {{c.fg}}; height: {{c.body}}%; border-radius: 1px;"></div>
+              <div style="width: 1px; background: {{c.fg}}; height: {{c.tail}}%;"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="height: 46px; display: flex; align-items: flex-end; gap: 2px; margin-top: 8px; border-top: 1px solid #1C2531; padding-top: 8px;">
+          <sc-for list="{{candles}}" as="c" hint-placeholder-count="40">
+            <div style="flex: 1; background: {{c.volFg}}; height: {{c.vol}}%; border-radius: 1px;"></div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Lower tabs -->
+      <div style="height: 200px; flex-shrink: 0; border-top: 1px solid #33404F; background: #0E131B; display: flex; flex-direction: column;">
+        <div style="height: 34px; display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid #33404F;">
+          <sc-for list="{{lower}}" as="l" hint-placeholder-count="4">
+            <div onClick="{{l.pick}}" class="tab" style="padding: 5px 11px; border-radius: 5px 5px 0 0; font-size: 11px; font-weight: {{l.weight}}; cursor: pointer; color: {{l.fg}}; border-bottom: 2px solid {{l.bd}};">{{l.label}}</div>
+          </sc-for>
+        </div>
+        <div style="flex: 1; overflow-y: auto; padding: 6px 12px;">
+          <sc-for list="{{trades}}" as="r" hint-placeholder-count="7">
+            <div style="display: grid; grid-template-columns: 52px 1fr 90px 90px 74px; gap: 10px; padding: 5px 0; border-bottom: 1px solid #151C26; align-items: center;">
+              <span class="num" style="font-size: 10px; font-weight: 700; color: {{r.sideFg}};">{{r.side}}</span>
+              <span class="num" style="font-size: 10px; color: #6E7A8A;">{{r.wallet}}</span>
+              <span class="num" style="font-size: 10px; color: #C6CEDA; text-align: right;">{{r.amount}}</span>
+              <span class="num" style="font-size: 10px; color: #C6CEDA; text-align: right;">{{r.value}}</span>
+              <span class="num" style="font-size: 10px; color: #6E7A8A; text-align: right;">{{r.ago}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order panel -->
+    <div style="width: 320px; flex-shrink: 0; background: #0E131B; display: flex; flex-direction: column;">
+      <div style="padding: 12px; display: flex; gap: 4px;">
+        <div onClick="{{buyPick}}" class="trade" style="flex: 1; text-align: center; padding: 9px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; background: {{buyBg}}; color: {{buyFg}}; border: 1px solid {{buyBd}};">Buy</div>
+        <div onClick="{{sellPick}}" class="trade" style="flex: 1; text-align: center; padding: 9px; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; background: {{sellBg}}; color: {{sellFg}}; border: 1px solid {{sellBd}};">Sell</div>
+      </div>
+
+      <div style="padding: 0 12px; display: flex; flex-direction: column; gap: 10px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span style="font-size: 10px; color: #6E7A8A; letter-spacing: 0.06em; font-weight: 600;">AMOUNT</span>
+            <span class="num" style="font-size: 10px; color: #98A3B3;">balance 12.482 SOL</span>
+          </div>
+          <div style="background: #151C26; border: 1px solid #33404F; border-radius: 8px; padding: 11px 12px; display: flex; align-items: center;">
+            <span class="num" style="font-size: 19px; font-weight: 700; color: #F2F5F9;">{{amount}}</span>
+            <span style="margin-left: auto; font-size: 12px; color: #6E7A8A; font-weight: 600;">SOL</span>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px;">
+          <sc-for list="{{presets}}" as="p" hint-placeholder-count="4">
+            <div onClick="{{p.pick}}" class="btn num" style="text-align: center; padding: 6px 0; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: {{p.bg}}; color: {{p.fg}}; border: 1px solid {{p.bd}};">{{p.label}}</div>
+          </sc-for>
+        </div>
+
+        <div style="background: #151C26; border: 1px solid #33404F; border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{quote}}" as="q" hint-placeholder-count="4">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 10px; color: #6E7A8A;">{{q.k}}</span>
+              <span class="num" style="font-size: 11px; font-weight: 600; color: {{q.fg}};">{{q.v}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div class="trade" style="text-align: center; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; background: {{ctaBg}}; color: #07090D; letter-spacing: 0.02em;">{{cta}}</div>
+
+        <div style="display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: #0C1E34; border: 1px solid #245A9B; border-radius: 7px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5A9FF3" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          <span style="font-size: 10px; color: #7FB2F6; line-height: 1.4;">Self-custodial. Keys never leave your wallet.</span>
+        </div>
+      </div>
+
+      <!-- Audit -->
+      <div style="margin-top: 14px; border-top: 1px solid #33404F; padding: 12px;">
+        <div style="font-size: 10px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600; margin-bottom: 8px;">OWNERSHIP AUDIT</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{audit}}" as="a" hint-placeholder-count="6">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; color: #98A3B3; width: 96px;">{{a.k}}</span>
+              <div style="flex: 1; height: 4px; background: #151C26; border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; width: {{a.pct}}%; background: {{a.fg}}; border-radius: 2px;"></div>
+              </div>
+              <span class="num" style="font-size: 11px; font-weight: 700; color: {{a.fg}}; width: 42px; text-align: right;">{{a.v}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3B8FF0","options":["#3B8FF0","#A855F7","#12B574","#FFB800"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { side: 'buy', frame: '5m', amount: '0.5', lower: 'Trades', tick: 0 };
+  }
+  componentDidMount() { this.timer = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 1000); }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  renderVals() {
+    const t = this.state.tick;
+    const buy = this.state.side === 'buy';
+    const drift = Math.sin(t / 7) * 0.02;
+
+    const candles = Array.from({ length: 44 }, (_, i) => {
+      const w = Math.sin((i + t) / 4) + Math.sin((i + t) / 9) * 0.6;
+      const up = w >= 0;
+      return {
+        fg: up ? '#12B574' : '#EC5A5F',
+        volFg: up ? '#0B764C' : '#8C2429',
+        body: String(14 + Math.abs(w) * 26),
+        wick: String(6 + Math.abs(w) * 9),
+        tail: String(4 + Math.abs(w) * 6),
+        vol: String(18 + Math.abs(Math.sin((i + t) / 3)) * 72),
+      };
+    });
+
+    const presets = ['0.05', '0.1', '0.5', '1.0'].map((v) => ({
+      label: v,
+      bg: this.state.amount === v ? '#1C2531' : '#151C26',
+      fg: this.state.amount === v ? '#F2F5F9' : '#98A3B3',
+      bd: this.state.amount === v ? '#445366' : '#33404F',
+      pick: () => this.setState({ amount: v }),
+    }));
+
+    const frames = ['1m', '5m', '15m', '1h', '4h', '1d'].map((f) => ({
+      label: f,
+      bg: this.state.frame === f ? '#3B8FF0' : 'transparent',
+      fg: this.state.frame === f ? '#07090D' : '#98A3B3',
+      weight: this.state.frame === f ? 700 : 500,
+      pick: () => this.setState({ frame: f }),
+    }));
+
+    const lower = ['Trades', 'Top Traders', 'Holders', 'Dev'].map((l) => ({
+      label: l,
+      fg: this.state.lower === l ? '#F2F5F9' : '#6E7A8A',
+      bd: this.state.lower === l ? '#3B8FF0' : 'transparent',
+      weight: this.state.lower === l ? 600 : 500,
+      pick: () => this.setState({ lower: l }),
+    }));
+
+    const trades = Array.from({ length: 8 }, (_, i) => {
+      const b = (i + t) % 3 !== 0;
+      return {
+        side: b ? 'BUY' : 'SELL',
+        sideFg: b ? '#2CC189' : '#EF7176',
+        wallet: ['7xKq', 'Bn4P', 'CzY2', 'mSEH', '9Uu6', 'DXbc', 'F7HH', '4Nr3'][i] + '…' + ['a91', 'k2f', 'p8d', 'q4z', 'w7m', 'r3v', 'y6t', 'n5c'][i],
+        amount: (0.4 + i * 0.37).toFixed(2) + ' SOL',
+        value: '$' + (42 + i * 39).toFixed(0),
+        ago: (i * 7 + (t % 7)) + 's',
+      };
+    });
+
+    // Measured values; a real feed leaves unmeasured fields absent.
+    const audit = [
+      { k: 'Top 10',    v: '38%',  pct: '38', fg: '#FBBF24' },
+      { k: 'Dev',       v: '0.3%', pct: '3',  fg: '#2CC189' },
+      { k: 'Snipers',   v: '0%',   pct: '2',  fg: '#2CC189' },
+      { k: 'Insiders',  v: '6%',   pct: '6',  fg: '#FBBF24' },
+      { k: 'Bundlers',  v: '0.3%', pct: '3',  fg: '#2CC189' },
+      { k: 'Holders',   v: '20K',  pct: '64', fg: '#5A9FF3' },
+    ];
+
+    return {
+      price: (0.01366 * (1 + drift)).toFixed(5),
+      delta: '+' + (208.4 + drift * 40).toFixed(1) + '%',
+      deltaFg: '#2CC189',
+      stats: [
+        { k: 'MARKET CAP', v: '$13.6M', fg: '#FBBF24' },
+        { k: 'LIQUIDITY',  v: '$412K',  fg: '#5A9FF3' },
+        { k: 'VOLUME 24H', v: '$2.14M', fg: '#F2F5F9' },
+        { k: 'HOLDERS',    v: '20,493', fg: '#C6CEDA' },
+      ],
+      frames, lower, trades, presets, audit, candles,
+      ohlc: {
+        o: (0.01352).toFixed(5),
+        h: (0.01389).toFixed(5),
+        l: (0.01327).toFixed(5),
+        c: (0.01366 * (1 + drift)).toFixed(5),
+      },
+      amount: this.state.amount,
+      buyBg: buy ? '#04281B' : '#151C26',
+      buyFg: buy ? '#2CC189' : '#6E7A8A',
+      buyBd: buy ? '#0B764C' : '#33404F',
+      sellBg: buy ? '#151C26' : '#3D1013',
+      sellFg: buy ? '#6E7A8A' : '#EF7176',
+      sellBd: buy ? '#33404F' : '#8C2429',
+      buyPick: () => this.setState({ side: 'buy' }),
+      sellPick: () => this.setState({ side: 'sell' }),
+      cta: buy ? 'Buy ' + this.state.amount + ' SOL of GOAF' : 'Sell GOAF',
+      ctaBg: buy ? '#12B574' : '#EC5A5F',
+      quote: [
+        { k: 'Route',        v: 'Jupiter v6', fg: '#C6CEDA' },
+        { k: 'Price impact', v: '0.42%',      fg: '#FBBF24' },
+        { k: 'Min received', v: '36.2K GOAF', fg: '#C6CEDA' },
+        { k: 'Network fee',  v: '0.00005 SOL',fg: '#98A3B3' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

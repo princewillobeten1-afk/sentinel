@@ -10,7 +10,7 @@ export function HelpView() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <HelpCircle className="h-6 w-6 text-sky-400" /> Sentinel Terminal Documentation & Help
+          <HelpCircle className="h-6 w-6 text-sky-400" /> Help & documentation
         </h1>
         <p className="text-xs text-slate-400 mt-1">
           Guide to risk model explainability, keyboard navigation, and session keys.

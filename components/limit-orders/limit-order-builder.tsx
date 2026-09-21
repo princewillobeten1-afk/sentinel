@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Target, Shield, Zap, Info, Sliders, AlertCircle, ArrowRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,18 +10,40 @@ import { LimitOrderConditions } from '@/lib/limit-order/types';
 interface LimitOrderBuilderProps {
   currentPrice: number;
   walletBalanceSol: number;
+  /** Null when no wallet is connected -- the form is disabled rather than
+   *  submitting against a fabricated identity or balance. */
+  walletAddress: string | null;
+  tokenMint: string;
+  tokenSymbol: string;
   onClose: () => void;
   onOrderCreated: () => void;
+  initialSide?: 'buy' | 'sell';
+  initialMode?: 'simple' | 'advanced';
 }
 
-export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onOrderCreated }: LimitOrderBuilderProps) {
-  const [side, setSide] = useState<'buy' | 'sell'>('buy');
+export function LimitOrderBuilder({
+  currentPrice,
+  walletBalanceSol,
+  walletAddress,
+  tokenMint,
+  tokenSymbol,
+  onClose,
+  onOrderCreated,
+  initialSide = 'buy',
+  initialMode = 'simple',
+}: LimitOrderBuilderProps) {
+  const [side, setSide] = useState<'buy' | 'sell'>(initialSide);
   const [targetPriceStr, setTargetPriceStr] = useState((currentPrice * 0.95).toFixed(4));
   const [amountSolStr, setAmountSolStr] = useState('1.0');
-  const [mode, setMode] = useState<'simple' | 'advanced'>('simple');
+  const [mode, setMode] = useState<'simple' | 'advanced'>(initialMode);
   const [expiration, setExpiration] = useState('24h');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
 
   // Advanced Safety Conditions
   const [enableLiquidity, setEnableLiquidity] = useState(true);
@@ -40,11 +62,23 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
     setIsSubmitting(true);
     setErrorMsg(null);
 
+    if (!walletAddress) {
+      setErrorMsg('Connect a wallet to place a limit order.');
+      setIsSubmitting(false);
+      return;
+    }
+
     const targetPrice = parseFloat(targetPriceStr);
     const amountIn = parseFloat(amountSolStr);
 
     if (!targetPrice || targetPrice <= 0 || !amountIn || amountIn <= 0) {
       setErrorMsg('Please enter valid target price and order size.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (amountIn > walletBalanceSol) {
+      setErrorMsg(`Order size exceeds your balance (${walletBalanceSol.toFixed(4)} SOL).`);
       setIsSubmitting(false);
       return;
     }
@@ -65,9 +99,16 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          walletAddress,
+          tokenMint,
+          tokenSymbol,
           side,
           targetPrice,
           amountIn,
+          // The real balance this order is reserved against -- was absent
+          // entirely, so the reservation engine priced every order against a
+          // fabricated 42.85 SOL default regardless of who was placing it.
+          actualWalletBalance: walletBalanceSol,
           conditions,
           expiresAt: expiration === '24h' ? new Date(Date.now() + 86400000).toISOString() : undefined
         })
@@ -89,7 +130,7 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="bg-sentinel-850 w-full max-w-lg rounded-2xl border border-sentinel-700 shadow-2xl overflow-hidden flex flex-col">
+      <div role="dialog" aria-modal="true" aria-label="Create Intelligent Limit Order" className="bg-sentinel-850 w-full max-w-lg max-h-[calc(100dvh-2rem)] rounded-md border border-sentinel-700 shadow-2xl overflow-hidden flex flex-col">
         
         {/* Header */}
         <div className="p-4 border-b border-sentinel-750 bg-sentinel-900 flex items-center justify-between">
@@ -97,7 +138,7 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
             <Target className="w-5 h-5 text-sky-400" />
             <h2 className="text-base font-bold text-white">Create Intelligent Limit Order</h2>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition">
+          <button type="button" aria-label="Close order builder" onClick={onClose} className="text-slate-400 hover:text-white transition">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -254,6 +295,13 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
             </div>
           )}
 
+          {!walletAddress && (
+            <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>Connect a wallet to place a limit order.</span>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -272,6 +320,7 @@ export function LimitOrderBuilder({ currentPrice, walletBalanceSol, onClose, onO
             variant={side === 'buy' ? 'buy' : 'sell'}
             size="md"
             isLoading={isSubmitting}
+            disabled={!walletAddress}
             onClick={handleSubmit}
             rightIcon={<ArrowRight className="w-4 h-4" />}
           >

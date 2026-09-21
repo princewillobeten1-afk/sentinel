@@ -42,9 +42,9 @@ interface TerminalTopBarProps {
 }
 
 const AVAILABLE_NEW_COLUMNS: { type: DiscoverySection; title: string; desc: string }[] = [
-  { type: 'new', title: 'New Launches', desc: 'Tokens freshly deployed on bonding curves & DEXs' },
-  { type: 'migrating', title: 'Bonding Migration', desc: 'Tokens near 100% bonding curve completion' },
-  { type: 'graduated', title: 'Graduated / Raydium', desc: 'Completed migration trading pairs' },
+  { type: 'new', title: 'New Pairs', desc: 'Tokens freshly deployed on bonding curves & DEXs' },
+  { type: 'migrating', title: 'Final Stretch', desc: 'Tokens near migration (~100% bonding curve completion)' },
+  { type: 'graduated', title: 'Migrated', desc: 'Moved to the AMM/DEX (graduated trading pairs)' },
   { type: 'smart-money', title: 'Smart Money Inflow', desc: 'Tokens accumulated by tracked profitable wallets' },
   { type: 'ai-picks', title: 'AI Alpha Signals', desc: 'Algorithmic signals scored by Sentinel AI' },
   { type: 'watchlist', title: 'My Watchlist', desc: 'Your starred and tracked tokens' },
@@ -86,14 +86,15 @@ export function TerminalTopBar({
   };
 
   return (
-    <div className="sticky top-0 z-20 bg-[#070a0f]/95 backdrop-blur border-b border-slate-800/80 px-3 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-sm">
+    <div className="discovery-toolbar relative shrink-0 z-20 bg-sentinel-950 border-b border-slate-700 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
       {/* Left Section: Search & Chain & Time Window */}
-      <div className="flex items-center gap-2 flex-1 min-w-[320px]">
+      <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 basis-full xl:basis-auto">
         {/* Global Search Input */}
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
           <input
             type="text"
+            aria-label="Filter discovery tokens"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search token, symbol, CA..."
@@ -105,6 +106,7 @@ export function TerminalTopBar({
         <div className="relative">
           <button
             onClick={() => setShowChainMenu(!showChainMenu)}
+            aria-expanded={showChainMenu}
             className="h-7 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -132,10 +134,11 @@ export function TerminalTopBar({
         </div>
 
         {/* Time Window Buttons */}
-        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-          {(['1m', '5m', '15m', '1h', '4h', '24h'] as TimeWindow[]).map((w) => (
+        <div aria-label="Time window" className="flex items-center bg-slate-950 p-1 rounded-md border border-slate-700 text-2xs">
+          {(['5m', '1h', '24h'] as TimeWindow[]).map((w) => (
             <button
               key={w}
+              aria-pressed={timeWindow === w}
               onClick={() => onTimeWindowChange(w)}
               className={`px-2 py-0.5 rounded-md font-bold transition-all ${
                 timeWindow === w
@@ -150,7 +153,7 @@ export function TerminalTopBar({
       </div>
 
       {/* Right Section: Quick Buy Presets, Column Manager, Advanced Filters & Stream Status */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
         {/* Quick Buy Presets Pill Configuration */}
         <button
           onClick={() => setShowQuickBuyModal(true)}
@@ -172,6 +175,7 @@ export function TerminalTopBar({
             stated choice, not a silent one. */}
         <button
           onClick={() => onToggleZeroLiquidity?.(!showZeroLiquidity)}
+          aria-pressed={showZeroLiquidity}
           className={`h-7 px-2.5 rounded-lg border font-bold text-2xs flex items-center gap-1 transition-colors ${
             showZeroLiquidity
               ? 'bg-amber-950/50 border-amber-900/60 text-amber-300'
@@ -191,6 +195,7 @@ export function TerminalTopBar({
         <div className="relative">
           <button
             onClick={() => setShowAddMenu(!showAddMenu)}
+            aria-expanded={showAddMenu}
             className="h-7 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors"
             title="Add another column feed"
           >
@@ -300,13 +305,15 @@ export function TerminalTopBar({
                   <button
                     type="button"
                     onClick={() => setEditMode('usd')}
+                    disabled
+                    title="The connected-wallet execution flow is SOL-funded"
                     className={`py-1.5 rounded-lg font-bold border text-xs ${
                       editMode === 'usd'
                         ? 'bg-sky-500 text-slate-950 border-sky-400'
-                        : 'bg-slate-900 border-slate-800 text-slate-300'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 opacity-60 cursor-not-allowed'
                     }`}
                   >
-                    USD ($)
+                    USD (not available)
                   </button>
                 </div>
               </div>

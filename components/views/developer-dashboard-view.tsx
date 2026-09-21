@@ -14,7 +14,7 @@ export function DeveloperDashboardView() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sentinel-800 pb-4">
+      <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sentinel-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
             <Code2 className="h-6 w-6 text-sky-400" /> Developer Platform

@@ -1,5 +1,6 @@
 import { dbPool } from './pool';
 import { logger } from '../logger';
+import { describeError } from '../describe-error';
 import type { NormalizedRealtimeEvent } from '../events/event-types';
 
 export interface TokenRecord {
@@ -74,7 +75,7 @@ export class RealtimeRepository {
         ]
       );
     } catch (err) {
-      logger.warn('[realtime-repo] saveToken DB write failed, using in-memory store', { error: (err as Error).message });
+      logger.warn('[realtime-repo] saveToken DB write failed, using in-memory store', { error: describeError(err) });
     }
   }
 
@@ -97,7 +98,7 @@ export class RealtimeRepository {
         [update.mint, update.priceUsd || null, update.liquidityUsd || null, update.marketCapUsd || null, update.volume24hUsd || null]
       );
     } catch (err) {
-      logger.warn('[realtime-repo] saveTokenUpdate DB write failed, using in-memory store', { error: (err as Error).message });
+      logger.warn('[realtime-repo] saveTokenUpdate DB write failed, using in-memory store', { error: describeError(err) });
     }
   }
 
@@ -128,7 +129,7 @@ export class RealtimeRepository {
         ]
       );
     } catch (err) {
-      logger.warn('[realtime-repo] saveTrade DB write failed, using in-memory store', { error: (err as Error).message });
+      logger.warn('[realtime-repo] saveTrade DB write failed, using in-memory store', { error: describeError(err) });
     }
   }
 
@@ -192,6 +193,25 @@ export class RealtimeRepository {
       // Fall back to memory
     }
     return this.inMemoryTrades.filter((t) => t.mint === mint).slice(-limit);
+  }
+
+  /**
+   * Reads captured trades for a mint from the in-memory buffer only, with no
+   * DB attempt.
+   *
+   * For callers that already know Postgres is unreachable -- their own query
+   * just failed -- and would otherwise pay for a second, redundant connection
+   * attempt by calling `getTradesByMint`. The in-memory buffer holds the same
+   * trades `saveTrade` writes to Postgres; it just has no signature-format
+   * cleanup, since it is never polluted by MOCK_REALTIME's DB rows (this
+   * process's own memory, not a shared table with old test data in it).
+   *
+   * Bounded by the buffer's global 2000-trade cap across every mint, so a
+   * quiet token behind a busy one may have less history here than a healthy
+   * Postgres would hold -- real coverage, not a fabricated tape.
+   */
+  public getInMemoryTradesForMint(mint: string): TradeRecord[] {
+    return this.inMemoryTrades.filter((t) => t.mint === mint);
   }
 }
 

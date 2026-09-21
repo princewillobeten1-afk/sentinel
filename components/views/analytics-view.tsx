@@ -208,19 +208,18 @@ export function AnalyticsView() {
   return (
     <div className="space-y-6">
       {/* Header & Subsystem Telemetry */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-sentinel-800 pb-4">
+      <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-sentinel-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-sky-400" /> Market Analytics & Data Intelligence
+            <BarChart3 className="h-6 w-6 text-sky-400" /> Analytics
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time on-chain decomposition, wash trading isolation, position-specific exitability, and bidirectional lineage.
+            Explore volume, liquidity, and wallet analytics using illustrative sample data.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            LIVE (Lag: {dataQuality.indexerLagMs}ms)
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-slate-850 text-slate-400 border border-slate-700">
+            Sample data
           </span>
           <button
             onClick={() => setShowLineageDrawer(!showLineageDrawer)}
@@ -233,7 +232,7 @@ export function AnalyticsView() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-sentinel-800 pb-2 text-xs font-medium">
+      <div data-ui="tabs" className="flex gap-2 overflow-x-auto border-b border-sentinel-800 pb-2 text-xs font-medium">
         {[
           { id: 'market', label: 'Market & Regimes', icon: Activity },
           { id: 'volume', label: 'Volume & Wash Trading', icon: BarChart3 },
@@ -248,6 +247,7 @@ export function AnalyticsView() {
           return (
             <button
               key={tab.id}
+              aria-pressed={isActive}
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ${
                 isActive

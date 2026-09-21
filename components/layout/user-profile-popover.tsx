@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useWalletState, useWalletActions, useUIActions, useNotificationsActions } from '@/lib/store';
 
-export function UserProfilePopover() {
+export function UserProfilePopover({ align = 'right' }: { align?: 'left' | 'right' }) {
   const { status, authenticatedIdentity, primaryWallet, linkedWallets } = useWalletState();
   const { setWalletModalOpen, disconnectWallet, deleteAccount } = useWalletActions();
   const { setActiveView } = useUIActions();
@@ -56,8 +56,9 @@ export function UserProfilePopover() {
 
   return (
     <Popover
+      align={align}
       trigger={
-        <button className="flex items-center gap-2 rounded-xl border border-sentinel-700 bg-sentinel-850 px-3 py-1.5 text-xs text-slate-200 hover:border-sentinel-500 transition shadow-inner">
+        <button aria-label="Account menu" className="flex items-center gap-2 rounded-md border border-sentinel-700 bg-sentinel-900 px-3 py-1.5 text-xs text-slate-200 hover:border-sentinel-600 transition-colors">
           <div className="flex h-5 w-5 items-center justify-center rounded-md bg-sky-500/20 text-sky-400 font-bold text-2xs border border-sky-500/40 font-mono">
             {displayName.charAt(0).toUpperCase()}
           </div>

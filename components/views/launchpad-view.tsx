@@ -35,13 +35,13 @@ export function LaunchpadView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Rocket className="h-6 w-6 text-sky-400" /> Outcome-Aligned Token Launchpad
+            <Rocket className="h-6 w-6 text-sky-400" /> Launchpad
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Fair-launch bonding curves with transparent creator vesting and anti-bundle liquidity safeguards.
+            Explore the launchpad preview. Listings below use sample data.
           </p>
         </div>
 

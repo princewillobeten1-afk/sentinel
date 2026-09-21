@@ -23,7 +23,25 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const timeframe = (searchParams.get('timeframe') as AnalyticsTimeframe) || '24h';
 
-  const agg = await getMarketAggregates();
+  // `realtime_tokens` is the only source here, so a Postgres outage used to
+  // throw straight out of the handler — an empty-bodied 500 on every page that
+  // loads this. Say what is unavailable instead of failing opaquely.
+  let agg: Awaited<ReturnType<typeof getMarketAggregates>>;
+  try {
+    agg = await getMarketAggregates();
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'MARKET_AGGREGATES_UNAVAILABLE',
+          message: 'Market aggregates are unavailable right now — the token store could not be read.',
+          detail: err instanceof Error ? err.message : String(err),
+        },
+      },
+      { status: 503 },
+    );
+  }
 
   const regime = MarketRegimeClassifier.classifyRegime({
     activeSolanaVolume24hUsd: agg.totalVolumeUsd ?? 0,

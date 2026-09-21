@@ -40,7 +40,7 @@ export function DataTable<T>({
   zebra = false,
 }: DataTableProps<T>) {
   return (
-    <div className={clsx('w-full overflow-x-auto rounded-xl border border-white/[0.08] bg-sentinel-900/70 shadow-card backdrop-blur-xl', className)}>
+    <div data-ui="table" aria-busy={isLoading} className={clsx('min-w-0 max-w-full w-full overflow-x-auto rounded-lg border border-sentinel-700/60 bg-sentinel-900', className)}>
       <table className="w-full text-left text-xs border-collapse">
         <thead className="sticky top-0 z-10 bg-sentinel-950/95 uppercase text-slate-400 font-mono text-2xs tracking-wider border-b border-white/[0.08] backdrop-blur-md">
           <tr>
@@ -50,7 +50,8 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   style={{ width: col.width }}
-                  onClick={() => col.sortable && onSort?.(col.key)}
+                  scope="col"
+                  aria-sort={col.sortable ? isSorted ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none' : undefined}
                   className={clsx(
                     'px-3.5 py-2.5 select-none transition-colors font-bold',
                     col.align === 'right' && 'text-right',
@@ -59,7 +60,7 @@ export function DataTable<T>({
                   )}
                 >
                   <div className={clsx('inline-flex items-center gap-1.5', col.align === 'right' && 'flex-row-reverse')}>
-                    <span>{col.header}</span>
+                    {col.sortable && onSort ? <button type="button" onClick={() => onSort(col.key)} className="min-h-8 text-inherit">{col.header}</button> : <span>{col.header}</span>}
                     {col.sortable && (
                       <span className="text-slate-500">
                         {isSorted ? (
@@ -103,6 +104,13 @@ export function DataTable<T>({
             data.map((item, rowIdx) => (
               <tr
                 key={keyExtractor(item)}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={(event) => {
+                  if (onRowClick && event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    onRowClick(item);
+                  }
+                }}
                 onClick={() => onRowClick?.(item)}
                 className={clsx(
                   'transition-all duration-150 hover:bg-sentinel-750/70 group',

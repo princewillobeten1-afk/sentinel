@@ -36,10 +36,14 @@ export interface BirdeyeTxMessage {
   type: 'TXS_DATA' | 'TRANSACTION_DATA' | string;
   data: {
     address?: string;
+    tokenAddress?: string;
     owner?: string;
     side?: 'buy' | 'sell';
     volumeUsd?: number;
+    volumeUSD?: number;
     volume?: number;
+    tokenAmount?: number;
+    amountSol?: number;
     priceUsd?: number;
     price?: number;
     blockUnixTime?: number;
@@ -47,7 +51,35 @@ export interface BirdeyeTxMessage {
   };
 }
 
-export type BirdeyeMessage = BirdeyePriceDataMessage | BirdeyeTxMessage | { type: string; data?: unknown };
+export interface BirdeyeTokenStatsMessage {
+  type: 'TOKEN_STATS_DATA';
+  data: {
+    address?: string;
+    price?: number;
+    marketcap?: number;
+    liquidity?: number;
+    volume_5m_usd?: number;
+    buy_volume_5m_usd?: number;
+    sell_volume_5m_usd?: number;
+    volume_1h_usd?: number;
+    volume_24h_usd?: number;
+    trade_5m?: number;
+    trade_1h?: number;
+    trade_24h?: number;
+    buy_5m?: number;
+    sell_5m?: number;
+    buy_1h?: number;
+    sell_1h?: number;
+    buy_24h?: number;
+    sell_24h?: number;
+    price_change_5m_percent?: number;
+    price_change_1h_percent?: number;
+    price_change_24h_percent?: number;
+    last_trade_unix_time?: number;
+  };
+}
+
+export type BirdeyeMessage = BirdeyePriceDataMessage | BirdeyeTxMessage | BirdeyeTokenStatsMessage | { type: string; data?: unknown };
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helius WS (standard Solana JSON-RPC over WebSocket) message shapes
@@ -115,4 +147,16 @@ export interface ConnectionHealth {
   state: ConnectionState;
   lastMessageAt: string | null;
   consecutiveFailures: number;
+  /**
+   * Bytes received from the provider since the process started, across
+   * reconnects. Reported because upstream data volume is a real cost — the
+   * Helius program sweep ran at 36.7 MB/min unnoticed until it was measured.
+   */
+  bytesReceived?: number;
+  /** When `bytesReceived` started counting. */
+  countingSince?: string;
+  /** Average receive rate since `countingSince`. */
+  mbPerMinute?: number;
+  /** Sanitized provider-level rejection, distinct from transport health. */
+  providerError?: string;
 }

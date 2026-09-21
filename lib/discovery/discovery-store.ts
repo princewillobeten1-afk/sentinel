@@ -1,6 +1,13 @@
 'use client';
 
 import { fetchOnce } from '@/lib/api/fetch-once';
+import {
+  computeReconnectDelayMs,
+  initialReconnectState,
+  reconnectReducer,
+  type ReconnectState,
+} from '@/lib/hooks/discovery-ws-reconnect';
+import { encodeClientMessage, subscribeMessage } from '@/lib/ws/client-messages';
 import type { DiscoveryToken, DiscoverySection } from './types';
 
 /**
@@ -34,8 +41,6 @@ export const DISCOVERY_SECTIONS: DiscoverySection[] = [
   'new',
   'migrating',
   'graduated',
-  'trending',
-  'hot',
 ];
 
 export type SectionState = 'live' | 'stale' | 'loading';
@@ -75,6 +80,34 @@ let snapshot: DiscoverySnapshot = emptySnapshot();
 let timer: ReturnType<typeof setInterval> | null = null;
 let subscribers = 0;
 const listeners = new Set<() => void>();
+
+/**
+ * The socket this file's header always claimed to have.
+ *
+ * It did not: this was a 4-second poll and nothing anywhere subscribed to the
+ * `feed.discovery:*` topics the server has been publishing all along.
+ *
+ * It is a **refresh trigger, not a data path**. An event marks its section
+ * dirty and brings the next fetch forward; the rows themselves still come from
+ * the REST endpoint. That is deliberate — the server coalesces per topic with
+ * last-value-wins under backpressure, which is only safe because each payload
+ * is self-contained. Treating these frames as authoritative row data would
+ * silently drop updates the moment a client fell behind.
+ *
+ * The poll stays as the reconciliation floor, so a dropped frame or a refused
+ * subscription costs freshness rather than correctness.
+ */
+let socket: WebSocket | null = null;
+let socketWelcomed = false;
+let reconnectState: ReconnectState = initialReconnectState();
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+/** Coalesces a burst of events into one early fetch. */
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Shortest gap between an event arriving and the fetch it triggers. */
+const NUDGE_DEBOUNCE_MS = 400;
+
+const DISCOVERY_TOPICS = DISCOVERY_SECTIONS.map((section) => `feed.discovery:${section}`);
 
 /** Query shape the columns share. Changing it restarts the cycle. */
 let chain = 'solana';
@@ -136,15 +169,135 @@ async function tick(): Promise<void> {
   listeners.forEach((notify) => notify());
 }
 
+/**
+ * Brings the next fetch forward after a live event.
+ *
+ * Debounced because launches arrive in bursts — ten `TOKEN_CREATED` events in
+ * a second must cost one fetch, not ten. Without this the socket would be
+ * strictly worse than the timer it is meant to improve on.
+ */
+function nudge(): void {
+  if (nudgeTimer) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = null;
+    void tick();
+  }, NUDGE_DEBOUNCE_MS);
+}
+
+function wsUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
+}
+
+function connectSocket(): void {
+  if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
+  if (socket || reconnectState.status === 'given_up') return;
+
+  reconnectState = reconnectReducer(reconnectState, { type: 'CONNECT_REQUESTED' });
+
+  let next: WebSocket;
+  try {
+    next = new WebSocket(wsUrl());
+  } catch {
+    scheduleReconnect();
+    return;
+  }
+  socket = next;
+  socketWelcomed = false;
+
+  next.onopen = () => {
+    reconnectState = reconnectReducer(reconnectState, { type: 'OPENED' });
+    // No subscribe here. The server attaches its message listener as it sends
+    // `welcome`, so anything written before that is discarded silently — the
+    // same trap `use-sentinel-ws` was falling into.
+  };
+
+  next.onmessage = (event) => {
+    let payload: { type?: string; topic?: string };
+    try {
+      payload = JSON.parse(String(event.data));
+    } catch {
+      return;
+    }
+
+    if (payload.type === 'welcome') {
+      socketWelcomed = true;
+      try {
+        next.send(encodeClientMessage(subscribeMessage(DISCOVERY_TOPICS)));
+      } catch {
+        // The reconnect path covers it.
+      }
+      return;
+    }
+
+    // Any event on a discovery topic means that section changed. Which section
+    // is not read: the fetch refreshes all three anyway, and acting on the
+    // topic name would make a dropped frame look like a section with no news.
+    if (payload.type === 'event' && payload.topic?.startsWith('feed.discovery:')) {
+      nudge();
+    }
+  };
+
+  next.onerror = () => {
+    // Surfaced through onclose, which always follows.
+  };
+
+  next.onclose = () => {
+    socket = null;
+    socketWelcomed = false;
+    reconnectState = reconnectReducer(reconnectState, { type: 'CLOSED' });
+    if (reconnectState.status === 'reconnecting') scheduleReconnect();
+    // `given_up` is not fatal: the 4s poll is still running, so the feed
+    // degrades to its previous behaviour rather than going dark.
+  };
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(connectSocket, computeReconnectDelayMs(reconnectState.attempt));
+}
+
+function disconnectSocket(): void {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  nudgeTimer = null;
+
+  const open = socket;
+  socket = null;
+  socketWelcomed = false;
+  reconnectState = initialReconnectState();
+
+  if (open) {
+    // Null the handlers first so this close cannot schedule a reconnect.
+    open.onopen = null;
+    open.onmessage = null;
+    open.onerror = null;
+    open.onclose = null;
+    try {
+      open.close();
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 function start(): void {
   if (timer) return;
   void tick();
   timer = setInterval(() => void tick(), POLL_INTERVAL_MS);
+  connectSocket();
 }
 
 function stop(): void {
   if (timer) clearInterval(timer);
   timer = null;
+  disconnectSocket();
+}
+
+/** Whether the live socket is currently subscribed. For status display. */
+export function isDiscoverySocketLive(): boolean {
+  return socket !== null && socketWelcomed;
 }
 
 /**
@@ -168,7 +321,17 @@ export function getDiscoverySnapshot(): DiscoverySnapshot {
 }
 
 export function getSection(section: DiscoverySection): SectionSnapshot {
-  return snapshot.sections[section] ?? { state: 'loading', tokens: [], at: 0 };
+  const known = snapshot.sections[section];
+  if (known) return known;
+
+  // A section this store never polls must not sit at `loading`, which reads as
+  // "any moment now" and never resolves. Say what is actually true.
+  return {
+    state: 'stale',
+    tokens: [],
+    at: 0,
+    error: `No live feed for "${section}" — the store polls ${DISCOVERY_SECTIONS.join(', ')}.`,
+  };
 }
 
 /**

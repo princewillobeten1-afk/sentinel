@@ -16,13 +16,11 @@ import {
   Sparkles,
   BarChart3,
   Settings,
-  Code2,
   HelpCircle,
   ChevronLeft,
   ChevronRight,
   Zap,
   CheckCircle2,
-  ShieldCheck,
 } from 'lucide-react';
 import { useAppState, useAppActions, AppView } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +57,7 @@ export const viewRouteMap: Record<AppView, string> = {
 export const mainNavItems: NavItemConfig[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
-  { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D', badge: 'LIVE', badgeVariant: 'cyan' },
+  { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
   { id: 'watchlist', label: 'Watchlist', icon: Bookmark, hotkey: 'G W' },
   // No badge literal here. It read '4' unconditionally — for signed-out
@@ -68,13 +66,11 @@ export const mainNavItems: NavItemConfig[] = [
   { id: 'alerts', label: 'Alerts', icon: ShieldAlert, hotkey: 'G A', badgeVariant: 'danger' },
   { id: 'launchpad', label: 'Launchpad', icon: Rocket, hotkey: 'G L' },
   { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
-  { id: 'ai', label: 'AI Co-Pilot', icon: Sparkles, hotkey: 'G AI', badge: 'NEW', badgeVariant: 'purple' },
+  { id: 'ai', label: 'AI Co-Pilot', icon: Sparkles, hotkey: 'G AI' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, hotkey: 'G AN' },
 ];
 
 export const lowerNavItems: NavItemConfig[] = [
-  { id: 'admin', label: 'Admin Ops', icon: ShieldCheck, hotkey: 'G ADM', badge: 'OPS', badgeVariant: 'warning' },
-  { id: 'developers', label: 'Developers', icon: Code2, hotkey: 'G DEV' },
   { id: 'settings', label: 'Settings', icon: Settings, hotkey: 'G S' },
   { id: 'help', label: 'Help & Docs', icon: HelpCircle, hotkey: 'G ?' },
 ];
@@ -119,15 +115,16 @@ export function Sidebar() {
       <Link
         key={item.id}
         href={target}
+        aria-current={isActive ? 'page' : undefined}
         prefetch={true}
         onClick={() => {
           setActiveView(item.id);
           setMobileNavOpen(false);
         }}
         className={clsx(
-          'w-full flex items-center justify-between rounded-xl px-3 py-2 transition-all duration-150 text-xs select-none group',
+          'w-full flex items-center justify-between rounded-md px-3 py-2 transition-colors duration-150 text-xs select-none group',
           isActive
-            ? 'bg-gradient-to-r from-sky-500/20 via-sky-500/5 to-transparent text-white font-bold border-l-2 border-l-sky-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+            ? 'bg-sky-500/10 text-sky-300 font-semibold'
             : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-100 font-medium'
         )}
       >
@@ -169,7 +166,7 @@ export function Sidebar() {
       {/* Desktop Navigation Sidebar */}
       <aside
         className={clsx(
-          'hidden lg:flex flex-col border-r border-white/[0.08] bg-sentinel-950/80 backdrop-blur-3xl transition-all duration-200 z-20 sticky top-0 h-screen select-none overflow-y-auto no-scrollbar',
+          'terminal-sidebar hidden lg:flex shrink-0 flex-col border-r border-sentinel-700 bg-sentinel-950 transition-all duration-200 z-20 sticky top-0 h-dvh select-none overflow-y-auto',
           isSidebarCollapsed ? 'w-16 px-2 py-3' : 'w-52 xl:w-56 px-3 py-3'
         )}
       >
@@ -197,6 +194,8 @@ export function Sidebar() {
 
           <button
             onClick={toggleSidebar}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!isSidebarCollapsed}
             className="rounded-lg p-1 text-slate-400 hover:bg-sentinel-850 hover:text-slate-200 transition"
           >
             {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

@@ -164,3 +164,41 @@ export function buyPressurePct(buys: number | undefined, sells: number | undefin
   if (total <= 0) return null;
   return (b / total) * 100;
 }
+
+/**
+ * Formats live-ticking relative time since pair creation:
+ * - <60s: `7s`, `47s`
+ * - <60m: `1m`, `12m`
+ * - <24h: `1h`, `5h`
+ * - >=24h: `1d`, `3d`
+ */
+export function formatLiveAge(ageMinutes: number, elapsedSec = 0): string {
+  const totalSec = Math.max(1, Math.round(ageMinutes * 60 + elapsedSec));
+  if (totalSec < 60) return `${totalSec}s`;
+  const mins = Math.floor(totalSec / 60);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+/**
+ * Formats a boost countdown timer:
+ * - < 3600s: `m:ss` (e.g. `4:32`, `0:45`)
+ * - >= 3600s: `${h}h ${m}m` (e.g. `14h 25m`)
+ * - <= 0s: null
+ */
+export function formatBoostCountdown(remainingSec: number | undefined | null): string | null {
+  if (remainingSec === undefined || remainingSec === null || remainingSec <= 0) return null;
+  const sec = Math.floor(remainingSec);
+  if (sec >= 3600) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return `${h}h ${m < 10 ? '0' : ''}${m}m`;
+  }
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+

@@ -7,6 +7,7 @@ import {
   topicsToAdd,
   topicsToRemove,
 } from '@/lib/ws/topic-plan';
+import type { MetricEvidence, RugRiskEvidence } from '@/lib/discovery/types';
 
 /**
  * Live price and trade updates for a set of tokens, over the app WebSocket.
@@ -36,13 +37,72 @@ import {
  * would look live while never updating.
  */
 
-export interface LiveTokenUpdate {
+export interface LiveTokenUpdate extends Pick<import('@/lib/trading/sidebar-model').TradeSidebarSnapshot, 'activityEvidence' | 'funding' | 'fundingEvidence' | 'devBalanceSol' | 'devBalanceEvidence' | 'imageReuse' | 'liquidityEvidence'> {
+  volume5mUsd?: string;
+  buyVolume5mUsd?: number | null;
+  sellVolume5mUsd?: number | null;
+  buysCount5m?: number;
+  sellsCount5m?: number;
+  txCount5m?: number;
+  fieldObservedAt?: import('@/lib/market/live/card-cache').TokenCardPatch['fieldObservedAt'];
   mint: string;
   priceUsd?: number;
   priceChange24h?: number;
   /** Side of the most recent trade seen on this token. */
   lastTradeSide?: 'BUY' | 'SELL';
+  /** Client receipt time for a newly streamed trade; omitted on replay. */
+  lastTradeUpdatedAt?: number;
   lastTradeAmountUsd?: number;
+  marketCapUsd?: string;
+  liquidityUsd?: string;
+  volume1hUsd?: string;
+  volume24hUsd?: string;
+  priceChange5m?: number;
+  priceChange1h?: number;
+  txCount1h?: number;
+  txCount24h?: number;
+  buysCount?: number;
+  sellsCount?: number;
+  buysCount1h?: number;
+  sellsCount1h?: number;
+  buysCount24h?: number;
+  sellsCount24h?: number;
+  holdersCount?: number;
+  top10HoldingsPct?: number;
+  devHoldingsPct?: number;
+  sniperPercentage?: number;
+  insiderHoldingsPct?: number;
+  bundlerPercentage?: number;
+  proTradersCount?: number;
+  kolsCount?: number;
+  devAddress?: string;
+  devWalletAge?: string;
+  devMints?: number;
+  devMigrations?: number;
+  isMintRenounced?: boolean;
+  isFreezeDisabled?: boolean;
+  isLiquidityLocked?: boolean;
+  lpLockedPct?: number | null;
+  rugRisk?: RugRiskEvidence;
+  marketEvidence?: MetricEvidence;
+  ownershipEvidence?: MetricEvidence;
+  securityEvidence?: MetricEvidence;
+  creatorEvidence?: MetricEvidence;
+  lifecycleEvidence?: MetricEvidence;
+  auditPending?: boolean;
+  auditVersion?: string;
+  migrationSignature?: string;
+  migratedPool?: string;
+  migratedDex?: string;
+  migratedAt?: number;
+  bondingCurveProgress?: number;
+  lifecycleState?: 'new_pairs' | 'final_stretch' | 'migrating' | 'migrated';
+  liquidityPoolAddress?: string;
+  isDexPaid?: boolean;
+  dexPaidAt?: number;
+  isBoosted?: boolean;
+  boostAmount?: number;
+  observedAt?: string;
   /** When this entry last changed — drives the flash on the card. */
   updatedAt: number;
 }
@@ -80,6 +140,7 @@ export function useLiveTokenUpdates(mints: string[]): {
    * that gap and the new topics would never be delivered.
    */
   const welcomedRef = useRef(false);
+  const sequenceRef = useRef<Map<string, number>>(new Map());
   const mountedRef = useRef(true);
 
   // Stable key so the effect re-runs on a genuine change of tokens, not on
@@ -87,6 +148,8 @@ export function useLiveTokenUpdates(mints: string[]): {
   const mintsKey = mints.join(',');
 
   const plan = useMemo(() => planTokenTopics(mints), [mintsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const planRef = useRef(plan);
+  planRef.current = plan;
 
   /** Sends the difference between what we hold and what the plan wants. */
   const reconcile = useCallback((socket: WebSocket, wanted: string[]) => {
@@ -106,9 +169,15 @@ export function useLiveTokenUpdates(mints: string[]): {
     }
   }, []);
 
-  const applyEvent = useCallback((topic: string, data: Record<string, unknown>) => {
+  const applyEvent = useCallback((topic: string, data: Record<string, unknown>, envelopeSequence?: number) => {
     const parsed = parseTokenTopic(topic);
     if (!parsed) return;
+
+    if (typeof envelopeSequence === 'number') {
+      const previousSequence = sequenceRef.current.get(topic) ?? 0;
+      if (envelopeSequence <= previousSequence) return;
+      sequenceRef.current.set(topic, envelopeSequence);
+    }
 
     setUpdates((previous) => {
       const next = new Map(previous);
@@ -121,6 +190,33 @@ export function useLiveTokenUpdates(mints: string[]): {
         updatedAt: Date.now(),
       };
 
+      if (parsed.kind === 'token.card') {
+        const changed = data.changedFields;
+        if (changed && typeof changed === 'object') {
+          Object.assign(entry, changed as Partial<LiveTokenUpdate>);
+          // The server cache stores decimal market values as strings so REST
+          // and Redis never lose precision. The browser contract exposes a
+          // numeric price, so normalise this one field at the boundary instead
+          // of leaking a string through a TypeScript-only assertion.
+          if ('priceUsd' in changed) {
+            const price = Number((changed as Record<string, unknown>).priceUsd);
+            if (Number.isFinite(price) && price >= 0) entry.priceUsd = price;
+            else entry.priceUsd = current?.priceUsd;
+          }
+          if (
+            data.snapshot !== true
+            && ((changed as Record<string, unknown>).lastTradeSide === 'BUY'
+              || (changed as Record<string, unknown>).lastTradeSide === 'SELL')
+          ) {
+            entry.lastTradeUpdatedAt = Date.now();
+          }
+        }
+        if (typeof data.observedAt === 'string') entry.observedAt = data.observedAt;
+        if (data.fieldObservedAt && typeof data.fieldObservedAt === 'object') entry.fieldObservedAt = { ...current?.fieldObservedAt, ...data.fieldObservedAt as LiveTokenUpdate['fieldObservedAt'] };
+        next.set(parsed.mint, entry);
+        return next;
+      }
+
       if (parsed.kind === 'token.price') {
         // On subscribe the server replays the cached value, and that snapshot
         // uses `lastPriceUsd` where live events use `priceUsd`. Reading only
@@ -132,8 +228,11 @@ export function useLiveTokenUpdates(mints: string[]): {
         if (Number.isFinite(change)) entry.priceChange24h = change;
       } else {
         const side = data.side;
-        if (side === 'BUY' || side === 'SELL') entry.lastTradeSide = side;
-        const amount = Number(data.amount);
+        if (side === 'BUY' || side === 'SELL') {
+          entry.lastTradeSide = side;
+          entry.lastTradeUpdatedAt = Date.now();
+        }
+        const amount = Number(data.amountUsd);
         if (Number.isFinite(amount) && amount > 0) entry.lastTradeAmountUsd = amount;
         // A trade message carries a price too when the leg could be priced.
         const price = Number(data.priceUsd);
@@ -182,13 +281,14 @@ export function useLiveTokenUpdates(mints: string[]): {
         // The server's handshake. Safe to subscribe from here on.
         if (payload?.type === 'welcome') {
           welcomedRef.current = true;
+          sequenceRef.current.clear();
           setStatus('live');
-          reconcile(socket, plan.topics);
+          reconcile(socket, planRef.current.topics);
           return;
         }
 
         if (payload?.type === 'event' && payload.topic && payload.data) {
-          applyEvent(payload.topic, payload.data as Record<string, unknown>);
+          applyEvent(payload.topic, payload.data as Record<string, unknown>, payload.sequence);
         }
       } catch {
         // A malformed frame must not take the socket down.
@@ -200,6 +300,7 @@ export function useLiveTokenUpdates(mints: string[]): {
       socketRef.current = null;
       welcomedRef.current = false;
       subscribedRef.current.clear();
+      sequenceRef.current.clear();
 
       // Signed out, or an Origin the server would not accept. Count it, and
       // stop after a few rather than reconnect-looping for the whole session.
@@ -219,7 +320,7 @@ export function useLiveTokenUpdates(mints: string[]): {
     socket.onerror = () => {
       // `onclose` always follows; retry logic lives there so it runs once.
     };
-  }, [plan.topics, reconcile, applyEvent]);
+  }, [reconcile, applyEvent]);
 
   useEffect(() => {
     mountedRef.current = true;

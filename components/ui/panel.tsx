@@ -18,11 +18,11 @@ const paddingStyles = {
 };
 
 const variantStyles = {
-  default: 'bg-sentinel-850/90 border border-sentinel-700/80 shadow-card backdrop-blur-xl',
+  default: 'bg-sentinel-900 border border-sentinel-700/60',
   subtle: 'bg-sentinel-900/70 border border-sentinel-800 shadow-sm',
   inset: 'bg-sentinel-950/80 border border-sentinel-800/90 shadow-inner',
   bordered: 'bg-transparent border border-sentinel-700',
-  glass: 'bg-sentinel-900/60 border border-white/[0.08] shadow-glass backdrop-blur-xl',
+  glass: 'bg-sentinel-900 border border-sentinel-700/60',
 };
 
 export function Panel({
@@ -37,21 +37,21 @@ export function Panel({
   ...props
 }: PanelProps) {
   return (
-    <div className={clsx('rounded-xl transition-all duration-200 overflow-hidden flex flex-col', variantStyles[variant], className)} {...props}>
+    <div data-ui="panel" className={clsx('min-w-0 rounded-lg overflow-hidden flex flex-col', variantStyles[variant], className)} {...props}>
       {(title || subtitle || headerActions) && (
-        <div className="flex items-center justify-between border-b border-sentinel-700/60 px-4 py-2.5 bg-sentinel-900/50 backdrop-blur-md">
-          <div>
+        <div data-ui="panel-header" className="flex items-center justify-between border-b border-sentinel-700/60 px-4 py-2.5 bg-sentinel-900/50 backdrop-blur-md">
+          <div className="min-w-0">
             {title && (
-              <div className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
+              <div data-ui="panel-title" className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
                 {title}
               </div>
             )}
             {subtitle && <p className="text-2xs text-slate-400 mt-0.5">{subtitle}</p>}
           </div>
-          {headerActions && <div className="flex items-center gap-2 shrink-0">{headerActions}</div>}
+          {headerActions && <div data-ui="panel-actions" className="flex items-center gap-2 shrink-0">{headerActions}</div>}
         </div>
       )}
-      <div className={clsx('flex-1', paddingStyles[padding])}>{children}</div>
+      <div className={clsx('min-w-0 flex-1', paddingStyles[padding])}>{children}</div>
       {footer && <div className="border-t border-sentinel-700/60 bg-sentinel-900/40 px-4 py-2 text-xs text-slate-400">{footer}</div>}
     </div>
   );

@@ -205,7 +205,7 @@ export function AiView() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-sentinel-800 pb-4">
+      <div data-page-header className="flex flex-wrap items-center justify-between gap-4 border-b border-sentinel-800 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400">
@@ -213,13 +213,10 @@ export function AiView() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-                Sentinel AI Intelligence Terminal
-                <Badge variant="outline" size="sm" className="font-mono text-2xs text-sky-400 border-sky-500/40">
-                  EVIDENCE-GROUNDED v2.4
-                </Badge>
+                AI Co-Pilot
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">
-                AI does not replace intelligence engines — AI explains, prioritizes, and audits using verified blockchain data.
+                Explore the AI analysis preview using sample evidence. These reports are not live token assessments.
               </p>
             </div>
           </div>
@@ -248,7 +245,7 @@ export function AiView() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-sentinel-800/80 pb-2">
+      <div data-ui="tabs" className="flex gap-2 overflow-x-auto border-b border-sentinel-800/80 pb-2">
         <button
           onClick={() => setActiveTab('ANALYST')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${

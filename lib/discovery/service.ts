@@ -569,6 +569,13 @@ export function filterDiscoveryTokens(
   if (!filter) return tokens;
 
   return tokens.filter((t) => {
+    const currentEvidence = (evidence: DiscoveryToken['ownershipEvidence']) => !evidence
+      || (evidence.status === 'measured'
+        && (!evidence.expiresAt || Date.parse(evidence.expiresAt) > Date.now()));
+    const ownershipThresholdActive = [filter.top10HoldingsMax, filter.devHoldingsMax, filter.snipersMax,
+      filter.insidersMax, filter.bundlersMax, filter.holdersMin, filter.holdersMax].some((value) => value !== undefined);
+    if (ownershipThresholdActive && !currentEvidence(t.ownershipEvidence)) return false;
+    if ((filter.mintRenouncedOnly || filter.liquidityLockedOnly) && !currentEvidence(t.securityEvidence)) return false;
     const mcap = parseFloat(t.marketCapUsd);
     const liq = parseFloat(t.liquidityUsd);
     const vol = parseFloat(t.volume24hUsd);
@@ -603,18 +610,22 @@ export function filterDiscoveryTokens(
     // holder filter: it cannot be shown to satisfy the condition, and treating
     // unknown as 0 (or as passing) would silently misreport the filter.
     if (filter.holdersMin !== undefined) {
-      if (t.holdersCount === undefined || t.holdersCount < filter.holdersMin) return false;
+      if (!Number.isFinite(t.holdersCount) || t.holdersCount! < filter.holdersMin) return false;
     }
     if (filter.holdersMax !== undefined) {
-      if (t.holdersCount === undefined || t.holdersCount > filter.holdersMax) return false;
+      if (!Number.isFinite(t.holdersCount) || t.holdersCount! > filter.holdersMax) return false;
     }
 
     // Top 10 & Dev Holdings
-    if (filter.top10HoldingsMax !== undefined && (t.top10HoldingsPct ?? 0) > filter.top10HoldingsMax) return false;
-    if (filter.devHoldingsMax !== undefined && (t.devHoldingsPct ?? 0) > filter.devHoldingsMax) return false;
+    if (filter.top10HoldingsMax !== undefined && (!Number.isFinite(t.top10HoldingsPct) || t.top10HoldingsPct! > filter.top10HoldingsMax)) return false;
+    if (filter.devHoldingsMax !== undefined && (!Number.isFinite(t.devHoldingsPct) || t.devHoldingsPct! > filter.devHoldingsMax)) return false;
+    if (filter.snipersMax !== undefined && (!Number.isFinite(t.sniperPercentage) || t.sniperPercentage! > filter.snipersMax)) return false;
+    if (filter.insidersMax !== undefined && (!Number.isFinite(t.insiderHoldingsPct) || t.insiderHoldingsPct! > filter.insidersMax)) return false;
+    if (filter.bundlersMax !== undefined && (!Number.isFinite(t.bundlerPercentage) || t.bundlerPercentage! > filter.bundlersMax)) return false;
 
     // Safety / Risk
-    if (filter.minRiskScore !== undefined && (t.riskScore ?? 0) < filter.minRiskScore) return false;
+    if (filter.minRiskScore !== undefined && (!Number.isFinite(t.riskScore) || t.riskScore! < filter.minRiskScore
+      || t.rugRisk?.completeness === 'partial')) return false;
     if (filter.mintRenouncedOnly && !t.isMintRenounced) return false;
     if (filter.liquidityLockedOnly && !t.isLiquidityLocked) return false;
 

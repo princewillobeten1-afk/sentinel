@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; background: #07090D; }
+    a { color: #5A9FF3; text-decoration: none; }
+    a:hover { color: #7FB2F6; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+    .row { transition: background 110ms ease; }
+    .row:hover { background: #26303E; }
+    .tab:hover { color: #F2F5F9; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #33404F; border-radius: 3px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #07090D; color: #C6CEDA; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 58px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; padding: 0 18px;">
+    <div>
+      <div style="font-size: 16px; font-weight: 700; color: #F2F5F9; letter-spacing: -0.01em;">Portfolio</div>
+      <div class="num" style="font-size: 11px; color: #6E7A8A; margin-top: 1px;">7xKq…a91f · Solana</div>
+    </div>
+    <div style="margin-left: auto; display: flex; gap: 3px; background: #151C26; border: 1px solid #33404F; border-radius: 8px; padding: 3px;">
+      <sc-for list="{{ranges}}" as="r" hint-placeholder-count="4">
+        <div onClick="{{r.pick}}" class="tab num" style="padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: {{r.weight}}; cursor: pointer; color: {{r.fg}}; background: {{r.bg}};">{{r.label}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 16px;">
+
+    <!-- Balance + equity curve -->
+    <div style="display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 14px;">
+      <div style="background: #1C2531; border: 1px solid #33404F; border-radius: 12px; padding: 16px;">
+        <div style="font-size: 10px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600;">TOTAL VALUE</div>
+        <div class="num" style="font-size: 30px; font-weight: 700; color: #F2F5F9; margin-top: 8px; letter-spacing: -0.025em;">${{total}}</div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+          <span class="num" style="font-size: 13px; font-weight: 700; color: {{pnlFg}};">{{pnl}}</span>
+          <span class="num" style="font-size: 12px; color: {{pnlFg}};">{{pnlPct}}</span>
+          <span style="font-size: 11px; color: #6E7A8A;">{{range}}</span>
+        </div>
+
+        <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 9px;">
+          <sc-for list="{{breakdown}}" as="b" hint-placeholder-count="3">
+            <div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <span style="font-size: 11px; color: #98A3B3;">{{b.k}}</span>
+                <span class="num" style="font-size: 11px; font-weight: 600; color: #C6CEDA;">{{b.v}}</span>
+              </div>
+              <div style="height: 4px; background: #151C26; border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; width: {{b.pct}}%; background: {{b.fg}}; border-radius: 2px;"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="background: #1C2531; border: 1px solid #33404F; border-radius: 12px; padding: 16px; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center;">
+          <span style="font-size: 10px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600;">EQUITY</span>
+          <span class="num" style="margin-left: auto; font-size: 11px; color: #2CC189;">{{high}}</span>
+        </div>
+        <div style="flex: 1; display: flex; align-items: flex-end; gap: 2px; margin-top: 12px; min-height: 0;">
+          <sc-for list="{{equity}}" as="e" hint-placeholder-count="52">
+            <div style="flex: 1; background: {{e.fg}}; height: {{e.h}}%; border-radius: 1px;"></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- Holdings -->
+    <div style="flex: 1; min-height: 0; background: #0E131B; border: 1px solid #33404F; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; padding: 0 14px; border-bottom: 1px solid #33404F; background: #151C26;">
+        <span style="font-size: 12px; font-weight: 700; color: #F2F5F9;">Holdings</span>
+        <span class="num" style="font-size: 10px; color: #6E7A8A; margin-left: 8px;">{{count}} positions</span>
+      </div>
+
+      <div style="flex-shrink: 0; display: grid; grid-template-columns: 190px repeat(5, minmax(0, 1fr)) 96px; gap: 12px; padding: 9px 14px; border-bottom: 1px solid #33404F;">
+        <sc-for list="{{headers}}" as="h" hint-placeholder-count="7">
+          <span style="font-size: 9px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600; text-align: {{h.align}};">{{h.label}}</span>
+        </sc-for>
+      </div>
+
+      <sc-for list="{{holdings}}" as="h" hint-placeholder-count="6">
+        <div class="row" style="display: grid; grid-template-columns: 190px repeat(5, minmax(0, 1fr)) 96px; gap: 12px; padding: 11px 14px; border-bottom: 1px solid #151C26; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+            <div style="width: 26px; height: 26px; border-radius: 7px; background: {{h.tint}}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #07090D; flex-shrink: 0;">{{h.initial}}</div>
+            <div style="min-width: 0;">
+              <div style="font-size: 12px; font-weight: 600; color: #F2F5F9;">{{h.symbol}}</div>
+              <div class="num" style="font-size: 9px; color: #6E7A8A;">{{h.venue}}</div>
+            </div>
+          </div>
+          <span class="num" style="font-size: 11px; color: #C6CEDA; text-align: right;">{{h.qty}}</span>
+          <span class="num" style="font-size: 11px; color: #98A3B3; text-align: right;">{{h.avg}}</span>
+          <span class="num" style="font-size: 11px; color: #F2F5F9; text-align: right; font-weight: 600;">{{h.price}}</span>
+          <span class="num" style="font-size: 11px; color: #F2F5F9; text-align: right; font-weight: 700;">{{h.value}}</span>
+          <span class="num" style="font-size: 11px; text-align: right; font-weight: 700; color: {{h.pnlFg}};">{{h.pnl}}</span>
+          <div style="display: flex; justify-content: flex-end;">
+            <span class="num" style="font-size: 10px; font-weight: 700; color: #EF7176; background: #3D1013; border: 1px solid #8C2429; padding: 3px 10px; border-radius: 5px; cursor: pointer;">SELL</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3B8FF0","options":["#3B8FF0","#A855F7","#12B574","#FFB800"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { range: '7D', tick: 0 };
+  }
+  componentDidMount() { this.timer = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 1000); }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  renderVals() {
+    const t = this.state.tick;
+    const drift = Math.sin(t / 9) * 0.006;
+
+    const ranges = ['24H', '7D', '30D', 'ALL'].map((r) => ({
+      label: r,
+      bg: this.state.range === r ? '#3B8FF0' : 'transparent',
+      fg: this.state.range === r ? '#07090D' : '#98A3B3',
+      weight: this.state.range === r ? 700 : 500,
+      pick: () => this.setState({ range: r }),
+    }));
+
+    const seeds = [
+      ['GOAF', 'PumpSwap',  '2.41M',  '$0.00412', 0.01366, 32900, 231.4, '#C084FC'],
+      ['SOL',  'Native',    '12.482', '$96.10',   102.13,  1274,  6.3,   '#5A9FF3'],
+      ['WOFI', 'PumpSwap',  '840K',   '$0.00098', 0.00152, 1277,  55.1,  '#FBBF24'],
+      ['IBRL', 'Raydium',   '18.2K',  '$0.0224',  0.0196,  357,  -12.5,  '#2CC189'],
+      ['POMP', 'PumpSwap',  '312K',   '$0.000082',0.0000963, 30,  17.4,  '#EF7176'],
+      ['USDC', 'Native',    '480.00', '$1.00',    1.0,     480,   0.0,   '#98A3B3'],
+    ];
+
+    const holdings = seeds.map((s, i) => {
+      const px = s[4] * (1 + drift * (i % 3 ? 1 : -1));
+      const value = s[5] * (1 + drift);
+      const pnl = s[6] + drift * 30;
+      return {
+        symbol: s[0],
+        venue: s[1],
+        initial: s[0].slice(0, 2),
+        tint: s[7],
+        qty: s[2],
+        avg: s[3],
+        price: px >= 1 ? '$' + px.toFixed(2) : '$' + px.toPrecision(3),
+        value: '$' + value.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+        pnl: (pnl >= 0 ? '+' : '') + pnl.toFixed(1) + '%',
+        pnlFg: pnl >= 0 ? '#2CC189' : '#EF7176',
+      };
+    });
+
+    const total = 36317 * (1 + drift);
+    const equity = Array.from({ length: 54 }, (_, i) => {
+      const v = 30 + Math.sin((i + t) / 7) * 16 + i * 0.85;
+      return { h: String(Math.max(6, Math.min(100, v))), fg: i > 40 ? '#12B574' : '#0B764C' };
+    });
+
+    return {
+      ranges, holdings, equity,
+      range: this.state.range,
+      count: String(seeds.length),
+      total: total.toLocaleString('en-US', { maximumFractionDigits: 0 }),
+      pnl: '+$8,412',
+      pnlPct: '+30.1%',
+      pnlFg: '#2CC189',
+      high: 'high $37,204',
+      headers: [
+        { label: 'TOKEN', align: 'left' },
+        { label: 'QUANTITY', align: 'right' },
+        { label: 'AVG COST', align: 'right' },
+        { label: 'PRICE', align: 'right' },
+        { label: 'VALUE', align: 'right' },
+        { label: 'P&L', align: 'right' },
+        { label: '', align: 'right' },
+      ],
+      breakdown: [
+        { k: 'Memecoins', v: '$34,207', pct: '82', fg: '#C084FC' },
+        { k: 'SOL',       v: '$1,274',  pct: '11', fg: '#5A9FF3' },
+        { k: 'Stables',   v: '$480',    pct: '7',  fg: '#2CC189' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

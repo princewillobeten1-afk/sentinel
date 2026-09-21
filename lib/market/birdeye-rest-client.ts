@@ -2,6 +2,7 @@ import 'server-only';
 
 import { env } from '@/lib/server/env';
 import { fetchWithTimeout } from '@/lib/api/birdeye/http-timeout';
+import { acquireBirdeyeSlot } from '@/lib/market/enrichment/birdeye-limiter';
 
 const BASE_URL = 'https://public-api.birdeye.so';
 
@@ -58,6 +59,9 @@ export async function birdeyeGet<T>(
   let lastError: BirdeyeApiError | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // All server-side consumers share the account-level gate. Retrying with
+    // jitter alone still lets unrelated pages burst against the same key.
+    await acquireBirdeyeSlot('background');
     const response = await fetchWithTimeout(url.toString(), {
       headers: {
         'X-API-KEY': apiKey,

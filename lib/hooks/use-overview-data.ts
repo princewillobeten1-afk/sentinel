@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData, ApiRequestError } from '@/lib/api/response';
+import type { MetricEvidence, RugRiskEvidence } from '@/lib/discovery/types';
 
 /**
  * How many tokens each tab shows.
@@ -67,6 +68,39 @@ export interface OverviewToken {
   volume24hUsd: string | number | null;
   intelligenceScore: number | null;
   logoURI?: string | null;
+  /**
+   * Ownership audit, carried through from the discovery endpoints.
+   *
+   * Overview reads the same `/v1/discovery/*` routes the Discover columns do,
+   * so these arrive in the response already — they were simply dropped by this
+   * mapping, leaving the Overview cards with no distribution data at all while
+   * the Discover cards showed it.
+   *
+   * `undefined` means not measured and must render as such. A `0` here is a
+   * real zero reported by the provider.
+   */
+  top10HoldingsPct?: number;
+  devHoldingsPct?: number;
+  sniperPercentage?: number;
+  insiderHoldingsPct?: number;
+  bundlerPercentage?: number;
+  holdersCount?: number;
+  proTradersCount?: number;
+  kolsCount?: number;
+  /** The deployer's graduated/launched record, e.g. `33/34`. */
+  devMints?: number;
+  devMigrations?: number;
+  /** Launch protocol, e.g. `Pump.fun` / `Raydium`. */
+  source?: string;
+  twitterHandle?: string;
+  /** True while the audit lookup is queued but unanswered. */
+  auditPending?: boolean;
+  ownershipEvidence?: MetricEvidence;
+  securityEvidence?: MetricEvidence;
+  rugRisk?: RugRiskEvidence;
+  isMintRenounced?: boolean;
+  isFreezeDisabled?: boolean;
+  isLiquidityLocked?: boolean;
 }
 
 export interface OverviewAlert {
@@ -92,12 +126,13 @@ export interface OverviewData {
   market: { regime: MarketRegime; decomposition: VolumeDecomposition } | null;
   allocation: AllocationSlice[];
   trending: OverviewToken[];
+  hotTokens: OverviewToken[];
   topTokens: OverviewToken[];
   alerts: OverviewAlert[];
   criticalAlertCount: number;
   portfolio: { totalValueUsd: number | null; exitValueUsd: number | null; changeUsd: number | null } | null;
   /** Per-section failure messages, keyed by section. Absent means it loaded. */
-  errors: Partial<Record<'market' | 'trending' | 'topTokens' | 'alerts' | 'portfolio', string>>;
+  errors: Partial<Record<'market' | 'trending' | 'hotTokens' | 'topTokens' | 'alerts' | 'portfolio', string>>;
   isLoading: boolean;
   refresh: () => Promise<void>;
 }
@@ -122,6 +157,16 @@ function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
     return null;
   };
 
+  /**
+   * Includes a key only when the value was actually measured.
+   *
+   * Spreading `{}` for a null keeps the property *absent* rather than present
+   * and undefined, so "not measured" survives serialisation and cannot be
+   * mistaken for a reported zero downstream.
+   */
+  const optional = <K extends string>(key: K, value: number | null) =>
+    value === null ? {} : ({ [key]: value } as Record<K, number>);
+
   return {
     mint: String(first('mint', 'address', 'tokenId', 'id') ?? ''),
     symbol: String(raw.symbol ?? '—'),
@@ -138,12 +183,43 @@ function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
       first('intelligenceScore', 'score') ??
         (raw.discoveryScore as { totalScore?: number } | undefined)?.totalScore,
     ),
+
+    // Ownership audit, passed straight through.
+    //
+    // `?? undefined` rather than `?? 0` throughout: the discovery endpoints omit
+    // a field they have not measured, and a zero here would render as a green
+    // "0% snipers" on a token nobody has audited — the exact failure just
+    // removed from the Discover card.
+    ...optional('top10HoldingsPct', num(raw.top10HoldingsPct)),
+    ...optional('devHoldingsPct', num(raw.devHoldingsPct)),
+    ...optional('sniperPercentage', num(raw.sniperPercentage)),
+    ...optional('insiderHoldingsPct', num(raw.insiderHoldingsPct)),
+    ...optional('bundlerPercentage', num(raw.bundlerPercentage)),
+    ...optional('holdersCount', num(raw.holdersCount)),
+    ...optional('proTradersCount', num(raw.proTradersCount)),
+    ...optional('kolsCount', num(raw.kolsCount)),
+    ...optional('devMints', num(raw.devMints)),
+    ...optional('devMigrations', num(raw.devMigrations)),
+    ...(typeof raw.source === 'string' ? { source: raw.source } : {}),
+    ...(typeof raw.twitterHandle === 'string' ? { twitterHandle: raw.twitterHandle } : {}),
+    ...(raw.auditPending === true ? { auditPending: true } : {}),
+    ...(raw.ownershipEvidence && typeof raw.ownershipEvidence === 'object'
+      ? { ownershipEvidence: raw.ownershipEvidence as MetricEvidence }
+      : {}),
+    ...(raw.securityEvidence && typeof raw.securityEvidence === 'object'
+      ? { securityEvidence: raw.securityEvidence as MetricEvidence }
+      : {}),
+    ...(raw.rugRisk && typeof raw.rugRisk === 'object' ? { rugRisk: raw.rugRisk as RugRiskEvidence } : {}),
+    ...(typeof raw.isMintRenounced === 'boolean' ? { isMintRenounced: raw.isMintRenounced } : {}),
+    ...(typeof raw.isFreezeDisabled === 'boolean' ? { isFreezeDisabled: raw.isFreezeDisabled } : {}),
+    ...(typeof raw.isLiquidityLocked === 'boolean' ? { isLiquidityLocked: raw.isLiquidityLocked } : {}),
   };
 }
 
 export function useOverviewData(walletAddress?: string | null): OverviewData {
   const [market, setMarket] = useState<OverviewData['market']>(null);
   const [trending, setTrending] = useState<OverviewToken[]>([]);
+  const [hotTokens, setHotTokens] = useState<OverviewToken[]>([]);
   const [topTokens, setTopTokens] = useState<OverviewToken[]>([]);
   const [alerts, setAlerts] = useState<OverviewAlert[]>([]);
   const [criticalAlertCount, setCriticalAlertCount] = useState(0);
@@ -183,7 +259,7 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
       }
     };
 
-    const [marketRes, trendingRes, topRes, alertsRes, portfolioRes, exposureRes] = await Promise.allSettled([
+    const [marketRes, trendingRes, hotRes, topRes, alertsRes, portfolioRes, exposureRes] = await Promise.allSettled([
       get<{ marketRegime: MarketRegime; volumeDecomposition: VolumeDecomposition }>(
         apiUrl('/v1/analytics/market'),
         'market',
@@ -199,11 +275,15 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
         apiUrl('/v1/discovery/trending', { limit: TRENDING_LIMIT }),
         'trending',
       ),
+      get<{ tokens: Record<string, unknown>[] }>(
+        apiUrl('/v1/discovery/hot', { limit: TRENDING_LIMIT }),
+        'hotTokens',
+      ),
       // "Top" reads Jupiter's organic-score ranking rather than raw volume: a
       // token can lead the volume tables on wash trading, and separating
       // genuine flow from manufactured flow is this platform's premise.
       get<{ tokens: Record<string, unknown>[] }>(
-        apiUrl('/v1/discovery/hot', { limit: TOP_TOKENS_LIMIT }),
+        apiUrl('/v1/discovery/volume', { limit: TOP_TOKENS_LIMIT }),
         'topTokens',
       ),
       get<{ alerts: OverviewAlert[] }>(apiUrl(endpoints.alerts.events, { limit: 8 }), 'alerts'),
@@ -228,7 +308,8 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
     setMarket(m ? { regime: m.marketRegime, decomposition: m.volumeDecomposition } : null);
 
     setTrending((value(trendingRes)?.tokens ?? []).map(toOverviewToken));
-    setTopTokens((value(topRes)?.tokens ?? []).map(toOverviewToken));
+    setHotTokens((value(hotRes)?.tokens ?? []).map(toOverviewToken));
+    setTopTokens((value(topRes)?.tokens ?? value(trendingRes)?.tokens ?? []).map(toOverviewToken));
 
     const a = value(alertsRes)?.alerts ?? [];
     setAlerts(a);
@@ -273,6 +354,7 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
     market,
     allocation,
     trending,
+    hotTokens,
     topTokens,
     alerts,
     criticalAlertCount,

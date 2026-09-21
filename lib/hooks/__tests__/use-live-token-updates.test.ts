@@ -66,6 +66,19 @@ afterEach(() => {
 const socket = () => FakeSocket.instances[0];
 
 describe('useLiveTokenUpdates', () => {
+  it('subscribes the latest visible set when reconnecting after a scroll', () => {
+    vi.useFakeTimers();
+    const { rerender, unmount } = renderHook(({ mints }) => useLiveTokenUpdates(mints), { initialProps: { mints: ['mintA'] } });
+    try {
+      act(() => { socket().emitOpen(); socket().emitServer({ type: 'welcome' }); });
+      rerender({ mints: ['mintB'] });
+      act(() => socket().emitClose(1001));
+      act(() => vi.advanceTimersByTime(1_000));
+      const reconnected = FakeSocket.instances[1];
+      act(() => { reconnected.emitOpen(); reconnected.emitServer({ type: 'welcome' }); });
+      expect(reconnected.sentMessages()).toEqual([{ type: 'subscribe', topics: ['token.card:mintB'] }]);
+    } finally { unmount(); vi.useRealTimers(); }
+  });
   it('does not subscribe on open — only once the server sends welcome', async () => {
     // The exact regression: a subscribe sent in the `open` handler lands
     // before the server attaches its message listener and is discarded.
@@ -79,8 +92,26 @@ describe('useLiveTokenUpdates', () => {
     await waitFor(() => expect(socket().sentMessages()).toHaveLength(1));
     expect(socket().sentMessages()[0]).toEqual({
       type: 'subscribe',
-      topics: ['token.price:mintA', 'token.trade:mintA'],
+      topics: ['token.card:mintA'],
     });
+  });
+
+  it('merges an aggregated card patch and rejects an older sequence', async () => {
+    const { result } = renderHook(() => useLiveTokenUpdates(['mintA']));
+    act(() => {
+      socket().emitOpen();
+      socket().emitServer({ type: 'welcome', connectionId: 'c1' });
+      socket().emitServer({
+        type: 'event', topic: 'token.card:mintA', sequence: 4,
+        data: { observedAt: '2026-09-11T10:00:00.000Z', changedFields: { top10HoldingsPct: 42, priceUsd: '1.5' } },
+      });
+      socket().emitServer({
+        type: 'event', topic: 'token.card:mintA', sequence: 3,
+        data: { observedAt: '2026-09-11T09:59:00.000Z', changedFields: { top10HoldingsPct: 1 } },
+      });
+    });
+    await waitFor(() => expect(result.current.updates.get('mintA')?.top10HoldingsPct).toBe(42));
+    expect(result.current.updates.get('mintA')?.priceUsd).toBe(1.5);
   });
 
   it('reports live status only after welcome', async () => {

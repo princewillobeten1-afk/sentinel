@@ -1,5 +1,32 @@
 # Sentinel visual system
 
+## Core terminal cleanup (current implementation)
+
+For all terminal screens and shared navigation, `tailwind.config.ts` is
+the palette authority; historical hex values and workstation sketches below
+are reference only. `app/terminal.css` scopes refinements to the app shell.
+Use Inter for prose, JetBrains Mono for figures, 13px default text (12px in dense controls), an 11px
+label floor, and 6px control radii. Spacing follows 4/8/12/16/24px steps.
+The density setting adjusts card padding and table rows, not the type floor.
+Discover fills the remaining dynamic viewport; Overview and Trade scroll.
+Trade uses a flexible chart with a 320px order rail from 1280px; smaller
+screens stack chart, order controls, then detail tabs. New depth panels are
+not part of this visual cleanup.
+
+### Shared interaction rules
+
+- Keep the five primary destinations in desktop navigation; secondary destinations live in More and the mobile drawer. Search remains visible at every width.
+- Use concise page titles and `data-page-header` for the shared heading/action layout. Settings, Help, and Developers use a centered reading width.
+- `Panel`, `MetricTile`, `Button`, `Input`, `Tabs`, and `DataTable` are the presentation primitives. Semantic palette aliases (`card`, `muted`, `primary`, `border`) resolve to the same graphite/azure tokens.
+- Dialogs trap focus, restore it on close, and own scroll locking. Popovers close on Escape, outside interaction, and navigation; compound popovers begin closed.
+- Tables provide keyboard-operated sort buttons and announce sort direction. Selected tab buttons use `aria-pressed`.
+- Primary mobile actions are at least 44px high; mobile text-entry fields use 16px type to avoid automatic browser zoom. Honor reduced motion.
+- Preview data must be labeled as sample data, never as a live feed.
+- Keep Discover cards compact: approximately 176–192px at normal desktop column widths. Do not expand every audit detail into a separate row.
+
+The historical guidance below describes intent, not additional constraints that
+override the implemented tokens and interaction rules above.
+
 The UI reads as sloppy not because individual components are broken but because
 there is no system underneath them — every component picked its own padding, its
 own border, its own emphasis. This file is the system. It is short on purpose:

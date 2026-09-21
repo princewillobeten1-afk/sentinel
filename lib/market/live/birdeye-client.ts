@@ -4,8 +4,12 @@ import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
 import type { RawMarketEvent } from '@/lib/market/event-pipeline';
 import { ReconnectingWebSocketClient } from './ws-client';
-import { normalizeBirdeyePrice, normalizeBirdeyeTx } from './normalizers';
+import { normalizeBirdeyePrice, normalizeBirdeyeTokenStats, normalizeBirdeyeTx } from './normalizers';
 import type { BirdeyeMessage, ConnectionHealth } from './types';
+import { updateTokenCard } from './card-cache';
+import { lifecycleWorker } from '@/lib/market/lifecycle/lifecycle-worker';
+import { eventBus } from '@/lib/server/events/event-bus';
+import { EVENT_TYPES } from '@/lib/server/events/event-types';
 
 /**
  * Only these two channels are wired for v1. Birdeye also exposes
@@ -14,6 +18,42 @@ import type { BirdeyeMessage, ConnectionHealth } from './types';
  */
 const PRICE_SUBSCRIBE_TYPE = 'SUBSCRIBE_PRICE';
 const TXS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TXS';
+const STATS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TOKEN_STATS';
+
+export function buildBirdeyeSubscriptions(mints: string[]): Record<string, unknown>[] {
+  const visible = [...new Set(mints.filter(Boolean))].slice(0, 100);
+  if (visible.length === 0) {
+    return [
+      { type: 'UNSUBSCRIBE_PRICE' },
+      { type: 'UNSUBSCRIBE_TXS' },
+      { type: 'UNSUBSCRIBE_TOKEN_STATS' },
+      { type: 'SUBSCRIBE_NEW_PAIR' },
+    ];
+  }
+  const priceQuery = visible
+    .map((mint) => `(address = ${mint} AND chartType = 1m AND currency = usd)`)
+    .join(' OR ');
+  const txQuery = visible.map((mint) => `address = ${mint}`).join(' OR ');
+  return [
+    { type: PRICE_SUBSCRIBE_TYPE, data: { queryType: 'complex', query: priceQuery } },
+    { type: TXS_SUBSCRIBE_TYPE, data: { queryType: 'complex', query: txQuery } },
+    {
+      type: STATS_SUBSCRIBE_TYPE,
+      data: {
+        address: visible,
+        select: {
+          price: true,
+          trade_data: { volume: true, trade: true, price_change: true, intervals: ['5m', '1h', '24h'] },
+          fdv: true,
+          marketcap: true,
+          liquidity: true,
+          last_trade: true,
+        },
+      },
+    },
+    { type: 'SUBSCRIBE_NEW_PAIR' },
+  ];
+}
 
 export interface BirdeyeClientOptions {
   mints: string[];
@@ -23,12 +63,15 @@ export interface BirdeyeClientOptions {
 
 export class BirdeyeClient {
   private readonly client: ReconnectingWebSocketClient;
-  private readonly mints: string[];
+  private mints: string[];
   private readonly onRawEvent: (event: RawMarketEvent) => void;
+  private readonly onDegraded: (reason: string) => void;
+  private providerError: string | undefined;
 
   constructor(options: BirdeyeClientOptions) {
     this.mints = options.mints;
     this.onRawEvent = options.onRawEvent;
+    this.onDegraded = options.onDegraded;
 
     const apiKey = env.getRequiredEnv('BIRDEYE_API_KEY');
 
@@ -55,20 +98,22 @@ export class BirdeyeClient {
   }
 
   getHealth(): ConnectionHealth {
-    return this.client.getHealth();
+    return { ...this.client.getHealth(), ...(this.providerError ? { providerError: this.providerError } : {}) };
+  }
+
+  /** Replaces the visible-mint set and atomically rebuilds each Birdeye subscription. */
+  setMints(mints: string[]): void {
+    const next = [...new Set(mints.filter(Boolean))].slice(0, 100);
+    if (next.join(',') === this.mints.join(',')) return;
+    this.mints = next;
+    this.subscribeAll();
   }
 
   private subscribeAll(): void {
-    for (const mint of this.mints) {
-      this.client.send({
-        type: PRICE_SUBSCRIBE_TYPE,
-        data: { queryType: 'simple', chartType: '1m', address: mint, currency: 'usd', mode: 'both' },
-      });
-      this.client.send({
-        type: TXS_SUBSCRIBE_TYPE,
-        data: { address: mint },
-      });
-    }
+    // Birdeye allows one active subscription per message type. Repeating a
+    // simple subscribe in a loop overwrites the previous mint, which meant
+    // only the final card in the array actually received data.
+    for (const message of buildBirdeyeSubscriptions(this.mints)) this.client.send(message);
     logger.info('[birdeye] subscribed', { mintCount: this.mints.length });
   }
 
@@ -78,6 +123,88 @@ export class BirdeyeClient {
       message = JSON.parse(raw);
     } catch {
       logger.warn('[birdeye] failed to parse message', { rawLength: raw.length });
+      return;
+    }
+
+    if (message.type === 'ERROR') {
+      const detail = JSON.stringify((message as { data?: unknown }).data ?? '');
+      const providerError = /api.?key|origin/i.test(detail)
+        ? 'Birdeye rejected the subscription origin or API key.'
+        : /permission|package|premium|plan/i.test(detail)
+          ? 'Birdeye WebSocket access is not enabled for this API plan.'
+          : 'Birdeye rejected a WebSocket subscription.';
+      if (providerError !== this.providerError) {
+        this.providerError = providerError;
+        this.onDegraded(providerError);
+        logger.warn('[birdeye] provider rejected subscription', { reason: providerError });
+      }
+      return;
+    }
+
+    if (message.type === 'NEW_PAIR_DATA') {
+      const pair = (message as unknown as {
+        data?: {
+          address?: string;
+          source?: string;
+          base?: { address?: string; name?: string; symbol?: string };
+          txHash?: string;
+          blockTime?: number;
+        };
+      }).data;
+      const mint = pair?.base?.address;
+      if (!mint) return;
+      // A new AMM pool is not necessarily a newly launched token. The curve
+      // worker only understands pump.fun launches; do not reclassify an
+      // existing migrated token when someone creates another pool for it.
+      const pairSource = pair.source?.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (pairSource !== 'pumpfun' && pairSource !== 'pumpdotfun') return;
+      const observedAt = new Date(typeof pair.blockTime === 'number' ? pair.blockTime * 1_000 : Date.now()).toISOString();
+      lifecycleWorker.onPairCreated(mint);
+      updateTokenCard(mint, {
+        lifecycleState: 'new_pairs',
+        liquidityPoolAddress: pair.address,
+        lifecycleEvidence: {
+          status: 'measured',
+          source: 'birdeye-new-pair-ws',
+          observedAt,
+        },
+      }, 'birdeye-new-pair-ws', 'fresh', observedAt);
+      const event = {
+        id: `birdeye_pair_${pair.txHash ?? `${mint}_${pair.blockTime ?? Date.now()}`}`,
+        sequence: 0,
+        type: EVENT_TYPES.TOKEN_CREATED,
+        timestamp: Date.parse(observedAt),
+        signature: pair.txHash,
+        mint,
+        name: pair.base?.name,
+        symbol: pair.base?.symbol,
+        pool: pair.address,
+        dex: pair.source,
+        source: 'birdeye',
+        commitment: 'confirmed',
+      } as const;
+      void eventBus.claimEventShared(event.id).then((isNew) => isNew ? eventBus.publish(event) : undefined);
+      return;
+    }
+
+    const stats = normalizeBirdeyeTokenStats(message);
+    if (stats) {
+      this.providerError = undefined;
+      updateTokenCard(stats.mint, {
+        ...stats.fields,
+        marketEvidence: {
+          status: 'measured',
+          source: 'birdeye-token-stats-ws',
+          observedAt: stats.observedAt,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        },
+        ...(stats.hasActivityFields ? { activityEvidence: {
+          status: 'measured',
+          source: 'birdeye-token-stats-ws',
+          observedAt: stats.observedAt,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        } } : {}),
+      }, 'birdeye-token-stats-ws', 'fresh', stats.observedAt);
       return;
     }
 
@@ -104,6 +231,6 @@ export class BirdeyeClient {
 }
 
 function extractAddress(message: BirdeyeMessage): string | null {
-  const data = (message as { data?: { address?: string; owner?: string } }).data;
-  return data?.address ?? data?.owner ?? null;
+  const data = (message as { data?: { address?: string; tokenAddress?: string } }).data;
+  return data?.address ?? data?.tokenAddress ?? null;
 }

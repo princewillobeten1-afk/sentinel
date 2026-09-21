@@ -12,6 +12,13 @@ import { originMatchesHost } from '@/lib/server/csrf';
 import { parseClientMessage, serialize, type ServerMessage } from './protocol';
 import { parseTopic, TOPIC_SCOPES } from './topics';
 import { liveMarketCache } from '@/lib/market/live/live-cache';
+import { getTokenCardPatch } from '@/lib/market/live/card-cache';
+import {
+  noteClientConnected,
+  noteClientDisconnected,
+  noteMintsWanted,
+  noteMintsReleased,
+} from '@/lib/market/live/stream-demand';
 import { eventBus } from '@/lib/server/events/event-bus';
 import {
   checkMessageRate,
@@ -111,7 +118,7 @@ function heartbeatTick(): void {
   for (const connection of connections.values()) {
     if (!connection.isAlive) {
       connection.socket.terminate();
-      connections.delete(connection.id);
+      dropConnection(connection.id);
       continue;
     }
     connection.isAlive = false;
@@ -181,6 +188,41 @@ export async function authenticateUpgrade(request: IncomingMessage): Promise<Con
   };
 }
 
+/**
+ * Removes a connection and reports the drop exactly once.
+ *
+ * Every removal goes through here rather than calling `connections.delete`
+ * directly. A connection can be dropped from four places — `close`, `error`,
+ * the heartbeat reaper and the rate-limit terminator — and `close` fires after
+ * `error` for the same socket, so an unguarded decrement would undercount and
+ * leave the market stream idle while clients were still attached. Keying the
+ * decrement to whether the map actually held the id makes it idempotent.
+ */
+function dropConnection(id: string): void {
+  const connection = connections.get(id);
+  if (!connection) return;
+  connections.delete(id);
+  // Release what it was watching, so the upstream stream stops paying for
+  // mints nobody is looking at any more.
+  noteMintsReleased(mintsOf(connection.topics));
+  noteClientDisconnected();
+}
+
+/**
+ * The mints a set of topics asks the upstream stream to watch.
+ *
+ * Only `token.*` topics name a mint; `feed.discovery:*` names a column and is
+ * served from REST, so it creates no upstream subscription.
+ */
+function mintsOf(topics: Iterable<string>): string[] {
+  const mints: string[] = [];
+  for (const topic of topics) {
+    const parsed = parseTopic(topic);
+    if (parsed && parsed.kind.startsWith('token.')) mints.push(parsed.target);
+  }
+  return mints;
+}
+
 export function registerConnection(socket: WebSocket, auth: ConnectionAuth): void {
   const connection: Connection = {
     id: generateId('ws'),
@@ -193,15 +235,16 @@ export function registerConnection(socket: WebSocket, auth: ConnectionAuth): voi
     pendingByTopic: new Map(),
   };
   connections.set(connection.id, connection);
+  noteClientConnected();
 
   send(connection, { type: 'welcome', connectionId: connection.id, maxSubscriptions: maxSubscriptionsFor(auth) });
 
   socket.on('message', (raw: Buffer | string) => handleMessage(connection, raw.toString()));
   socket.on('pong', () => { connection.isAlive = true; });
-  socket.on('close', () => connections.delete(connection.id));
+  socket.on('close', () => dropConnection(connection.id));
   socket.on('error', (err: Error) => {
     logger.warn('[ws] socket error', { connectionId: connection.id, message: err.message });
-    connections.delete(connection.id);
+    dropConnection(connection.id);
   });
 
   const identity = auth.kind === 'apiKey' ? { keyId: auth.apiKey.id, tier: auth.apiKey.tier } : { userId: auth.user.userId };
@@ -215,7 +258,7 @@ function handleMessage(connection: Connection, raw: string): void {
   if (rateResult.terminate) {
     logger.warn('[ws] terminating connection for sustained message-rate abuse', { connectionId: connection.id });
     connection.socket.close(CLOSE_RATE_ABUSE, 'Message rate abuse.');
-    connections.delete(connection.id);
+    dropConnection(connection.id);
     return;
   }
 
@@ -238,7 +281,11 @@ function handleMessage(connection: Connection, raw: string): void {
   }
 
   if (message.type === 'unsubscribe') {
-    for (const topic of message.topics) connection.topics.delete(topic);
+    // Only topics this connection actually held release anything — an
+    // unsubscribe for a topic it never had must not drain another client's
+    // reference to the same mint.
+    const released = message.topics.filter((topic) => connection.topics.delete(topic));
+    noteMintsReleased(mintsOf(released));
     send(connection, { type: 'unsubscribed', topics: message.topics });
     return;
   }
@@ -246,6 +293,8 @@ function handleMessage(connection: Connection, raw: string): void {
   // subscribe
   const maxSubscriptions = maxSubscriptionsFor(connection.auth);
   const accepted: string[] = [];
+  /** Topics new to this connection — a repeat subscribe must not add a reference. */
+  const added: string[] = [];
 
   for (const topic of message.topics) {
     const parsedTopic = parseTopic(topic);
@@ -279,13 +328,23 @@ function handleMessage(connection: Connection, raw: string): void {
       break;
     }
 
+    if (!connection.topics.has(topic)) added.push(topic);
     connection.topics.add(topic);
     accepted.push(topic);
 
     // Send the current cached value immediately so a subscriber isn't blind
     // until the next live event fires.
+    const cardSnapshot = parsedTopic.kind === 'token.card' ? getTokenCardPatch(parsedTopic.target) : undefined;
     const snapshot = liveMarketCache.getLatest(parsedTopic.target);
-    if (snapshot && parsedTopic.kind === 'token.price') {
+    if (cardSnapshot) {
+      send(connection, {
+        type: 'event',
+        topic,
+        sequence: nextTopicSequence(connection.topicSequences, topic),
+        data: { snapshot: true, ...cardSnapshot },
+        ts: new Date().toISOString(),
+      });
+    } else if (snapshot && parsedTopic.kind === 'token.price') {
       send(connection, {
         type: 'event',
         topic,
@@ -295,6 +354,10 @@ function handleMessage(connection: Connection, raw: string): void {
       });
     }
   }
+
+  // Tell the upstream stream about mints this connection newly watches.
+  // Reported once per message, so a 28-topic subscribe is one demand change.
+  noteMintsWanted(mintsOf(added));
 
   if (accepted.length > 0) send(connection, { type: 'subscribed', topics: accepted });
 }
@@ -338,66 +401,6 @@ function ensureBackgroundLoopsStarted(): void {
 }
 
 /**
- * Fans a NormalizedRealtimeEvent out to all connected WebSocket clients.
- */
-export function broadcastRealtimeEvent(event: any): void {
-  const ts = new Date().toISOString();
-  const serialized = JSON.stringify(event);
-
-  for (const connection of connections.values()) {
-    if (connection.socket.readyState !== 1 /* OPEN */) continue;
-
-    // Send direct event payload to browser client
-    try {
-      connection.socket.send(serialized);
-    } catch {
-      // Ignore socket send errors
-    }
-
-    // Dispatch to discovery topic subscribers
-    const discoveryTopics = ['feed.discovery:all', 'feed.discovery:new', 'feed.discovery:migrating', 'feed.discovery:graduated', 'feed.discovery:trending'];
-    for (const dTopic of discoveryTopics) {
-      if (connection.topics.has(dTopic)) {
-        send(connection, {
-          type: 'event',
-          topic: dTopic,
-          sequence: nextTopicSequence(connection.topicSequences, dTopic),
-          data: event,
-          ts,
-        });
-      }
-    }
-
-    // Also dispatch to topic subscribers if applicable
-    if (event.mint) {
-      const priceTopic = `token.price:${event.mint}`;
-      const tradeTopic = `token.trade:${event.mint}`;
-
-      if (connection.topics.has(priceTopic)) {
-        send(connection, {
-          type: 'event',
-          topic: priceTopic,
-          sequence: nextTopicSequence(connection.topicSequences, priceTopic),
-          data: event,
-          ts,
-        });
-      }
-      if (connection.topics.has(tradeTopic)) {
-        send(connection, {
-          type: 'event',
-          topic: tradeTopic,
-          sequence: nextTopicSequence(connection.topicSequences, tradeTopic),
-          data: event,
-          ts,
-        });
-      }
-    }
-  }
-}
-
-let eventBusAttached = false;
-
-/**
  * Tracks which `WebSocketServer` instances already have a connection listener.
  *
  * `attachWebSocketServer` is documented as idempotent and is genuinely called
@@ -430,12 +433,20 @@ export function attachWebSocketServer(wss: WebSocketServer): void {
     });
   });
 
-  if (!eventBusAttached) {
-    eventBusAttached = true;
-    eventBus.on('event', (event) => {
-      broadcastRealtimeEvent(event);
-    });
-  }
-
+  // No event-bus bridge here on purpose.
+  //
+  // `wsBroadcaster` already subscribes to the same `eventBus:'event'` and is
+  // the one that builds typed, per-topic payloads. A second bridge lived here
+  // and did three harmful things at once: it sent the *raw* event to every
+  // open connection regardless of subscription — bypassing topic filtering,
+  // the `{type,topic,sequence,ts}` envelope, backpressure coalescing and the
+  // subscription cap — and then re-sent the same event through the enveloped
+  // paths. A client subscribed to `token.price:<mint>` received three frames
+  // per trade in two different shapes, and every other client received the
+  // firehose it never asked for.
+  //
+  // The raw frames also made subscriptions look like they worked when they did
+  // not: clients were sending a malformed subscribe the server rejected, yet
+  // still saw traffic, so nothing surfaced the fault.
   ensureBackgroundLoopsStarted();
 }

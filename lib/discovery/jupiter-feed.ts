@@ -1,5 +1,6 @@
 import type { DiscoveryToken } from './types';
 import { calculateDiscoveryScore } from './score-engine';
+import { sanitizeTokenName } from './sanitize-name';
 
 /**
  * Live Solana token feeds from Jupiter's public token API.
@@ -79,25 +80,90 @@ export interface JupiterToken {
   stats6h?: JupiterStats;
   stats24h?: JupiterStats;
   firstPool?: { id?: string; createdAt?: string };
+  /**
+   * Set once the token completed its bonding curve and migrated.
+   *
+   * These are the definitive graduation signals. `firstPool.id` is NOT: for a
+   * pump.fun token Jupiter records the bonding-curve account as the first pool,
+   * and that record persists forever — Fartcoin graduated in October 2024 and
+   * still reports `firstPool.id === mint` at a $214M market cap.
+   */
+  graduatedPool?: string;
+  graduatedAt?: string;
   audit?: {
     mintAuthorityDisabled?: boolean;
     freezeAuthorityDisabled?: boolean;
+    /**
+     * The creator's own holding, already as a percentage (0-100).
+     *
+     * Absent when the dev holds nothing, which is why it maps to `undefined`
+     * rather than 0 — "dev sold out" and "not measured" are different answers
+     * and the card renders them differently.
+     */
+    devBalancePercentage?: number;
+    /**
+     * How many tokens this creator has previously migrated / minted.
+     *
+     * `devMints` is the serial-launcher count and the more useful of the two:
+     * observed at 1 for a first-time deployer and 2308 for a wallet that mints
+     * continuously. It is a property of the creator, not the token, so it says
+     * nothing on its own about this launch — it is shown, not scored.
+     */
     devMigrations?: number;
     devMints?: number;
   };
 }
 
+/** True once the token completed its curve and migrated to a real pool. */
+export function hasGraduated(token: JupiterToken): boolean {
+  return Boolean(token.graduatedAt || token.graduatedPool);
+}
+
 /**
- * True when the token is still on its bonding curve.
+ * True when the token is currently on a bonding curve.
  *
- * See the module header — this is a structural test, not a market-cap
- * threshold. A token with no `firstPool` at all is treated as not-yet-migrated,
- * because a migrated token always has a pool distinct from its mint.
+ * ## Correcting an earlier mistake
+ *
+ * This previously tested `firstPool.id === token.id`, on the reasoning that a
+ * pump.fun token's pre-graduation "pool" is the curve account itself. A live
+ * sample appeared to confirm it: 27 tokens matching the test had market caps
+ * from $46 to $26k, while the 3 that did not had a median of $73.7k, straddling
+ * pump.fun's ~$69k graduation point.
+ *
+ * That sample was confounded — every token in it was minutes old, so age
+ * correlated perfectly with the test and hid what it actually measures.
+ * Checked against a broader set, the two disagree on **91 of 100** tokens:
+ * Fartcoin ($214M, graduated 2024) still reports `firstPool.id === mint`, while
+ * cbBTC, PUMP and JLP fail the test simply because they never had a curve.
+ *
+ * `graduatedAt`/`graduatedPool` are the real signals, and a token with no
+ * launchpad never had a curve to be on — it is neither bonding nor graduated,
+ * and belongs in neither lifecycle column.
  */
 export function isOnBondingCurve(token: JupiterToken): boolean {
-  const poolId = token.firstPool?.id;
-  if (!poolId) return true;
-  return poolId === token.id;
+  if (hasGraduated(token)) return false;
+  return hasReadableCurve(token);
+}
+
+/**
+ * Launchpads whose curve this codebase can actually read.
+ *
+ * Only pump.fun has an adapter — `lib/market/lifecycle/bonding-curve.ts`
+ * derives its PDA and decodes its account layout. Nothing else does.
+ *
+ * This used to accept **any** non-empty `launchpad`, which is why a
+ * `raydium-launchlab` token was classified as bonding and rendered a Raydium
+ * badge next to a bonding-curve status it could not possibly have. Live sample
+ * of `/recent`: `pump.fun` 23, `stonkfun` 4, `raydium-launchlab` 1,
+ * `met-dbc` 1 — so a quarter of the feed was claiming a curve state derived
+ * from an account nobody had read.
+ *
+ * A token from an unsupported launchpad is neither bonding nor graduated as far
+ * as this engine is concerned: it has no curve, so it carries no curve state
+ * and belongs in neither lifecycle column.
+ */
+export function hasReadableCurve(token: JupiterToken): boolean {
+  return (token.launchpad ?? '').toLowerCase().includes('pump');
 }
 
 /** Launch time, preferring the pool's creation over the token record's. */
@@ -132,9 +198,9 @@ function num(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Decimal string for the money fields, or '0' when genuinely absent. */
+/** Decimal string for measured money fields; absent stays absent. */
 function money(value: number | undefined): string {
-  return value === undefined ? '0' : String(value);
+  return value === undefined ? '' : String(value);
 }
 
 export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
@@ -145,14 +211,20 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
   const s1h = token.stats1h ?? {};
   const s24 = token.stats24h ?? {};
 
-  const buys = num(s1h.numBuys) ?? num(s5.numBuys) ?? 0;
-  const sells = num(s1h.numSells) ?? num(s5.numSells) ?? 0;
+  const measuredBuys = num(s1h.numBuys) ?? num(s5.numBuys);
+  const measuredSells = num(s1h.numSells) ?? num(s5.numSells);
+  const buys = measuredBuys ?? 0;
+  const sells = measuredSells ?? 0;
   const totalTx = buys + sells;
   const buyPressureRatio = totalTx > 0 ? buys / totalTx : 0;
   const buySellImbalancePct = totalTx > 0 ? Number((((buys - sells) / totalTx) * 100).toFixed(1)) : 0;
 
-  const volume = (stats: JupiterStats) =>
-    (num(stats.buyVolume) ?? 0) + (num(stats.sellVolume) ?? 0);
+  const volume = (stats: JupiterStats): number | undefined => {
+    const buyVolume = num(stats.buyVolume);
+    const sellVolume = num(stats.sellVolume);
+    if (buyVolume === undefined && sellVolume === undefined) return undefined;
+    return (buyVolume ?? 0) + (sellVolume ?? 0);
+  };
 
   const liquidityUsd = num(token.liquidity);
   const holdersCount = num(token.holderCount);
@@ -164,7 +236,7 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     {
       ageMinutes,
       priceChangeWindow: num(s5.priceChange) ?? num(s1h.priceChange) ?? 0,
-      volumeWindowUsd: volume(s1h),
+      volumeWindowUsd: volume(s1h) ?? 0,
       // Real acceleration from Jupiter where present; 0 means "no measured
       // change", which the score engine treats as neutral.
       volumeAccelerationPct: num(s1h.volumeChange) ?? 0,
@@ -185,13 +257,26 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     '15m',
   );
 
+  /**
+   * Names are sanitised here, where they enter the system.
+   *
+   * A live token rendered as a right-to-left override, making its stored name
+   * display reversed as a well-known one. Cleaning at the boundary covers every
+   * consumer — cards, search, the command palette, alerts — rather than each
+   * render site, and the flag travels with the row so the attempt is surfaced
+   * rather than quietly erased.
+   */
+  const cleanName = sanitizeTokenName(token.name || token.symbol || `Token ${token.id.slice(0, 4)}`);
+  const cleanSymbol = sanitizeTokenName(token.symbol || token.id.slice(0, 4).toUpperCase());
+
   const mapped: DiscoveryToken = {
     id: token.id,
-    name: token.name || token.symbol || `Token ${token.id.slice(0, 4)}`,
-    symbol: token.symbol || token.id.slice(0, 4).toUpperCase(),
+    name: cleanName.value,
+    symbol: cleanSymbol.value,
     mint: token.id,
     chain: 'solana',
     source: sourceFor(token),
+    liquidityPoolAddress: token.graduatedPool ?? (token.firstPool?.id !== token.id ? token.firstPool?.id : undefined),
     logoURI: token.icon,
     ageMinutes,
     ageFormatted: formatAge(ageMinutes),
@@ -199,43 +284,116 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     // Jupiter publishes 5m / 1h / 6h / 24h. There is no 1m or 15m series, and
     // scaling an adjacent window to fake one is exactly the invention this
     // rewrite removes — so those mirror the nearest real window.
-    priceChange1m: Number((num(s5.priceChange) ?? 0).toFixed(2)),
-    priceChange5m: Number((num(s5.priceChange) ?? 0).toFixed(2)),
-    priceChange15m: Number((num(s1h.priceChange) ?? num(s5.priceChange) ?? 0).toFixed(2)),
-    priceChange1h: Number((num(s1h.priceChange) ?? 0).toFixed(2)),
-    priceChange24h: Number((num(s24.priceChange) ?? 0).toFixed(2)),
+    priceChange1m: num(s5.priceChange) ?? Number.NaN,
+    priceChange5m: num(s5.priceChange) ?? Number.NaN,
+    priceChange15m: num(s1h.priceChange) ?? num(s5.priceChange) ?? Number.NaN,
+    priceChange1h: num(s1h.priceChange) ?? Number.NaN,
+    priceChange24h: num(s24.priceChange) ?? Number.NaN,
     volume5mUsd: money(volume(s5)),
     volume1hUsd: money(volume(s1h)),
     volume24hUsd: money(volume(s24)),
-    volumeChange15mPct: Number((num(s1h.volumeChange) ?? 0).toFixed(1)),
+    volumeChange15mPct: num(s1h.volumeChange) ?? Number.NaN,
     liquidityUsd: money(liquidityUsd),
-    liquidityChange1hPct: Number((num(s1h.liquidityChange) ?? 0).toFixed(1)),
+    liquidityChange1hPct: num(s1h.liquidityChange) ?? Number.NaN,
     marketCapUsd: money(num(token.mcap) ?? num(token.fdv)),
-    buysCount: buys,
-    sellsCount: sells,
-    txCount15m: (num(s5.numBuys) ?? 0) + (num(s5.numSells) ?? 0),
-    txCount1h: totalTx,
-    buySellImbalancePct,
-    buyPressureRatio: Number(buyPressureRatio.toFixed(3)),
-    txAccelerationPct: 0,
+    buysCount: measuredBuys ?? Number.NaN,
+    sellsCount: measuredSells ?? Number.NaN,
+    buysCount5m: num(s5.numBuys),
+    sellsCount5m: num(s5.numSells),
+    buysCount1h: num(s1h.numBuys),
+    sellsCount1h: num(s1h.numSells),
+    buysCount24h: num(s24.numBuys),
+    sellsCount24h: num(s24.numSells),
+    txCount15m: num(s5.numBuys) !== undefined && num(s5.numSells) !== undefined
+      ? (num(s5.numBuys) as number) + (num(s5.numSells) as number)
+      : Number.NaN,
+    txCount5m: num(s5.numBuys) !== undefined && num(s5.numSells) !== undefined
+      ? (num(s5.numBuys) as number) + (num(s5.numSells) as number)
+      : undefined,
+    txCount1h: measuredBuys !== undefined && measuredSells !== undefined ? totalTx : Number.NaN,
+    txCount24h: num(s24.numBuys) !== undefined && num(s24.numSells) !== undefined
+      ? (num(s24.numBuys) as number) + (num(s24.numSells) as number)
+      : undefined,
+    buySellImbalancePct: measuredBuys !== undefined && measuredSells !== undefined ? buySellImbalancePct : Number.NaN,
+    buyPressureRatio: measuredBuys !== undefined && measuredSells !== undefined ? Number(buyPressureRatio.toFixed(3)) : Number.NaN,
+    txAccelerationPct: Number.NaN,
     isNewToken: ageMinutes < 30,
     discoveryScore,
+    marketEvidence: {
+      status: 'measured',
+      source: 'jupiter-token-api',
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+    },
 
-    // Structural, from firstPool — see isOnBondingCurve().
-    bondingStatus: onCurve ? 'bonding' : 'graduated',
+    // Only claimed when the launchpad has a curve this codebase can read.
+    //
+    // This was `onCurve ? 'bonding' : 'graduated'` with no third option, so a
+    // token from an unsupported launchpad was forced into one of two states it
+    // was never in — a `raydium-launchlab` mint showing "bonding", and a
+    // 13-second-old token showing "graduated". Absent is the honest answer for
+    // a curve nobody can read.
+    ...(hasReadableCurve(token)
+      ? { bondingStatus: (onCurve ? 'bonding' : 'graduated') as DiscoveryToken['bondingStatus'] }
+      : {}),
 
     // Real authority flags from Jupiter's audit, not assumed true.
     isMintRenounced: token.audit?.mintAuthorityDisabled,
     isFreezeDisabled: token.audit?.freezeAuthorityDisabled,
 
     twitterUrl: token.twitter,
+    twitterHandle: (() => {
+      if (!token.twitter) return undefined;
+      const clean = token.twitter.trim();
+      const match = clean.match(/(?:x\.com|twitter\.com)\/([^/?#]+)/i);
+      if (match && match[1]) return `@${match[1]}`;
+      if (clean.startsWith('@')) return clean;
+      if (!clean.includes('/')) return `@${clean}`;
+      return undefined;
+    })(),
     websiteUrl: token.website,
+    protocol: sourceFor(token) === 'Pump.fun' ? 'Pump V1' : sourceFor(token),
   };
 
   // Only attach what was actually measured. Absent stays absent so the card
   // renders a dash rather than a number nobody computed.
+  // A name that carried invisible characters is itself a signal.
+  if (cleanName.suspicious || cleanSymbol.suspicious) mapped.hasDeceptiveName = true;
+
   if (holdersCount !== undefined) mapped.holdersCount = holdersCount;
   if (holderGrowth !== undefined) mapped.holderGrowth1hPct = Number(holderGrowth.toFixed(1));
+
+  // Creator facts, all straight from Jupiter's audit block — no RPC call and no
+  // derivation. These were being dropped on the floor while the card rendered
+  // `DEV: n/a`, which read as "we checked and found nothing" for a figure that
+  // was in the response all along.
+  const devBalance = num(token.audit?.devBalancePercentage);
+  if (devBalance !== undefined) mapped.devHoldingsPct = Number(devBalance.toFixed(2));
+  if (token.dev) mapped.devAddress = token.dev;
+  const devMints = num(token.audit?.devMints);
+  if (devMints !== undefined) mapped.devMints = devMints;
+  const devMigrations = num(token.audit?.devMigrations);
+  if (devMigrations !== undefined) mapped.devMigrations = devMigrations;
+  if (token.dev || devMints !== undefined || devMigrations !== undefined) {
+    mapped.creatorEvidence = {
+      status: 'measured',
+      source: 'jupiter-token-api',
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    };
+  }
+  if (token.audit?.mintAuthorityDisabled !== undefined || token.audit?.freezeAuthorityDisabled !== undefined) {
+    mapped.securityEvidence = {
+      status: 'measured',
+      source: 'jupiter-token-api',
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    };
+  }
+
+  const organic = num(token.organicScore);
+  if (organic !== undefined) mapped.organicScore = Number(organic.toFixed(1));
+  if (token.organicScoreLabel) mapped.organicScoreLabel = token.organicScoreLabel;
 
   return mapped;
 }
@@ -270,6 +428,50 @@ export async function fetchJupiterFeed(
   }
 }
 
+
+/**
+ * Fetches specific tokens by mint address.
+ *
+ * The ranked feeds answer "what is hot"; this answers "what is *this*". The
+ * Migrated column needs the second: a token that just left its bonding curve is
+ * no longer in `/recent` and not yet in `/toptraded`, so a column assembled from
+ * those pools drops it. Measured with five confirmed migrations in the engine
+ * and zero rows rendered — including one token at a $1.3M market cap.
+ *
+ * `/tokens/v2/search` accepts a comma-separated list, so a whole column costs
+ * one request. Batched because the query string is not unbounded.
+ */
+export async function fetchJupiterTokensByMint(mints: string[]): Promise<JupiterToken[]> {
+  if (mints.length === 0) return [];
+
+  const BATCH = 50;
+  const batches: string[][] = [];
+  for (let i = 0; i < mints.length; i += BATCH) batches.push(mints.slice(i, i + BATCH));
+
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(
+          `${JUPITER_BASE}/tokens/v2/search?query=${encodeURIComponent(batch.join(','))}`,
+          { cache: 'no-store', signal: controller.signal, headers: { accept: 'application/json' } },
+        );
+        if (!res.ok) return [];
+        const body = await res.json();
+        const list = Array.isArray(body) ? body : (body?.tokens ?? body?.data ?? []);
+        return Array.isArray(list) ? (list as JupiterToken[]) : [];
+      } catch {
+        // One failed batch must not empty the column; the rest still render.
+        return [];
+      } finally {
+        clearTimeout(timer);
+      }
+    }),
+  );
+
+  return results.flat();
+}
 
 /**
  * Collapses duplicate launches and drops dead rows.

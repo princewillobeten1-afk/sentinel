@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; background: #07090D; }
+    a { color: #5A9FF3; text-decoration: none; }
+    a:hover { color: #7FB2F6; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+    .row { transition: background 110ms ease; }
+    .row:hover { background: #26303E; }
+    .starbtn:hover { filter: brightness(1.25); }
+    .tab:hover { color: #F2F5F9; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #33404F; border-radius: 3px; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #07090D; color: #C6CEDA; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 58px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; padding: 0 18px;">
+    <div>
+      <div style="font-size: 16px; font-weight: 700; color: #F2F5F9; letter-spacing: -0.01em;">Watchlist</div>
+      <div style="font-size: 11px; color: #6E7A8A; margin-top: 1px;">{{watching}} tokens · alerts on {{alerting}}</div>
+    </div>
+    <div style="margin-left: auto; display: flex; gap: 3px; background: #151C26; border: 1px solid #33404F; border-radius: 8px; padding: 3px;">
+      <sc-for list="{{filters}}" as="f" hint-placeholder-count="3">
+        <div onClick="{{f.pick}}" class="tab" style="padding: 5px 13px; border-radius: 6px; font-size: 11px; font-weight: {{f.weight}}; cursor: pointer; color: {{f.fg}}; background: {{f.bg}};">{{f.label}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex: 1; overflow-y: auto; padding: 16px 18px;">
+
+    <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+      <div style="height: 400px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#33404F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.3.9-4.5 4.4 1 6.1-5.5-2.9-5.5 2.9 1-6.1L3 9.5l6.3-.9z"/></svg>
+        <div style="font-size: 13px; color: #98A3B3; font-weight: 600;">Nothing on this filter</div>
+        <div style="font-size: 11px; color: #6E7A8A;">Star a token from Discover to track it here.</div>
+      </div>
+    </sc-if>
+
+    <div style="background: #0E131B; border: 1px solid #33404F; border-radius: 12px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 34px 200px repeat(4, minmax(0, 1fr)) 150px 92px; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #33404F; background: #151C26;">
+        <span></span>
+        <sc-for list="{{headers}}" as="h" hint-placeholder-count="7">
+          <span style="font-size: 9px; letter-spacing: 0.09em; color: #6E7A8A; font-weight: 600; text-align: {{h.align}};">{{h.label}}</span>
+        </sc-for>
+      </div>
+
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+        <div class="row" style="display: grid; grid-template-columns: 34px 200px repeat(4, minmax(0, 1fr)) 150px 92px; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #151C26; align-items: center;">
+
+          <div onClick="{{r.toggle}}" class="starbtn" style="cursor: pointer; display: flex; align-items: center; justify-content: center;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="{{r.starStroke}}" stroke-width="1.7" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.3.9-4.5 4.4 1 6.1-5.5-2.9-5.5 2.9 1-6.1L3 9.5l6.3-.9z"/></svg>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+            <div style="width: 28px; height: 28px; border-radius: 7px; background: {{r.tint}}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #07090D; flex-shrink: 0;">{{r.initial}}</div>
+            <div style="min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 12px; font-weight: 700; color: #F2F5F9;">{{r.symbol}}</span>
+                <span style="font-size: 9px; color: #98A3B3; border: 1px solid #33404F; background: #151C26; padding: 0 4px; border-radius: 3px;">{{r.stage}}</span>
+              </div>
+              <div style="font-size: 10px; color: #6E7A8A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{r.name}}</div>
+            </div>
+          </div>
+
+          <span class="num" style="font-size: 12px; font-weight: 600; color: #F2F5F9; text-align: right;">{{r.price}}</span>
+          <span class="num" style="font-size: 12px; font-weight: 700; color: {{r.deltaFg}}; text-align: right;">{{r.delta}}</span>
+          <span class="num" style="font-size: 11px; color: #FBBF24; text-align: right;">{{r.mc}}</span>
+          <span class="num" style="font-size: 11px; color: #5A9FF3; text-align: right;">{{r.liq}}</span>
+
+          <div style="display: flex; align-items: center; gap: 4px; justify-content: flex-end;">
+            <sc-for list="{{r.pills}}" as="p" hint-placeholder-count="3">
+              <span class="num" style="font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 8px; border: 1px solid {{p.bd}}; background: {{p.bg}}; color: {{p.fg}};"><span style="font-family: Inter, sans-serif; opacity: 0.75;">{{p.k}}</span> {{p.v}}</span>
+            </sc-for>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 5px;">
+            <span class="num" style="font-size: 10px; font-weight: 700; color: #2CC189; background: #04281B; border: 1px solid #0B764C; padding: 4px 11px; border-radius: 5px; cursor: pointer;">BUY</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: 14px; display: flex; align-items: center; gap: 8px; padding: 10px 13px; background: #0C1E34; border: 1px solid #245A9B; border-radius: 9px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A9FF3" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      <span style="font-size: 11px; color: #7FB2F6;">Prices stream live. Audit fields show <span class="num" style="color: #C6CEDA;">n/a</span> until the ownership check completes for that token.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3B8FF0","options":["#3B8FF0","#A855F7","#12B574","#FFB800"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      filter: 'All',
+      tick: 0,
+      starred: { GOAF: true, WOFI: true, IBRL: true, ANSEM: true, ZCAT: true, POMP: true, RAY: true },
+    };
+  }
+  componentDidMount() { this.timer = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 1000); }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  renderVals() {
+    const t = this.state.tick;
+
+    const seeds = [
+      ['GOAF',  'Goaf',              0.01366, 208.4, 13600000, 412000, 'Migrated',      '#C084FC', true],
+      ['WOFI',  'Wofi',              0.00152, 62.9,  1520000,  96400,  'Migrated',      '#FBBF24', true],
+      ['IBRL',  'Increase Bandwidth',0.0196,  -1.5,  19400000, 1460000,'Migrated',      '#5A9FF3', true],
+      ['ANSEM', 'Ansem',             0.0491,   0.6,  434000000,8410000,'Migrated',      '#2CC189', true],
+      ['POPCASH','Pop Cash',         0.000214, 41.8, 68400,    18400,  'Final Stretch', '#FFB800', false],
+      ['ZCAT',  'Z Cat',             0.00169,  88.8, 1330000,  139000, 'Migrated',      '#EF7176', true],
+      ['CAN',   'Cheeto and Nuts',   0.0000292,12.4, 27900,    3130,   'New Pair',      '#98A3B3', false],
+    ];
+
+    const filters = ['All', 'Migrated', 'Bonding'].map((f) => ({
+      label: f,
+      bg: this.state.filter === f ? '#3B8FF0' : 'transparent',
+      fg: this.state.filter === f ? '#07090D' : '#98A3B3',
+      weight: this.state.filter === f ? 700 : 500,
+      pick: () => this.setState({ filter: f }),
+    }));
+
+    const na = { bd: '#33404F', bg: '#151C26', fg: '#6E7A8A' };
+    const good = { bd: '#0B764C', bg: '#04281B', fg: '#2CC189' };
+    const warnTone = { bd: '#B45309', bg: '#451A03', fg: '#FBBF24' };
+    const bad = { bd: '#8C2429', bg: '#3D1013', fg: '#EF7176' };
+
+    const money = (v) => v >= 1000000 ? '$' + (v / 1000000).toFixed(1) + 'M'
+      : v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'K' : '$' + v.toFixed(0);
+
+    const visible = seeds.filter((s) => {
+      if (this.state.filter === 'Migrated') return s[6] === 'Migrated';
+      if (this.state.filter === 'Bonding') return s[6] !== 'Migrated';
+      return true;
+    });
+
+    const rows = visible.map((s, i) => {
+      const drift = Math.sin((t + i * 6) / 6) * 0.011;
+      const px = s[2] * (1 + drift);
+      const delta = s[3] + drift * 60;
+      const measured = s[8];
+      const on = this.state.starred[s[0]] !== false;
+      return {
+        symbol: s[0],
+        name: s[1],
+        initial: s[0].slice(0, 2),
+        tint: s[7],
+        stage: s[6],
+        price: px >= 1 ? '$' + px.toFixed(2) : '$' + px.toPrecision(3),
+        delta: (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%',
+        deltaFg: delta >= 0 ? '#2CC189' : '#EF7176',
+        mc: money(s[4]),
+        liq: money(s[5]),
+        starFill: on ? '#FBBF24' : 'none',
+        starStroke: on ? '#FBBF24' : '#6E7A8A',
+        toggle: () => this.setState({ starred: { ...this.state.starred, [s[0]]: !on } }),
+        pills: [
+          { k: 'T10', v: measured ? '38%' : 'n/a', ...(measured ? warnTone : na) },
+          { k: 'INS', v: measured ? (i === 2 ? '53%' : '6%') : 'n/a', ...(measured ? (i === 2 ? bad : warnTone) : na) },
+          { k: 'BND', v: measured ? '0%' : 'n/a', ...(measured ? good : na) },
+        ],
+      };
+    });
+
+    return {
+      filters, rows,
+      empty: rows.length === 0,
+      watching: String(seeds.length),
+      alerting: '3',
+      headers: [
+        { label: 'TOKEN', align: 'left' },
+        { label: 'PRICE', align: 'right' },
+        { label: 'CHANGE', align: 'right' },
+        { label: 'MARKET CAP', align: 'right' },
+        { label: 'LIQUIDITY', align: 'right' },
+        { label: 'AUDIT', align: 'right' },
+        { label: '', align: 'right' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

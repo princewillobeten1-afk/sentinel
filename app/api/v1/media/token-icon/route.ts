@@ -1,52 +1,157 @@
 import { NextResponse } from 'next/server';
+import { request as httpsRequest } from 'node:https';
+import { vetOutboundUrl } from '@/lib/server/ssrf-guard';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
- * GET /api/v1/media/token-icon?url=<encoded>
+ * GET /api/v1/media/token-icon?url=<https image url>
  *
- * Serves a token logo through this origin.
+ * Proxies token art.
  *
- * Token metadata points at IPFS and Arweave gateways, and the browser refuses
- * those images with `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` — the gateways send
- * a restrictive `Cross-Origin-Resource-Policy`, so every Discover card fell
- * back to a lettermark. Fetching server-side and re-serving from our own origin
- * sidesteps that, and has two side benefits: viewers' IP addresses are never
- * exposed to third-party gateways, and responses can be cached.
+ * Token metadata points at IPFS gateways, Arweave, launchpad CDNs and, often,
+ * a domain the creator owns. Loading those directly from the browser means a
+ * page-wide CSP that permits arbitrary remote images, and it exposes every
+ * viewer's IP to whatever host a stranger put in a token's metadata. Proxying
+ * sidesteps both, and lets responses be cached.
  *
- * ## This is deliberately not an open proxy
+ * ## Not an open proxy
  *
- * A route that fetches any URL a caller supplies is a server-side request
- * forgery primitive: it would happily fetch `http://169.254.169.254/` (cloud
- * metadata) or an internal address and hand back the contents. So:
+ * A route that fetches any caller-supplied URL is a server-side request forgery
+ * primitive. The defences:
  *
- *  - **https only**, and the host must be on `ALLOWED_HOSTS`.
- *  - **redirects are not followed** — an allowed host could otherwise redirect
- *    to an internal address and defeat the allowlist.
+ *  - **https only**, and no literal IP addresses.
+ *  - the hostname is resolved and **every** address it answers with must be
+ *    publicly routable (`lib/server/ssrf-guard.ts`).
+ *  - the connection is made **to the vetted address**, with SNI and `Host` set
+ *    for the original name — re-resolving after the check would allow a DNS
+ *    entry to answer public once and internal a moment later.
+ *  - **redirects are refused**, since a redirect is an unvetted second hop.
  *  - the response must declare an **image** content type.
- *  - the body is **size-capped**, so a hostile host cannot stream indefinitely.
+ *  - the body is **size-capped mid-stream**, so a hostile host cannot stream
+ *    indefinitely — the socket is destroyed as soon as the cap is passed.
+ *
+ * ## Why not a host allowlist
+ *
+ * It used to be one, of fourteen gateways. Measured across 330 live tokens it
+ * refused **52% of all icons** — Irys, j7tracker, backed.fi, Filebase and a
+ * long tail of per-token CDN subdomains — which is why so many cards rendered a
+ * blank avatar. The property that makes a URL dangerous is the address it
+ * resolves to, not whether someone remembered to list its name.
  */
 
-/** Gateways that token metadata legitimately points at. */
-const ALLOWED_HOSTS = new Set([
-  'ipfs.io',
-  'cloudflare-ipfs.com',
-  'gateway.pinata.cloud',
-  'pump.mypinata.cloud',
-  'arweave.net',
-  'www.arweave.net',
-  'cdn.dexscreener.com',
-  'dd.dexscreener.com',
-  'image-cdn.solana.fm',
-  'shdw-drive.genesysgo.net',
-  'static.jup.ag',
-  'raw.githubusercontent.com',
-  'nftstorage.link',
-  'metadata.jito.network',
-]);
-
-const MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * 8 MiB.
+ *
+ * The old 2 MiB cap refused 2 of every 30 live icons. The response is cached
+ * for a day, so the cost is paid once per token, and the cap exists to stop an
+ * endless stream rather than to enforce a size budget.
+ */
+const MAX_BYTES = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 8_000;
+
+/**
+ * Redirects are followed, but every hop is vetted again.
+ *
+ * IPFS gateways redirect as a matter of course — `gateway.irys.xyz` sends a
+ * 301 to its CDN — so refusing outright loses legitimate art. Following blindly
+ * is the SSRF hole the vetting exists to close: an allowed host could redirect
+ * straight to `169.254.169.254`. So each hop goes back through
+ * `vetOutboundUrl` and connects to its own vetted address, and the chain is
+ * bounded so a redirect loop cannot spin.
+ */
+const MAX_REDIRECTS = 3;
+
+interface UpstreamImage {
+  status: number;
+  contentType: string;
+  body: Buffer;
+  tooLarge: boolean;
+  redirected: boolean;
+  /** Set when `redirected` — the raw Location header, not yet vetted. */
+  location?: string;
+}
+
+/** Fetches over a connection pinned to `address`. */
+function fetchPinned(
+  url: URL,
+  address: string,
+  family: 4 | 6,
+): Promise<UpstreamImage> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      {
+        host: address,
+        family,
+        // TLS is still validated against the real hostname, so a pinned
+        // connection cannot be silently redirected to some other server.
+        servername: url.hostname,
+        port: url.port ? Number(url.port) : 443,
+        path: url.pathname + url.search,
+        method: 'GET',
+        headers: { host: url.hostname, accept: 'image/*' },
+        timeout: FETCH_TIMEOUT_MS,
+      },
+      (res) => {
+        const status = res.statusCode ?? 502;
+        const redirected = status >= 300 && status < 400;
+        if (redirected) {
+          res.destroy();
+          resolve({
+            status,
+            contentType: '',
+            body: Buffer.alloc(0),
+            tooLarge: false,
+            redirected,
+            location: res.headers.location,
+          });
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let size = 0;
+        let tooLarge = false;
+
+        res.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > MAX_BYTES) {
+            // Stop paying for bytes we have already decided to refuse.
+            tooLarge = true;
+            res.destroy();
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on('end', () =>
+          resolve({
+            status,
+            contentType: res.headers['content-type'] ?? '',
+            body: Buffer.concat(chunks),
+            tooLarge,
+            redirected: false,
+          }),
+        );
+        res.on('error', reject);
+        res.on('close', () => {
+          if (tooLarge) {
+            resolve({
+              status,
+              contentType: res.headers['content-type'] ?? '',
+              body: Buffer.alloc(0),
+              tooLarge: true,
+              redirected: false,
+            });
+          }
+        });
+      },
+    );
+
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 export async function GET(request: Request) {
   const requested = new URL(request.url).searchParams.get('url');
@@ -54,61 +159,55 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
 
-  let target: URL;
   try {
-    target = new URL(requested);
-  } catch {
-    return NextResponse.json({ error: 'Malformed url' }, { status: 400 });
-  }
+    let next = requested;
+    let upstream: UpstreamImage | null = null;
 
-  if (target.protocol !== 'https:') {
-    return NextResponse.json({ error: 'Only https sources are proxied' }, { status: 400 });
-  }
-  if (!ALLOWED_HOSTS.has(target.hostname)) {
-    return NextResponse.json({ error: `Host not allowed: ${target.hostname}` }, { status: 400 });
-  }
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      // Every hop is vetted, including the ones an upstream chose for us.
+      const verdict = await vetOutboundUrl(next);
+      if (!verdict.ok) {
+        return NextResponse.json({ error: verdict.reason }, { status: 400 });
+      }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const upstream = await fetch(target.toString(), {
-      signal: controller.signal,
-      // A redirect could point somewhere the allowlist would have refused.
-      redirect: 'error',
-      headers: { accept: 'image/*' },
-    });
+      const { url, address, family } = verdict.target;
+      upstream = await fetchPinned(url, address, family);
 
-    if (!upstream.ok) {
-      return NextResponse.json({ error: `Upstream ${upstream.status}` }, { status: 502 });
+      if (!upstream.redirected) break;
+      if (!upstream.location) {
+        return NextResponse.json({ error: 'Redirect without a location' }, { status: 502 });
+      }
+      if (hop === MAX_REDIRECTS) {
+        return NextResponse.json({ error: 'Too many redirects' }, { status: 502 });
+      }
+      // Relative Locations are normal; resolve against the hop we just made.
+      next = new URL(upstream.location, url).toString();
     }
 
-    const contentType = upstream.headers.get('content-type') ?? '';
-    if (!contentType.startsWith('image/')) {
+    if (!upstream) {
+      return NextResponse.json({ error: 'Failed to fetch image' }, { status: 502 });
+    }
+    if (upstream.status < 200 || upstream.status >= 300) {
+      return NextResponse.json({ error: `Upstream ${upstream.status}` }, { status: 502 });
+    }
+    if (upstream.tooLarge) {
+      return NextResponse.json({ error: 'Image too large' }, { status: 413 });
+    }
+    if (!upstream.contentType.startsWith('image/')) {
       return NextResponse.json({ error: 'Not an image' }, { status: 415 });
     }
 
-    const buffer = await upstream.arrayBuffer();
-    if (buffer.byteLength > MAX_BYTES) {
-      return NextResponse.json({ error: 'Image too large' }, { status: 413 });
-    }
-
-    return new NextResponse(buffer, {
+    return new NextResponse(upstream.body, {
       status: 200,
       headers: {
-        'content-type': contentType,
+        'content-type': upstream.contentType,
         // Token art is immutable in practice; a long cache keeps a scrolling
         // column from re-fetching the same icons every poll.
         'cache-control': 'public, max-age=86400, stale-while-revalidate=604800',
         'cross-origin-resource-policy': 'same-origin',
       },
     });
-  } catch (err) {
-    const aborted = err instanceof DOMException && err.name === 'AbortError';
-    return NextResponse.json(
-      { error: aborted ? 'Upstream timed out' : 'Failed to fetch image' },
-      { status: 504 },
-    );
-  } finally {
-    clearTimeout(timer);
+  } catch {
+    return NextResponse.json({ error: 'Failed to fetch image' }, { status: 504 });
   }
 }

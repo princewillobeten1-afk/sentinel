@@ -1,0 +1,33 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",      "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Discover", "is_interactive": true },
+    { "file": "Trade.dc.html",     "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Trade", "is_interactive": true },
+    { "file": "Overview.dc.html",  "x": 0,    "y": 1060, "w": 1440, "h": 900, "title": "Overview", "is_interactive": true },
+    { "file": "Portfolio.dc.html", "x": 1560, "y": 1060, "w": 1440, "h": 900, "title": "Portfolio", "is_interactive": true },
+    { "file": "Watchlist.dc.html", "x": 780,  "y": 2120, "w": 1440, "h": 900, "title": "Watchlist", "is_interactive": true }
+  ],
+  "annotations": [
+    {
+      "id": "system",
+      "x": -520,
+      "y": 0,
+      "w": 440,
+      "text": "Design system, lifted from tailwind.config.ts\n\nGround #07090D · app #0E131B · card #1C2531\nsub-panel #151C26 · hover #26303E\nborder #33404F · elevated #445366\n\nText: #F2F5F9 primary · #C6CEDA secondary\n#98A3B3 muted · #6E7A8A faint\n\nAccent azure #3B8FF0 — the single accent hue.\nBuy #12B574 · Sell #EC5A5F · Warn #FFB800\nAI/violet #A855F7\n\nInter for UI, JetBrains Mono with tabular-nums\nfor every figure. Feed rows sit on the 11px 2xs\nstep (+0.01em); 12/13/14px above that."
+    },
+    {
+      "id": "honesty",
+      "x": -520,
+      "y": 420,
+      "w": 440,
+      "text": "Unmeasured is never green\n\nThe audit pills render n/a in neutral grey when\nnothing has measured them — not 0%, and never\na green 'safe' badge. That distinction is the\nwhole point: for a long time every card showed\nSnipers 4% / Insiders 2% / Bundlers 0% from\nhardcoded constants, all inside their own safe\nbands, so the entire feed advertised a clean\naudit nobody had performed.\n\nOverview's Top tab shows measured values for\ncontrast; Trending and Hot show n/a."
+    },
+    {
+      "id": "columns",
+      "x": -520,
+      "y": 760,
+      "w": 440,
+      "text": "The three Discover columns\n\nNew Pairs — newest first, no progress filter.\nFinal Stretch — real curve completion, ≥10%,\n  ordered nearest-migration first.\nMigrated — recent migrations only, showing the\n  destination pool and DEX instead of a bonding\n  percentage. A finished curve is drained, so\n  '100%' would be true and useless.\n\nAges, prices, TPS and the slot counter tick live\non every artboard."
+    }
+  ],
+  "launch": { "view": "focused", "file": "Main.dc.html" }
+}

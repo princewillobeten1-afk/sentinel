@@ -37,10 +37,13 @@ services:
       POSTGRES_PASSWORD: sentinel
       POSTGRES_DB: sentinel
     # Published to the host so `node server.js` and `npm run db:migrate`
-    # (both run outside Docker) can reach it. Host port 5433, not 5432 —
-    # 5432 is commonly already taken by another project's Postgres.
+    # (both run outside Docker) can reach it. Host port 5434: 5432 and 5433
+    # are both taken on this machine by other projects' Postgres containers,
+    # and 5433 in particular answers the connection while rejecting the
+    # sentinel credentials — which reads as a password fault rather than as
+    # "you are talking to the wrong database".
     ports:
-      - '5433:5432'
+      - '5434:5432'
     volumes:
       - db-data:/var/lib/postgresql/data
 

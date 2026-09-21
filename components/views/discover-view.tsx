@@ -29,25 +29,18 @@ import type {
   DiscoveryToken,
 } from '@/lib/discovery/types';
 
-// Bumped from _v3: saved 3-column layouts would otherwise suppress the two
-// new columns for anyone who has used the page before.
-const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v4';
+// Bumped to _v7: canonical tabs New Pairs (newest), Final Stretch (bonding %), Migrated (recency)
+const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v7';
 const STORAGE_QUICKBUY_KEY = 'sentinel_quickbuy_presets_v2';
 
 /**
- * The five columns, each backed by a distinct real source.
- *
- * New / Bonding / Migrated all read Jupiter's `/recent` (tokens aged 0-2
- * minutes) and are partitioned by the structural bonding test in
- * `jupiter-feed.ts#isOnBondingCurve` — one request serves all three. Trending
- * and Hot read their own ranked feeds on slower cadences.
+ * The canonical discovery feed columns matching Axiom & Trojan standards:
+ * New Pairs (newest first), Final Stretch (highest bonding % first), and Migrated (newest migration first).
  */
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
-  { id: 'col_new', type: 'new', title: 'New Launches', sortBy: 'newest' },
-  { id: 'col_bonding', type: 'migrating', title: 'Bonding', sortBy: 'market-cap' },
-  { id: 'col_migrated', type: 'graduated', title: 'Migrated', sortBy: 'market-cap' },
-  { id: 'col_trending', type: 'trending', title: 'Trending', sortBy: 'volume' },
-  { id: 'col_hot', type: 'hot', title: 'Hot', sortBy: 'volume' },
+  { id: 'col_new', type: 'new', title: 'New Pairs', sortBy: 'newest' },
+  { id: 'col_bonding', type: 'migrating', title: 'Final Stretch', sortBy: 'migration-progress' },
+  { id: 'col_migrated', type: 'graduated', title: 'Migrated', sortBy: 'newest' },
 ];
 
 const DEFAULT_QUICKBUY_PRESETS = [0.05, 0.1, 0.5, 1.0];
@@ -62,7 +55,7 @@ export function DiscoverView() {
   // State: Global Controls
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChain, setSelectedChain] = useState('solana');
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>('15m');
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('5m');
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [globalFilters, setGlobalFilters] = useState<Partial<DiscoveryFilter>>({});
   /** Zero-liquidity launches are hidden by default — they cannot be traded. */
@@ -83,10 +76,9 @@ export function DiscoverView() {
         if (savedCols) {
           const parsed = JSON.parse(savedCols);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            // Trending columns used to be stripped here because the section
-            // had no working source. It now reads Jupiter's ranked feed, so
-            // removing it would delete a column the user can see working.
-            setColumns(parsed.length > 0 ? parsed : DEFAULT_COLUMNS);
+            // Strip trending and hot columns (now on the Overview page)
+            const cleaned = parsed.filter((c: any) => c.type !== 'trending' && c.type !== 'hot');
+            setColumns(cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS);
           }
         }
         const savedQB = localStorage.getItem(STORAGE_QUICKBUY_KEY);
@@ -176,6 +168,12 @@ export function DiscoverView() {
       price: `$${token.priceUsd}`,
       mcap: `$${token.marketCapUsd}`,
       customAmountSol: quickBuyMode === 'sol' ? amount : undefined,
+      customAmountUsd: quickBuyMode === 'usd' ? amount : undefined,
+      liquidity: token.liquidityUsd,
+      volume24h: token.volume24hUsd,
+      priceChange24h: token.priceChange24h,
+      holders: token.holdersCount,
+      logoURI: token.logoURI,
     });
   };
 
@@ -186,12 +184,12 @@ export function DiscoverView() {
     chain: selectedChain,
   }), [globalFilters, debouncedSearch, selectedChain]);
 
-  const activeFilterCount = Object.keys(globalFilters).filter(
-    (k) => globalFilters[k as keyof DiscoveryFilter] !== undefined
+  const activeFilterCount = Object.values(globalFilters).filter(
+    (value) => value !== undefined && value !== false && value !== '' && (!Array.isArray(value) || value.length > 0)
   ).length;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-60px)] w-full overflow-hidden bg-[#05080d] text-xs">
+    <div className="discovery-workspace flex flex-1 min-h-0 min-w-0 flex-col w-full bg-sentinel-950 text-xs">
       {/* Sticky Global Top Bar */}
       <TerminalTopBar
         searchQuery={searchQuery}
@@ -217,12 +215,13 @@ export function DiscoverView() {
       />
 
       {/* Mobile Feed Tab Selector (visible only on small screens) */}
-      <div className="md:hidden flex items-center gap-1.5 p-2 bg-[#090d14] border-b border-slate-800 overflow-x-auto shrink-0 scrollbar-none">
+      <div aria-label="Discovery columns" className="md:hidden flex items-center gap-1 py-2 border-b border-slate-700 overflow-x-auto shrink-0">
         {columns.map((col) => (
           <button
             key={col.id}
+            aria-pressed={activeMobileColumnId === col.id}
             onClick={() => setActiveMobileColumnId(col.id)}
-            className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+            className={`min-h-11 flex-1 px-3 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
               activeMobileColumnId === col.id
                 ? 'bg-sky-500 text-slate-950 shadow-sm'
                 : 'bg-slate-900 text-slate-400 hover:text-slate-200'
@@ -234,17 +233,12 @@ export function DiscoverView() {
       </div>
 
       {/* Main Workspace Feed Area */}
-      <div className="flex-1 overflow-hidden p-2.5">
+      <div className="flex-1 min-h-0 min-w-0 pt-2 flex flex-col h-full">
         {/* Desktop View: Multi-Column Independent Grid */}
         <div
-          className="hidden md:grid h-full gap-2.5 overflow-x-auto"
+          className="hidden md:grid flex-1 h-full min-h-0 gap-3 overflow-x-auto pb-1"
           style={{
-            // 290px x 5 exceeded the workspace at 1440 and pushed the fifth
-            // column off-screen entirely. 252px lets all five sit side by side
-            // at 1440 while staying legible; the container scrolls
-            // horizontally below that, which is the behaviour these terminals
-            // use anyway once a user adds columns.
-            gridTemplateColumns: `repeat(${columns.length}, minmax(252px, 1fr))`,
+            gridTemplateColumns: `repeat(${columns.length}, minmax(290px, 1fr))`,
           }}
         >
           {columns.map((col) => (
@@ -263,7 +257,7 @@ export function DiscoverView() {
         </div>
 
         {/* Mobile View: Single Column with Active Tab */}
-        <div className="md:hidden h-full">
+        <div className="md:hidden flex-1 h-full min-h-0 flex flex-col">
           {columns
             .filter((col) => col.id === activeMobileColumnId)
             .map((col) => (
@@ -293,4 +287,3 @@ export function DiscoverView() {
 }
 
 export default DiscoverView;
-

@@ -73,6 +73,14 @@ export function MetricValue({
     );
   }
 
+  if (state.kind === 'stale') {
+    return (
+      <span title={title} aria-label={title} className={clsx('border-b border-dashed border-amber-700/70 font-semibold text-amber-300/80', className)}>
+        {format(state.value)}
+      </span>
+    );
+  }
+
   return (
     <span
       title={title}

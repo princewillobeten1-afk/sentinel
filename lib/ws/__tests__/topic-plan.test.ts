@@ -10,13 +10,11 @@ import {
 const mints = (n: number) => Array.from({ length: n }, (_, i) => `mint${i}`);
 
 describe('planTokenTopics', () => {
-  it('gives every token a price stream before any token gets a second topic', () => {
-    // A visibly stale price is the worst failure on the Overview, so price
-    // coverage must not be traded away for trade streams.
+  it('gives every token one aggregated card stream', () => {
     const plan = planTokenTopics(mints(20), { tradeStreams: 6 });
     expect(plan.pricedMints).toHaveLength(20);
     expect(plan.droppedMints).toHaveLength(0);
-    for (const m of mints(20)) expect(plan.topics).toContain(`token.price:${m}`);
+    for (const m of mints(20)) expect(plan.topics).toContain(`token.card:${m}`);
   });
 
   it('stays within the session cap', () => {
@@ -32,17 +30,16 @@ describe('planTokenTopics', () => {
     expect(plan.pricedMints.length + plan.droppedMints.length).toBe(40);
   });
 
-  it('spends leftover budget on trade streams, in display order', () => {
+  it('carries trades for every subscribed card without a second topic', () => {
     const plan = planTokenTopics(mints(5), { tradeStreams: 3 });
-    expect(plan.tradedMints).toEqual(['mint0', 'mint1', 'mint2']);
-    expect(plan.topics).toContain('token.trade:mint0');
-    expect(plan.topics).not.toContain('token.trade:mint3');
+    expect(plan.tradedMints).toEqual(mints(5));
+    expect(plan.topics).toEqual(mints(5).map((mint) => `token.card:${mint}`));
   });
 
-  it('adds no trade streams when price coverage consumed the budget', () => {
+  it('uses only aggregated topics near the budget', () => {
     const plan = planTokenTopics(mints(28), { tradeStreams: 6 });
-    expect(plan.tradedMints).toHaveLength(0);
-    expect(plan.topics.every((t) => t.startsWith('token.price:'))).toBe(true);
+    expect(plan.tradedMints).toHaveLength(28);
+    expect(plan.topics.every((t) => t.startsWith('token.card:'))).toBe(true);
   });
 
   it('de-duplicates a mint that appears in two lists', () => {
@@ -50,7 +47,7 @@ describe('planTokenTopics', () => {
     // twice would burn a slot for nothing.
     const plan = planTokenTopics(['a', 'b', 'a', 'b'], { tradeStreams: 0 });
     expect(plan.pricedMints).toEqual(['a', 'b']);
-    expect(plan.topics).toEqual(['token.price:a', 'token.price:b']);
+    expect(plan.topics).toEqual(['token.card:a', 'token.card:b']);
   });
 
   it('ignores empty mints', () => {
@@ -85,6 +82,7 @@ describe('parseTokenTopic', () => {
   it('splits a token topic into kind and mint', () => {
     expect(parseTokenTopic('token.price:So111')).toEqual({ kind: 'token.price', mint: 'So111' });
     expect(parseTokenTopic('token.trade:So111')).toEqual({ kind: 'token.trade', mint: 'So111' });
+    expect(parseTokenTopic('token.card:So111')).toEqual({ kind: 'token.card', mint: 'So111' });
   });
 
   it('rejects topics this hook does not handle', () => {

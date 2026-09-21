@@ -30,7 +30,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             'transition-colors duration-100',
             'hover:border-sentinel-600',
             'focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500/60',
-            'disabled:cursor-not-allowed disabled:opacity-45',
+            'disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-rose-400',
             leftAddon && 'pl-9',
             (rightAddon || onClear) && 'pr-9',
             isMonospace && 'font-numeric',
@@ -41,6 +41,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         {onClear && value && (
           <button
             type="button"
+            aria-label="Clear input"
             onClick={onClear}
             className="absolute right-2.5 p-1 text-sentinel-400 hover:text-sentinel-100 transition-colors rounded"
           >

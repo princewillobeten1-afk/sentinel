@@ -14,6 +14,7 @@ export interface DecodedBlockchainEvent {
   dex?: string;
   amount?: number;
   amountSol?: number;
+  amountUsd?: number;
   price?: number;
   liquidityUsd?: number;
   chainTimestamp?: number;

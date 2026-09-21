@@ -1,0 +1,50 @@
+[
+  {
+    "width": 1440,
+    "passed": true,
+    "checks": [
+      "curve status",
+      "migration time order",
+      "proof link",
+      "transition",
+      "no overflow",
+      "no page errors"
+    ]
+  },
+  {
+    "width": 1280,
+    "passed": true,
+    "checks": [
+      "curve status",
+      "migration time order",
+      "proof link",
+      "transition",
+      "no overflow",
+      "no page errors"
+    ]
+  },
+  {
+    "width": 768,
+    "passed": true,
+    "checks": [
+      "curve status",
+      "migration time order",
+      "proof link",
+      "transition",
+      "no overflow",
+      "no page errors"
+    ]
+  },
+  {
+    "width": 390,
+    "passed": true,
+    "checks": [
+      "curve status",
+      "migration time order",
+      "proof link",
+      "transition",
+      "no overflow",
+      "no page errors"
+    ]
+  }
+]

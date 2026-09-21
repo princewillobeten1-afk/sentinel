@@ -21,7 +21,7 @@
  * renders and only send the difference.
  */
 
-export type TokenTopicKind = 'token.price' | 'token.trade';
+export type TokenTopicKind = 'token.card' | 'token.price' | 'token.trade';
 
 export interface TopicPlan {
   /** Topics to subscribe to, in priority order. */
@@ -50,7 +50,9 @@ export function planTokenTopics(
   options: { budget?: number; tradeStreams?: number } = {},
 ): TopicPlan {
   const budget = Math.max(0, (options.budget ?? SESSION_TOPIC_BUDGET) - HEADROOM);
-  const wantedTradeStreams = Math.max(0, options.tradeStreams ?? 6);
+  // One aggregated topic carries market, trade, audit and lifecycle patches.
+  // This gives every visible card the complete stream instead of spending two
+  // slots per mint and silently dropping half of a column.
 
   // De-duplicate while preserving display order: the same mint can legitimately
   // appear in two lists (trending and top), and subscribing twice would burn a
@@ -66,13 +68,11 @@ export function planTokenTopics(
   const pricedMints = unique.slice(0, budget);
   const droppedMints = unique.slice(budget);
 
-  const remaining = budget - pricedMints.length;
-  const tradedMints = pricedMints.slice(0, Math.min(wantedTradeStreams, remaining));
+  const tradedMints = pricedMints;
 
   return {
     topics: [
-      ...pricedMints.map((m) => `token.price:${m}`),
-      ...tradedMints.map((m) => `token.trade:${m}`),
+      ...pricedMints.map((m) => `token.card:${m}`),
     ],
     pricedMints,
     tradedMints,
@@ -98,6 +98,6 @@ export function parseTokenTopic(topic: string): { kind: TokenTopicKind; mint: st
   const kind = topic.slice(0, separator);
   const mint = topic.slice(separator + 1);
   if (!mint) return null;
-  if (kind !== 'token.price' && kind !== 'token.trade') return null;
+  if (kind !== 'token.card' && kind !== 'token.price' && kind !== 'token.trade') return null;
   return { kind, mint };
 }

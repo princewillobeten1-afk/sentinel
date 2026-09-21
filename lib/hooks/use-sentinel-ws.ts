@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { subscribeMessage, unsubscribeMessage } from '@/lib/ws/client-messages';
 
 export interface SentinelWSMessage {
   type: 'welcome' | 'subscribed' | 'unsubscribed' | 'event' | 'error' | 'ping' | 'pong';
@@ -28,6 +29,15 @@ class SentinelWSClient {
   private allHandlers = new Set<(msg: SentinelWSMessage) => void>();
   private stateChangeListeners = new Set<(connected: boolean) => void>();
   private isExplicitlyClosed = false;
+  /**
+   * Set once the server's `welcome` arrives.
+   *
+   * Subscriptions are held back until then. A subscribe sent on `open` lands
+   * before the server has attached its message listener and is silently
+   * dropped — measured at 0 events delivered versus 32 when the same
+   * subscribe waits for `welcome`.
+   */
+  private welcomed = false;
 
   constructor() {
     this.url = this.getWsUrl();
@@ -57,15 +67,11 @@ class SentinelWSClient {
 
       this.socket.onopen = () => {
         this.reconnectAttempts = 0;
+        this.welcomed = false;
         this.notifyStateChange(true);
-
-        // Re-subscribe to all active topics on reconnect
-        if (this.subscribedTopics.size > 0) {
-          this.send({
-            action: 'subscribe',
-            topics: Array.from(this.subscribedTopics),
-          });
-        }
+        // Deliberately no subscribe here — see `welcomed`. The server attaches
+        // its message listener as it sends `welcome`, so anything written
+        // before that is discarded without an error.
       };
 
       this.socket.onmessage = (event) => {
@@ -84,6 +90,9 @@ class SentinelWSClient {
       this.socket.onclose = () => {
         this.notifyStateChange(false);
         this.socket = null;
+        // The next connection has its own handshake; leaving this true would
+        // let a subscribe race ahead of the new socket's `welcome`.
+        this.welcomed = false;
 
         if (!this.isExplicitlyClosed) {
           this.scheduleReconnect();
@@ -108,9 +117,17 @@ class SentinelWSClient {
   }
 
   private handleIncomingMessage(msg: SentinelWSMessage): void {
-    // 1. Automatic Ping / Pong Keep-Alive
-    if (msg.type === 'ping') {
-      this.send({ action: 'pong' });
+    // 1. The server is ready for subscriptions.
+    //
+    // Liveness is handled below the application protocol: the server sends
+    // real WebSocket pings and terminates on a missed pong, which the browser
+    // answers automatically. There is no client-bound `{type:'ping'}` in
+    // ServerMessage, so nothing here needs to reply to one.
+    if (msg.type === 'welcome') {
+      this.welcomed = true;
+      if (this.subscribedTopics.size > 0) {
+        this.send(subscribeMessage(Array.from(this.subscribedTopics)));
+      }
       return;
     }
 
@@ -149,11 +166,10 @@ class SentinelWSClient {
       }
     }
 
-    if (newTopics.length > 0 && this.isConnected) {
-      this.send({
-        action: 'subscribe',
-        topics: newTopics,
-      });
+    // Held until `welcome`; the handler flushes everything in
+    // `subscribedTopics`, so a topic added before then is not lost.
+    if (newTopics.length > 0 && this.isConnected && this.welcomed) {
+      this.send(subscribeMessage(newTopics));
     }
   }
 
@@ -168,11 +184,8 @@ class SentinelWSClient {
       }
     }
 
-    if (removedTopics.length > 0 && this.isConnected) {
-      this.send({
-        action: 'unsubscribe',
-        topics: removedTopics,
-      });
+    if (removedTopics.length > 0 && this.isConnected && this.welcomed) {
+      this.send(unsubscribeMessage(removedTopics));
     }
   }
 

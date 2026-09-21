@@ -80,7 +80,7 @@ export function WatchlistView() {
       header: 'Risk Level',
       align: 'center',
       accessor: (item) => (
-        <Badge variant={item.riskRating === 'low' ? 'risk-low' : item.riskRating === 'critical' ? 'risk-critical' : 'risk-med'}>
+        <Badge variant={item.riskRating === 'unknown' ? 'neutral' : item.riskRating === 'low' ? 'risk-low' : item.riskRating === 'critical' ? 'risk-critical' : item.riskRating === 'high' ? 'risk-high' : 'risk-med'}>
           {item.riskRating}
         </Badge>
       ),
@@ -113,13 +113,13 @@ export function WatchlistView() {
 
   return (
     <div className="space-y-4 max-w-[1400px] mx-auto select-none">
-      <div className="flex items-center justify-between">
+      <div data-page-header className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <Bookmark className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Persistent Token Watchlist
+            <Bookmark className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Watchlist
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Tracked Solana tokens, live price shifts, and risk ratings persisted across browser sessions.
+            Your saved tokens, market activity, and risk signals.
           </p>
         </div>
       </div>

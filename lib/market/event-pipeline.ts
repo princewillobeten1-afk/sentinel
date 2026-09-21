@@ -38,6 +38,8 @@ export interface RawMarketEvent {
    * so any per-wallet view grouped by a column that never had a value.
    */
   wallet?: string;
+  tokenAmount?: number;
+  amountSol?: number;
   timestamp: string;
 }
 
@@ -45,8 +47,8 @@ export interface NormalizedMarketEvent {
   id: string;
   mint: string;
   eventType: string;
-  priceUsd: string;
-  volumeUsd: string;
+  priceUsd?: string;
+  volumeUsd?: string;
   provider: string;
   freshness: 'fresh' | 'stale';
   processedAt: string;
@@ -112,8 +114,8 @@ export class MarketEventPipeline {
       id: `norm_${raw.eventId}`,
       mint: raw.mint,
       eventType: raw.eventType,
-      priceUsd: raw.priceUsd || '0.00',
-      volumeUsd: raw.volumeUsd || '0.00',
+      ...(raw.priceUsd !== undefined ? { priceUsd: raw.priceUsd } : {}),
+      ...(raw.volumeUsd !== undefined ? { volumeUsd: raw.volumeUsd } : {}),
       provider: providerName,
       freshness: isStale ? 'stale' : 'fresh',
       processedAt: new Date().toISOString(),

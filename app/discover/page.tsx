@@ -22,7 +22,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
  */
 export default function DiscoverPage() {
   return (
-    <AppShell initialView="discover">
+    <AppShell initialView="discover" layout="workspace">
       <DashboardShell />
     </AppShell>
   );

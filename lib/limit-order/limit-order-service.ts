@@ -13,19 +13,32 @@ export class LimitOrderService {
     chainId?: string;
     tokenIn: string;
     tokenOut: string;
+    tokenMint: string;
     side: 'buy' | 'sell';
     targetPrice: number;
     amountIn: number;
     slippageBps?: number;
     conditions?: LimitOrderConditions;
     expiresAt?: string;
-    actualWalletBalance?: number;
+    /**
+     * The wallet's real SOL balance at creation time. Required: a missing
+     * value used to fall through to a hardcoded 42.85 SOL default, which
+     * reserved every order -- for every wallet, including ones with nothing
+     * in them -- against a balance nobody actually had.
+     */
+    actualWalletBalance: number;
   }): { success: boolean; order?: LimitOrder; error?: string } {
+    if (!Number.isFinite(params.actualWalletBalance) || params.actualWalletBalance < 0) {
+      return { success: false, error: 'A real wallet balance is required to size this order.' };
+    }
+    if (!params.tokenMint) {
+      return { success: false, error: 'A token mint is required.' };
+    }
+
     const orderId = `lim_${Math.random().toString(36).substring(2, 10)}`;
     const now = new Date().toISOString();
 
     // 1. Reserve balance
-    const walletBalance = params.actualWalletBalance ?? 42.85; // Default mock SOL balance
     const reserveToken = params.side === 'buy' ? params.tokenIn : params.tokenOut;
     const reserveAmount = params.amountIn;
 
@@ -34,7 +47,7 @@ export class LimitOrderService {
       walletId: params.walletId,
       token: reserveToken,
       amount: reserveAmount,
-      walletActualBalance: walletBalance
+      walletActualBalance: params.actualWalletBalance
     });
 
     if (!reserveRes.success) {
@@ -48,6 +61,7 @@ export class LimitOrderService {
       chainId: params.chainId || 'solana',
       tokenIn: params.tokenIn,
       tokenOut: params.tokenOut,
+      tokenMint: params.tokenMint,
       side: params.side,
       targetPrice: params.targetPrice,
       amountIn: params.amountIn,
@@ -83,9 +97,21 @@ export class LimitOrderService {
     return limitOrderStore.get(orderId);
   }
 
-  public getUserLimitOrders(userId: string, currentMarketPrice = 0.0425): LimitOrder[] {
-    const userOrders = Array.from(limitOrderStore.values()).filter(o => o.userId === userId);
-    
+  /**
+   * @param currentMarketPrice Required -- this defaulted to 0.0425, the same
+   *   fabricated constant the rest of this codebase has been removing, and
+   *   every order's "distance to target" was computed against it whenever a
+   *   caller omitted the real price.
+   * @param mint When given, only orders for this token are returned. Without
+   *   it, `distancePct` below is computed against `currentMarketPrice` for
+   *   every order regardless of what token it is actually for -- correct only
+   *   when the caller already knows every returned order shares one mint.
+   */
+  public getUserLimitOrders(userId: string, currentMarketPrice: number, mint?: string): LimitOrder[] {
+    const userOrders = Array.from(limitOrderStore.values())
+      .filter(o => o.userId === userId)
+      .filter(o => !mint || o.tokenMint === mint);
+
     return userOrders.map(order => {
       let distancePct = 0;
       if (currentMarketPrice > 0 && order.targetPrice > 0) {

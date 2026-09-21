@@ -3,6 +3,7 @@ import { logger } from '../logger';
 import { eventBus } from '../events/event-bus';
 import { EVENT_TYPES, type NormalizedRealtimeEvent } from '../events/event-types';
 import { realtimeRepository } from '../db/realtime-repository';
+import { acquireBirdeyeSlot } from '@/lib/market/enrichment/birdeye-limiter';
 
 interface BirdeyeMarketResponse {
   price?: number;
@@ -50,8 +51,13 @@ export class BirdeyeEnrichmentWorker {
         logger.warn('[birdeye-enrichment] failed to enrich token', { mint, error: (err as Error).message });
       }
 
-      // 250ms spacing between enrichment calls to respect Birdeye rate limits
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      // Pacing is handled by the shared limiter inside `enrichToken`, not here.
+      //
+      // A local 250ms delay could not respect a per-account limit: this worker
+      // is enqueued from `events/processor.ts` on every realtime event, so its
+      // rate followed chain activity, and it starved the ownership audit
+      // completely — 0 of 20 rows resolved in two minutes while a single manual
+      // request to the same key returned 429.
     }
 
     this.isProcessing = false;
@@ -60,6 +66,11 @@ export class BirdeyeEnrichmentWorker {
   private async enrichToken(mint: string): Promise<void> {
     const apiKey = env.BIRDEYE_API_KEY;
     if (!apiKey) return;
+
+    // Background priority: these values are a top-up, and Jupiter supplies the
+    // same price/liquidity/volume. Audit lookups, which a reader is actively
+    // waiting on behind a pending pip, are served first.
+    await acquireBirdeyeSlot('background');
 
     const url = `https://public-api.birdeye.so/defi/v3/token/market-data?address=${encodeURIComponent(mint)}`;
     const response = await fetch(url, {

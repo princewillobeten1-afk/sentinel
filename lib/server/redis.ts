@@ -3,6 +3,7 @@ import 'server-only';
 import Redis, { type RedisOptions } from 'ioredis';
 import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
+import { describeError } from '@/lib/server/describe-error';
 
 /**
  * Redis client for the real-time event bus.
@@ -82,6 +83,10 @@ export class RedisClient {
     if (!this.url || this.connectFailed) return null;
 
     if (!this.client) {
+      // Captured here: the guard above narrows `this.url`, but that narrowing
+      // does not survive into the handler closure.
+      const redacted = this.url.replace(/\/\/[^@]*@/, '//***@');
+
       try {
         this.client = new Redis(this.url, this.options());
 
@@ -90,7 +95,13 @@ export class RedisClient {
           if (!this.connectFailed) {
             this.connectFailed = true;
             logger.warn('[redis] unavailable — degrading to in-process cache', {
-              message: err.message,
+              // `err.message` alone is empty for a refused connection, which is
+              // the failure this line exists to report. See describeError.
+              message: describeError(err),
+              // Named so "Redis is down" and "Redis is up on another port" are
+              // distinguishable — the actual fault on this machine was the
+              // second, and the log said neither.
+              url: redacted,
             });
           }
         });

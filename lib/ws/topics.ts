@@ -7,11 +7,12 @@
 
 import type { Scope } from '@/lib/server/scopes';
 
-export const TOPIC_KINDS = ['token.price', 'token.trade', 'token.risk', 'token.ohlcv', 'feed.discovery'] as const;
+export const TOPIC_KINDS = ['token.card', 'token.price', 'token.trade', 'token.risk', 'token.ohlcv', 'feed.discovery'] as const;
 export type TopicKind = (typeof TOPIC_KINDS)[number];
 
 /** Which scope a subscriber must hold to listen on each topic kind. */
 export const TOPIC_SCOPES: Record<TopicKind, Scope> = {
+  'token.card': 'READ_MARKET_DATA',
   'token.price': 'READ_MARKET_DATA',
   'token.trade': 'READ_MARKET_DATA',
   'token.ohlcv': 'READ_MARKET_DATA',

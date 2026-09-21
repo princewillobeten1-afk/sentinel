@@ -32,7 +32,6 @@ import { IntelligenceScore } from '@/components/ui/intelligence-score';
 import { Progress } from '@/components/ui/progress';
 import { Tabs } from '@/components/ui/tabs';
 import { useAppState, useAppActions } from '@/lib/store';
-import { useMarketData } from '@/lib/hooks/use-market-data';
 import { useOverviewData, type OverviewToken } from '@/lib/hooks/use-overview-data';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 
@@ -67,9 +66,8 @@ export function DashboardView() {
   const router = useRouter();
   const { refreshOverview, setQuickBuyOpen, setActiveView, setSelectedToken } = useAppActions();
   const { watchlistedMints } = useWatchlist();
-  const [marketTab, setMarketTab] = useState<'trending' | 'top' | 'watchlist'>('trending');
+  const [marketTab, setMarketTab] = useState<'trending' | 'hot' | 'top' | 'watchlist'>('trending');
   
-  const { marketSummary } = useMarketData();
   const activeWallet = primaryWallet || connectedWallet;
 
   /**
@@ -88,11 +86,13 @@ export function DashboardView() {
   const visibleTokens =
     marketTab === 'trending'
       ? overview.trending
-      : marketTab === 'top'
-        ? overview.topTokens
-        : [...overview.trending, ...overview.topTokens].filter((t) =>
-            watchlistedMints.includes(t.mint),
-          );
+      : marketTab === 'hot'
+        ? overview.hotTokens
+        : marketTab === 'top'
+          ? overview.topTokens
+          : [...overview.trending, ...(overview.hotTokens || []), ...overview.topTokens].filter((t) =>
+              watchlistedMints.includes(t.mint),
+            );
 
   const live = useLiveTokenUpdates(visibleTokens.map((t) => t.mint));
 
@@ -116,9 +116,9 @@ export function DashboardView() {
     logoURI: t.logoURI ?? undefined,
     price: priceUsd === null ? dash : money(priceUsd, priceUsd < 1 ? 6 : 2),
     priceChange24h: n(change),
-    mcap: t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0),
-    liquidity: t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0),
-    volume24h: t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0),
+    mcap: update?.marketCapUsd ?? (t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0)),
+    liquidity: update?.liquidityUsd ?? (t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0)),
+    volume24h: update?.volume24hUsd ?? (t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0)),
     // Passed through as null, never coerced to 0: the registry returns no
     // score, and `?? 0` made every Top Tokens card read a red "0/100" — the
     // worst possible rating — for tokens that were simply never scored.
@@ -126,28 +126,58 @@ export function DashboardView() {
     badges: [],
     sparklineData: undefined,
     // Drives the brief highlight on the card when a live update lands.
-    liveUpdatedAt: update?.updatedAt,
+    liveUpdatedAt: update?.lastTradeUpdatedAt,
     lastTradeSide: update?.lastTradeSide,
+
+    // Ownership audit, same source as the Discover columns.
+    //
+    // These were declared on `TokenCardData` but never populated, so the
+    // Overview cards rendered no distribution data while Discover showed it for
+    // the same tokens off the same endpoints. Passed through unchanged —
+    // absent stays absent, so an unaudited token shows nothing rather than a
+    // reassuring zero.
+    top10HoldingsPct: update?.top10HoldingsPct ?? t.top10HoldingsPct,
+    devHoldingsPct: update?.devHoldingsPct ?? t.devHoldingsPct,
+    sniperPercentage: update?.sniperPercentage ?? t.sniperPercentage,
+    insiderHoldingsPct: update?.insiderHoldingsPct ?? t.insiderHoldingsPct,
+    bundlerPercentage: update?.bundlerPercentage ?? t.bundlerPercentage,
+    holdersCount: update?.holdersCount ?? t.holdersCount,
+    proTradersCount: update?.proTradersCount ?? t.proTradersCount,
+    kolsCount: update?.kolsCount ?? t.kolsCount,
+    devMints: update?.devMints ?? t.devMints,
+    devMigrations: update?.devMigrations ?? t.devMigrations,
+    devWalletAge: update?.devWalletAge,
+    protocol: t.source,
+    twitterHandle: t.twitterHandle,
+    auditPending: update?.auditPending ?? t.auditPending,
+    ownershipEvidence: update?.ownershipEvidence ?? t.ownershipEvidence,
+    securityEvidence: update?.securityEvidence ?? t.securityEvidence,
+    isMintRenounced: update?.isMintRenounced ?? t.isMintRenounced,
+    isFreezeDisabled: update?.isFreezeDisabled ?? t.isFreezeDisabled,
+    isLiquidityLocked: update?.isLiquidityLocked ?? t.isLiquidityLocked,
+    rugRisk: update?.rugRisk ?? t.rugRisk,
     };
   };
 
   // Curated High-Cap & High-Volume Top Solana Ecosystem Tokens
   /**
    * Token lists come from the registry and the ranking engine.
-   *
-   * These were two hardcoded arrays of ~10 tokens each — fixed prices, fixed
-   * market caps, fixed intelligence scores — rendered as live market data.
-   * Watchlist previously fell back to `[topTokens[0], topTokens[5]]` when empty,
-   * so an empty watchlist silently showed two tokens the user never added.
    */
   const trendingCards = overview.trending.map(toCard);
+  const hotCards = (overview.hotTokens || []).map(toCard);
   const topCards = overview.topTokens.map(toCard);
-  const watchlistCards = [...overview.trending, ...overview.topTokens]
+  const watchlistCards = [...overview.trending, ...(overview.hotTokens || []), ...overview.topTokens]
     .filter((t) => watchlistedMints.includes(t.mint))
     .map(toCard);
 
   const activeCards =
-    marketTab === 'trending' ? trendingCards : marketTab === 'top' ? topCards : watchlistCards;
+    marketTab === 'trending'
+      ? trendingCards
+      : marketTab === 'hot'
+        ? hotCards
+        : marketTab === 'top'
+          ? topCards
+          : watchlistCards;
 
   /** Risk feed, from the real alert domain rather than a literal array. */
   const alertCards: AlertCardData[] = overview.alerts.map((a) => ({
@@ -165,31 +195,24 @@ export function DashboardView() {
 
 
   return (
-    <div className="space-y-3.5 max-w-[1600px] mx-auto select-none">
+    <div className="terminal-overview space-y-4 min-w-0">
       {/* Top Hero Banner */}
-      <div className="rounded-xl border border-white/[0.08] bg-gradient-to-br from-sentinel-900/90 via-sentinel-950/95 to-sentinel-900/80 p-4 sm:p-5 shadow-card flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 relative overflow-hidden backdrop-blur-2xl group hover:border-sky-500/30 transition-all duration-300">
-        <div className="absolute inset-0 bg-gradient-glow opacity-10 group-hover:opacity-20 transition-opacity duration-500 pointer-events-none" />
+      <div data-page-header className="flex flex-wrap items-center justify-between gap-3 border-b border-sentinel-700 pb-4">
         <div className="relative z-10">
-          <div className="flex items-center gap-2">
-            <Badge variant="cyan" size="sm" pulse>
-              SOLANA INTELLIGENCE TERMINAL
-            </Badge>
-            <span className="text-2xs font-mono text-slate-400">Institutional Market Engine</span>
-          </div>
-          <h1 className="mt-1.5 text-xl sm:text-2xl font-black text-white tracking-tight drop-shadow-md">
-            Market Integrity & Intelligence Terminal
+          <h1 className="text-xl font-bold text-slate-100">
+            Market overview
           </h1>
           <p className="mt-0.5 max-w-2xl text-xs sm:text-sm text-slate-300">
-            Real-time effective ownership tracking, organic demand filtering, and zero-latency execution.
+            Discover tokens, follow market activity, and monitor your portfolio.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 relative z-10">
           <Button onClick={() => { refreshOverview(); void overview.refresh(); }} variant="secondary" size="sm" isLoading={isLoading} leftIcon={<RefreshCcw className="h-3.5 w-3.5" />}>
-            Refresh Engine
+            Refresh
           </Button>
-          <Button onClick={() => setActiveView('trade')} variant="buy" size="sm" rightIcon={<ArrowUpRight className="h-3.5 w-3.5" />}>
-            Open Trade Terminal
+          <Button onClick={() => setActiveView('trade')} variant="primary" size="sm" rightIcon={<ArrowUpRight className="h-3.5 w-3.5" />}>
+            Open terminal
           </Button>
         </div>
       </div>
@@ -199,15 +222,15 @@ export function DashboardView() {
         {/* Sentiment Gauge Card */}
         <div className="rounded-xl border border-white/[0.08] bg-sentinel-900/80 backdrop-blur-xl p-3.5 shadow-card space-y-2 hover:border-emerald-500/35 transition-all">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] uppercase font-bold tracking-wider text-slate-400 font-mono">Market Sentiment</span>
-            <Gauge className="h-4 w-4 text-emerald-400 drop-shadow-[0_0_6px_rgba(0,229,153,0.5)]" />
+            <span className="text-xs font-medium text-slate-400">Market sentiment</span>
+            <Gauge className="h-4 w-4 text-slate-400" />
           </div>
           <div className="flex items-baseline justify-between font-numeric">
-            <span className="text-xl sm:text-2xl font-bold text-emerald-400">
+            <span className="text-xl sm:text-2xl font-bold text-slate-100">
               {overview.market ? String(overview.market.regime.confidenceScore) : dash}
               <span className="text-xs text-slate-400">/100</span>
             </span>
-            <Badge variant={n(overview.market?.regime.confidenceScore) >= 50 ? 'risk-low' : 'risk-high'}>
+            <Badge variant={!overview.market ? 'neutral' : n(overview.market.regime.confidenceScore) >= 50 ? 'risk-low' : 'risk-high'}>
               {overview.market ? overview.market.regime.regime.replace(/_/g, ' ') : dash}
             </Badge>
           </div>
@@ -228,7 +251,7 @@ export function DashboardView() {
           adjustedValue={
             overview.market
               ? `of ${money(overview.market.decomposition.totalVolumeUsd, 0)} reported`
-              : dash
+              : undefined
           }
           change={
             overview.market?.decomposition.organicVolumePct === undefined
@@ -236,7 +259,7 @@ export function DashboardView() {
               : `${pct(overview.market.decomposition.organicVolumePct, 1)} organic`
           }
           changeType={
-            n(overview.market?.decomposition.organicVolumePct) >= 70 ? 'positive' : 'negative'
+            overview.market?.decomposition.organicVolumePct === undefined ? 'neutral' : n(overview.market.decomposition.organicVolumePct) >= 70 ? 'positive' : 'negative'
           }
           sparklineData={undefined}
           subtitle="Filtered wash-trading"
@@ -244,13 +267,13 @@ export function DashboardView() {
         <MetricTile
           title="Active Threat Alerts"
           rawValue={
-            overview.errors.alerts
+            overview.errors.alerts || isLoading
               ? dash
               : `${overview.criticalAlertCount} Flagged`
           }
-          change={overview.criticalAlertCount > 0 ? 'Critical' : 'Clear'}
-          changeType={overview.criticalAlertCount > 0 ? 'negative' : 'positive'}
-          badgeText={overview.criticalAlertCount > 0 ? 'THREAT DETECTED' : undefined}
+          change={overview.errors.alerts || isLoading ? 'Unavailable' : overview.criticalAlertCount > 0 ? 'Critical' : 'Clear'}
+          changeType={overview.errors.alerts || isLoading ? 'neutral' : overview.criticalAlertCount > 0 ? 'negative' : 'positive'}
+          badgeText={!overview.errors.alerts && !isLoading && overview.criticalAlertCount > 0 ? 'THREAT DETECTED' : undefined}
           badgeVariant="danger"
           sparklineData={undefined}
           subtitle="Coordinated wallet clusters"
@@ -262,7 +285,7 @@ export function DashboardView() {
           rawValue={money(overview.portfolio?.totalValueUsd ?? undefined, 2)}
           adjustedValue={
             overview.portfolio?.exitValueUsd == null
-              ? dash
+              ? undefined
               : `Exit: ${money(overview.portfolio.exitValueUsd, 2)}`
           }
           change={
@@ -270,7 +293,7 @@ export function DashboardView() {
               ? dash
               : `${overview.portfolio.changeUsd >= 0 ? '+' : ''}${money(Math.abs(overview.portfolio.changeUsd), 2)}`
           }
-          changeType={n(overview.portfolio?.changeUsd ?? undefined) >= 0 ? 'positive' : 'negative'}
+          changeType={overview.portfolio?.changeUsd == null ? 'neutral' : overview.portfolio.changeUsd >= 0 ? 'positive' : 'negative'}
           sparklineData={undefined}
           subtitle={activeWallet ? 'Net value after fees & slippage' : 'Connect a wallet'}
         />
@@ -285,7 +308,7 @@ export function DashboardView() {
             padding="sm"
             title={
               <span className="flex items-center gap-2 text-sky-400 font-bold text-xs sm:text-sm">
-                <Compass className="h-4 w-4" /> Market Overview Tokens
+                <Compass className="h-4 w-4" /> Market tokens
                 {/* States the actual delivery mode. "Live" only appears when a
                     socket is genuinely open — otherwise the panel says it is
                     polling, rather than implying a stream that isn't there. */}
@@ -327,7 +350,8 @@ export function DashboardView() {
                 variant="segmented"
                 size="sm"
                 tabs={[
-                  { id: 'trending', label: 'Trending Tokens', count: trendingCards.length },
+                  { id: 'trending', label: 'Trending', count: trendingCards.length },
+                  { id: 'hot', label: 'Hot', count: hotCards.length },
                   { id: 'top', label: 'Top Tokens', count: topCards.length },
                   { id: 'watchlist', label: 'Watchlist', count: watchlistCards.length },
                 ]}
@@ -335,7 +359,7 @@ export function DashboardView() {
             }
           >
             {isLoading ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="overview-token-grid">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div
                     key={i}
@@ -349,11 +373,11 @@ export function DashboardView() {
                  push the activity stream and rankings below the fold. The
                  container keeps the panel a fixed size and the whole list
                  reachable. */
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-h-[26rem] overflow-y-auto pr-1">
+              <div className="overview-token-grid max-h-[26rem] overflow-y-auto pr-1">
                 {activeCards.length === 0 && (
                   <p className="col-span-full text-2xs text-slate-500 py-8 text-center">
-                    {overview.errors.trending || overview.errors.topTokens
-                      ? (overview.errors.trending ?? overview.errors.topTokens)
+                    {overview.errors.trending || overview.errors.hotTokens || overview.errors.topTokens
+                      ? (overview.errors.trending ?? overview.errors.hotTokens ?? overview.errors.topTokens)
                       : marketTab === 'watchlist'
                         ? 'Nothing on your watchlist yet.'
                         : 'No tokens returned.'}
@@ -389,30 +413,17 @@ export function DashboardView() {
             padding="sm"
             title={
               <span className="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
-                <BarChart2 className="h-4 w-4 text-sky-400" /> Solana Market Activity & Execution Stream
+                <BarChart2 className="h-4 w-4 text-sky-400" /> Market activity
               </span>
             }
           >
             <div className="h-56 w-full bg-sentinel-950/90 rounded-xl border border-sentinel-800 p-3.5 terminal-grid-bg relative flex flex-col justify-between">
               <div className="flex justify-between items-center text-xs font-mono">
                 <span className="text-slate-400">Pair: <strong className="text-white">SOL / USDC (Mainnet)</strong></span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-status-pulse shadow-[0_0_8px_rgba(0,229,153,0.8)]" /> Live Stream
-                </span>
               </div>
 
-              {/* Simulated Chart Bars */}
-              <div className="h-32 w-full flex items-end justify-between px-1 gap-1 opacity-90">
-                {[30, 45, 60, 40, 75, 90, 65, 85, 95, 110, 100, 120, 115, 130, 125, 140].map((val, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full">
-                    <div
-                      style={{ height: `${val * 0.65}%` }}
-                      className={`w-full rounded-t-[1px] transition-all ${
-                        idx % 3 === 0 ? 'bg-rose-500/80 shadow-[0_0_6px_rgba(255,59,105,0.3)]' : 'bg-emerald-500/80 shadow-[0_0_6px_rgba(0,229,153,0.3)]'
-                      }`}
-                    />
-                  </div>
-                ))}
+              <div className="h-32 flex items-center justify-center text-xs text-slate-400">
+                Activity chart unavailable
               </div>
 
               {/* TPS and block time have no endpoint in this codebase — they
@@ -436,7 +447,7 @@ export function DashboardView() {
             padding="sm"
             title={
               <span className="flex items-center gap-2 text-sky-400 font-bold text-xs sm:text-sm">
-                <Sparkles className="h-4 w-4" /> Top Token Intelligence Rankings
+                <Sparkles className="h-4 w-4" /> Token rankings
               </span>
             }
           >
@@ -489,7 +500,7 @@ export function DashboardView() {
             padding="sm"
             title={
               <span className="flex items-center gap-2 text-emerald-400 font-bold text-xs sm:text-sm">
-                <PieChart className="h-4 w-4" /> Portfolio Allocation Preview
+                <PieChart className="h-4 w-4" /> Portfolio allocation
               </span>
             }
             headerActions={

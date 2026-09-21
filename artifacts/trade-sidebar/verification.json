@@ -1,0 +1,46 @@
+{
+  "measurements": [
+    {
+      "width": 1440,
+      "viewport": 1440,
+      "rail": {
+        "x": 1104,
+        "y": 288.796875,
+        "width": 320,
+        "height": 1017
+      }
+    },
+    {
+      "width": 1280,
+      "viewport": 1280,
+      "rail": {
+        "x": 944,
+        "y": 288.796875,
+        "width": 320,
+        "height": 1017
+      }
+    },
+    {
+      "width": 768,
+      "viewport": 768,
+      "rail": {
+        "x": 16,
+        "y": 724.796875,
+        "width": 736,
+        "height": 1017
+      }
+    },
+    {
+      "width": 390,
+      "viewport": 390,
+      "rail": {
+        "x": 12,
+        "y": 894.796875,
+        "width": 366,
+        "height": 1217
+      }
+    }
+  ],
+  "errors": [],
+  "submissions": []
+}

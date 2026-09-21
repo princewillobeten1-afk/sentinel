@@ -111,7 +111,7 @@ export function AdvancedFilterDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true" aria-label="Advanced Discovery Filters" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }}>
       {/* Backdrop */}
       <div
         onClick={onClose}
@@ -128,6 +128,8 @@ export function AdvancedFilterDrawer({
           </div>
           <button
             onClick={onClose}
+            autoFocus
+            aria-label="Close discovery filters"
             className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
@@ -255,6 +257,42 @@ export function AdvancedFilterDrawer({
                   value={localFilters.devHoldingsMax ?? ''}
                   onChange={(e) => handleChange('devHoldingsMax', parseFloat(e.target.value))}
                   placeholder="e.g. 5"
+                  className="w-full h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-2xs text-slate-500 block">Max Snipers (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={localFilters.snipersMax ?? ''}
+                  onChange={(e) => handleChange('snipersMax', parseFloat(e.target.value))}
+                  placeholder="e.g. 10"
+                  className="w-full h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-2xs text-slate-500 block">Max Insiders (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={localFilters.insidersMax ?? ''}
+                  onChange={(e) => handleChange('insidersMax', parseFloat(e.target.value))}
+                  placeholder="e.g. 10"
+                  className="w-full h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-2xs text-slate-500 block">Max Bundlers (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={localFilters.bundlersMax ?? ''}
+                  onChange={(e) => handleChange('bundlersMax', parseFloat(e.target.value))}
+                  placeholder="e.g. 10"
                   className="w-full h-7 px-2 rounded bg-slate-900 border border-slate-800 text-slate-100 text-xs"
                 />
               </div>

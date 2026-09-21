@@ -7,26 +7,46 @@ import { signalProcessor } from '@/lib/discovery/signal-processor';
 import { BirdeyeClient } from './birdeye-client';
 import { HeliusClient } from './helius-client';
 import { liveMarketCache } from './live-cache';
-import { persistMarketEventFireAndForget } from './persistence';
-import { resolveTrackedMints, resolveTrackedProgramIds } from './subscription-set';
+import { resolveTrackedMints } from './subscription-set';
 import { realtimeProcessor } from '@/lib/server/events/processor';
 import { getEnricherStats, type EnricherStats } from './transaction-enricher';
+import { getLiveClientCount, getWatchedMints, onWatchedMintsChange } from './stream-demand';
 import type { ConnectionHealth } from './types';
+import { auditStats, setAuditTargets } from '@/lib/market/enrichment/audit-worker';
+import { securityStats, setSecurityTargets } from '@/lib/market/enrichment/security-worker';
+import { hydrateTokenCards, startTokenCardFanout, tokenCardCacheStats } from './card-cache';
+import { dexMarketStats, queueDexMarketReconciliation } from '@/lib/discovery/dexscreener-market';
+import { birdeyeLimiterStats } from '@/lib/market/enrichment/birdeye-limiter';
+import { tokenCardPersistenceHealth } from '@/lib/server/db/token-card-evidence-repository';
+
+/**
+ * How long watched-mint changes are gathered before Helius is told.
+ *
+ * Clients reconcile their topics in bursts — a Discover refresh unsubscribes
+ * the rows that left and subscribes the ones that arrived, across several
+ * messages. Batching those into one reconcile keeps a churning column from
+ * becoming a churn of upstream subscribes.
+ */
+const DEMAND_DEBOUNCE_MS = 750;
 
 export interface StreamManagerHealth {
   birdeye: ConnectionHealth;
   helius: ConnectionHealth;
   trackedMintCount: number;
-  trackedProgramCount: number;
   recentEventCount: number;
   startedAt: string | null;
   /**
-   * Mint the stream is currently focused on, or null when sweeping.
-   *
-   * Reported so it is never ambiguous which mode is running — a paused
-   * market-wide capture should be visible, not inferred from a quiet feed.
+   * Mint a token page has asked the stream to guarantee, or null.
    */
   focusedMint: string | null;
+  /** Connected live-stream clients. */
+  liveClientCount: number;
+  /** Mints connected clients are watching — what the Helius stream subscribes to. */
+  watchedMintCount: number;
+  /** Per-mint Helius subscriptions actually held, after the subscription cap. */
+  subscribedMintCount: number;
+  /** Whether the pump.fun migration watch is live. */
+  migrationWatch: boolean;
   /**
    * Parsed-transaction enrichment counters.
    *
@@ -37,12 +57,18 @@ export interface StreamManagerHealth {
    * but skipped because no subject token could be derived.
    */
   enricher: EnricherStats;
+  cardCache: ReturnType<typeof tokenCardCacheStats>;
+  security: ReturnType<typeof securityStats>;
+  dexScreener: ReturnType<typeof dexMarketStats>;
+  ownershipAudit: ReturnType<typeof auditStats>;
+  birdeyeRestLimiter: ReturnType<typeof birdeyeLimiterStats>;
+  evidencePersistence: ReturnType<typeof tokenCardPersistenceHealth>;
 }
 
 /**
  * Orchestrates the Birdeye and Helius WebSocket clients, wiring both into the
- * existing `MarketEventPipeline` → live cache → `SignalProcessor` →
- * `market_events` persistence path, and onward to the realtime fast path.
+ * existing `MarketEventPipeline` → live cache → `SignalProcessor`, and onward
+ * to the realtime fast path, which persists trades to `realtime_trades`.
  *
  * A third client, `HeliusLaserstreamClient`, was removed rather than kept: it
  * performed a single `fetch` to a `/health` URL, set `isConnected = true`
@@ -57,6 +83,9 @@ class StreamManager {
   private helius: HeliusClient | null = null;
   private started = false;
   private startedAt: string | null = null;
+  private demandTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private unsubscribeDemand: (() => void) | null = null;
 
   start(): void {
     if (this.started) return;
@@ -82,14 +111,10 @@ class StreamManager {
 
     this.started = true;
     this.startedAt = new Date().toISOString();
+    startTokenCardFanout();
 
     const mints = resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS);
-    const programIds = resolveTrackedProgramIds(env.MARKET_STREAM_PROGRAM_IDS);
-
-    logger.info('[market-live] starting stream manager', {
-      mintCount: mints.length,
-      programCount: Object.keys(programIds).length,
-    });
+    logger.info('[market-live] starting stream manager', { mintCount: mints.length });
 
     // 1. Birdeye Stream
     try {
@@ -106,10 +131,10 @@ class StreamManager {
     }
 
 
-    // 2. Helius WebSocket stream (logsSubscribe) — the real ingestion path.
+    // 2. Helius WebSocket stream (logsSubscribe) — the real ingestion path,
+    //    scoped to the migration authority plus whatever clients are watching.
     try {
       this.helius = new HeliusClient({
-        programIds,
         onRawEvent: (event) => this.handleRawEvent(event),
         onDegraded: (reason) => marketEventPipeline.triggerFailover(`Helius WS: ${reason}`),
       });
@@ -119,9 +144,62 @@ class StreamManager {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+
+    this.trackDemand();
+  }
+
+  /**
+   * Keeps the Helius subscriptions matched to what clients are watching.
+   *
+   * The stream used to sweep three whole DEX programs from boot, forever,
+   * whether or not anyone was connected — 36.7 MB/min, nearly all discarded.
+   * It now subscribes to the mints in `stream-demand`'s ledger and nothing
+   * else (plus the migration watch, which the client holds on its own). With
+   * no clients that ledger is empty, so an idle server pays ~0.01 MB/min.
+   */
+  private trackDemand(): void {
+    const apply = () => {
+      this.demandTimer = null;
+      const visibleMints = getWatchedMints();
+      void hydrateTokenCards(visibleMints);
+      this.helius?.setWatchedMints(visibleMints);
+      this.birdeye?.setMints(visibleMints);
+      // The same set the browser has explicitly subscribed to drives the
+      // expensive ownership queue. No separate firehose or guessed "popular"
+      // list can steal its quota from what the user is looking at.
+      setAuditTargets('visible', visibleMints);
+      setSecurityTargets(visibleMints);
+    };
+
+    this.unsubscribeDemand?.();
+    this.unsubscribeDemand = onWatchedMintsChange(() => {
+      if (this.demandTimer) return;
+      this.demandTimer = setTimeout(apply, DEMAND_DEBOUNCE_MS);
+      this.demandTimer.unref?.();
+    });
+    apply();
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    // Refresh eligibility changes with time even when visibility does not.
+    // Workers enforce their own TTLs and quota pauses; do not resubscribe the
+    // upstream sockets every time we check for due enrichment.
+    this.refreshTimer = setInterval(() => {
+      const visibleMints = getWatchedMints();
+      setAuditTargets('visible', visibleMints);
+      setSecurityTargets(visibleMints);
+      queueDexMarketReconciliation(visibleMints);
+    }, 15_000);
+    this.refreshTimer.unref?.();
   }
 
   stop(): void {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    this.refreshTimer = null;
+    this.unsubscribeDemand?.();
+    this.unsubscribeDemand = null;
+    if (this.demandTimer) {
+      clearTimeout(this.demandTimer);
+      this.demandTimer = null;
+    }
     this.birdeye?.stop();
     this.helius?.stop();
     this.started = false;
@@ -130,10 +208,9 @@ class StreamManager {
   /**
    * Aim the enrichment budget at one token, for as long as its page is open.
    *
-   * The call budget cannot cover both a full DEX sweep and one token's tape,
-   * so focusing swaps the broad subscriptions for a single `mentions:[mint]`
-   * one. The trade-off is explicit and reported by `getHealth()`: while
-   * focused, market-wide capture is paused.
+   * Every subscription is already scoped to a mint, so focusing no longer
+   * pauses anything: it guarantees the page's token a subscription even
+   * before a socket holds a topic for it.
    */
   focusMint(mint: string): void {
     this.helius?.focusMint(mint);
@@ -148,11 +225,20 @@ class StreamManager {
       birdeye: this.birdeye?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
       helius: this.helius?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
       trackedMintCount: resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS).length,
-      trackedProgramCount: Object.keys(resolveTrackedProgramIds(env.MARKET_STREAM_PROGRAM_IDS)).length,
       recentEventCount: liveMarketCache.getRecentEvents(Number.MAX_SAFE_INTEGER).length,
       startedAt: this.startedAt,
       focusedMint: this.helius?.getFocusedMint() ?? null,
+      liveClientCount: getLiveClientCount(),
+      watchedMintCount: getWatchedMints().length,
+      subscribedMintCount: this.helius?.getSubscriptionCounts().mints ?? 0,
+      migrationWatch: this.helius?.getSubscriptionCounts().migrations ?? false,
       enricher: getEnricherStats(),
+      cardCache: tokenCardCacheStats(),
+      security: securityStats(),
+      dexScreener: dexMarketStats(),
+      ownershipAudit: auditStats(),
+      birdeyeRestLimiter: birdeyeLimiterStats(),
+      evidencePersistence: tokenCardPersistenceHealth(),
     };
   }
 
@@ -162,18 +248,26 @@ class StreamManager {
 
     liveMarketCache.update(normalized);
     signalProcessor.ingestEvent(normalized);
-    persistMarketEventFireAndForget(raw, normalized);
+    // The `market_events` write used to sit here. It was removed rather than
+    // repaired: it wrote through a mock client whose `query` always resolved
+    // `{rows: []}`, into a `market_events` table that exists in `db/schema.sql`
+    // but in no migration — so the table was never created — and **nothing in
+    // the codebase reads it**. Every row it would have written carried
+    // `token_id: NULL`, at the full event rate, with no join key.
+    //
+    // Trades persist durably through `realtime-repository.saveTrade` into
+    // `realtime_trades`, which is the path the app actually queries.
 
     // Forward to Real-Time Event Pipeline (Fast Path + Async Path)
     void realtimeProcessor.processDecodedEvent({
-      // A swap carries its measured direction when the enricher could read it
-      // off the token-balance deltas; only fall back to BUY when it could not.
-      // Mapping every swap to BUY unconditionally is why `realtime_trades`
-      // held no sells at all.
+      // A directionless provider swap is a market update, not a buy. Only the
+      // Helius balance-delta decoder is allowed to publish BUY/SELL.
       type: (raw.eventType === 'SWAP'
         ? raw.side === 'SELL'
           ? 'SELL'
-          : 'BUY'
+          : raw.side === 'BUY'
+            ? 'BUY'
+            : 'TOKEN_UPDATE'
         : raw.eventType === 'LIQUIDITY_ADD'
           ? 'LIQUIDITY_ADDED'
           : 'TOKEN_UPDATE') as any,
@@ -186,7 +280,9 @@ class StreamManager {
       mint: raw.mint,
       // Persisted by realtimeRepository.saveTrade, which already accepts it.
       wallet: raw.wallet,
-      amount: raw.volumeUsd ? Number(raw.volumeUsd) : undefined,
+      amount: raw.tokenAmount,
+      amountSol: raw.amountSol,
+      amountUsd: raw.volumeUsd ? Number(raw.volumeUsd) : undefined,
       price: raw.priceUsd ? Number(raw.priceUsd) : undefined,
       chainTimestamp: raw.timestamp ? new Date(raw.timestamp).getTime() : Date.now(),
     });

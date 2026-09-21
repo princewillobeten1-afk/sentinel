@@ -44,15 +44,14 @@ export function MetricTile({
   return (
     <div
       className={clsx(
-        'rounded-xl border border-white/[0.08] bg-sentinel-900/80 backdrop-blur-xl p-3.5 sm:p-4 shadow-card hover:shadow-card-lift transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-500/35 relative overflow-hidden group',
+        'min-w-0 rounded-lg border border-sentinel-700/60 bg-sentinel-900 p-4 relative overflow-hidden group',
         className
       )}
     >
-      <div className="absolute inset-0 bg-gradient-glass opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none" />
       <div className="relative z-10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           {Icon && <Icon className="h-3.5 w-3.5 text-sky-400 shrink-0" />}
-          <span className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">{title}</span>
+          <span className="text-xs text-slate-400 font-medium">{title}</span>
           {tooltipText && (
             <span className="text-slate-500 hover:text-slate-300 cursor-help" title={tooltipText}>
               <Info className="h-3 w-3" />
@@ -61,6 +60,9 @@ export function MetricTile({
         </div>
         {adjustedValue && (
           <button
+            type="button"
+            aria-pressed={showAdjusted}
+            aria-label={`Show adjusted ${title}`}
             onClick={() => setShowAdjusted(!showAdjusted)}
             className={clsx(
               'px-1.5 py-0.5 rounded text-2xs font-mono transition-colors border',
@@ -80,7 +82,7 @@ export function MetricTile({
       </div>
 
       <div className="mt-2 flex items-baseline justify-between gap-2">
-        <div className="flex items-baseline gap-2">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2">
           <span className="text-xl sm:text-2xl font-bold font-numeric text-white tracking-tight">{displayValue}</span>
           {change && (
             <span

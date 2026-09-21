@@ -82,10 +82,10 @@ export function SettingsView() {
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sentinel-800 pb-4">
+      <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sentinel-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2.5">
-            <Settings className="h-6 w-6 text-sky-400" /> Account Preferences & Wallet Settings
+            <Settings className="h-6 w-6 text-sky-400" /> Settings
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Configure Web3 wallet identity, trading defaults, risk rules, and user preferences.
@@ -100,7 +100,7 @@ export function SettingsView() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-2 border-b border-sentinel-800 pb-2 overflow-x-auto no-scrollbar font-mono text-xs">
+      <div data-ui="tabs" className="flex items-center gap-2 border-b border-sentinel-800 pb-2 overflow-x-auto text-xs">
         <button
           onClick={() => setActiveTab('wallets')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition ${

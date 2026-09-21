@@ -21,8 +21,8 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <div className={clsx('flex flex-col items-center justify-center p-8 text-center border border-dashed border-sentinel-700/80 rounded-xl bg-sentinel-900/40 select-none', className)}>
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sentinel-800 text-sky-400 mb-3">
+    <div className={clsx('flex flex-col items-center justify-center px-5 py-10 text-center border border-sentinel-800 rounded-lg bg-sentinel-900/40', className)}>
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sentinel-850 text-slate-400 mb-3">
         <Icon className="h-6 w-6" />
       </div>
       <h3 className="text-sm font-semibold text-slate-100">{title}</h3>

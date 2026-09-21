@@ -8,9 +8,13 @@ import { LimitOrder, ConditionEvaluationReport } from '@/lib/limit-order/types';
 
 interface OpenOrdersDashboardProps {
   currentPrice: number;
+  /** The mint this tab is scoped to -- only its orders are shown here. */
+  mint: string;
+  /** Null when no wallet is connected. */
+  walletAddress: string | null;
 }
 
-export function OpenOrdersDashboard({ currentPrice }: OpenOrdersDashboardProps) {
+export function OpenOrdersDashboard({ currentPrice, mint, walletAddress }: OpenOrdersDashboardProps) {
   const [orders, setOrders] = useState<LimitOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDiagnosticOrderId, setSelectedDiagnosticOrderId] = useState<string | null>(null);
@@ -18,9 +22,21 @@ export function OpenOrdersDashboard({ currentPrice }: OpenOrdersDashboardProps) 
   const [isEvaluating, setIsEvaluating] = useState(false);
 
   const fetchOrders = async () => {
+    // Every order used to be filed under one shared identity ('user_default'),
+    // so any visitor could see and cancel any other visitor's orders. Orders
+    // are now scoped to the connected wallet; with none connected there is no
+    // identity to fetch by, and that is the honest empty state -- not a fetch
+    // against a made-up shared account.
+    if (!walletAddress) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/v1/limit-orders?currentPrice=${currentPrice}`);
+      const res = await fetch(
+        `/api/v1/limit-orders?currentPrice=${currentPrice}&walletAddress=${encodeURIComponent(walletAddress)}&mint=${encodeURIComponent(mint)}`,
+      );
       const data = await res.json();
       if (data.success) {
         setOrders(data.orders);
@@ -35,13 +51,15 @@ export function OpenOrdersDashboard({ currentPrice }: OpenOrdersDashboardProps) 
   useEffect(() => {
     fetchOrders();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPrice]);
+  }, [currentPrice, mint, walletAddress]);
 
   const handleCancelOrder = async (orderId: string) => {
+    if (!walletAddress) return;
     try {
-      const res = await fetch(`/api/v1/limit-orders/${orderId}`, {
-        method: 'DELETE'
-      });
+      const res = await fetch(
+        `/api/v1/limit-orders/${orderId}?walletAddress=${encodeURIComponent(walletAddress)}`,
+        { method: 'DELETE' },
+      );
       const data = await res.json();
       if (data.success) {
         fetchOrders();
@@ -52,10 +70,13 @@ export function OpenOrdersDashboard({ currentPrice }: OpenOrdersDashboardProps) 
   };
 
   const handleRunDiagnostics = async (orderId: string) => {
+    if (!walletAddress) return;
     setSelectedDiagnosticOrderId(orderId);
     setIsEvaluating(true);
     try {
-      const res = await fetch(`/api/v1/limit-orders/${orderId}/conditions?currentPrice=${currentPrice}`);
+      const res = await fetch(
+        `/api/v1/limit-orders/${orderId}/conditions?currentPrice=${currentPrice}&walletAddress=${encodeURIComponent(walletAddress)}`,
+      );
       const data = await res.json();
       if (data.success) {
         setDiagnosticReport(data.report);
@@ -83,13 +104,17 @@ export function OpenOrdersDashboard({ currentPrice }: OpenOrdersDashboardProps) 
       </div>
 
       {/* Orders Table */}
-      {isLoading ? (
+      {!walletAddress ? (
+        <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-sentinel-750 rounded-xl font-mono">
+          Connect a wallet to see your limit orders on this token.
+        </div>
+      ) : isLoading ? (
         <div className="py-8 text-center text-xs text-slate-400 font-mono animate-pulse">
           Loading active limit orders...
         </div>
       ) : orders.length === 0 ? (
         <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-sentinel-750 rounded-xl font-mono">
-          No open limit orders. Click &quot;LIMIT&quot; in the terminal execution panel to create one.
+          No open limit orders on this token. Click &quot;LIMIT&quot; in the terminal execution panel to create one.
         </div>
       ) : (
         <div className="overflow-x-auto">

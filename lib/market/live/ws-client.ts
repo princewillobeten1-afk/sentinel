@@ -6,7 +6,11 @@ import type { ConnectionHealth, ConnectionState } from './types';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 10_000;
-/** No message of any kind (not just pong) within this window ⇒ treat as a silently dead connection. */
+/**
+ * No frame of any kind — data or pong — within this window ⇒ treat as a dead
+ * connection. Pongs count, so a subscription that is quiet because nothing is
+ * trading is not mistaken for one that has died.
+ */
 const SILENT_CONNECTION_TIMEOUT_MS = 60_000;
 const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -24,6 +28,13 @@ export interface ReconnectingWebSocketClientOptions {
   onClose?: (code: number, reason: string) => void;
   /** Called once consecutive failed connection attempts crosses the degraded threshold. */
   onDegraded?: (reason: string) => void;
+}
+
+/** Payload size of one inbound frame, whichever shape `ws` delivered it in. */
+function rawDataLength(data: WebSocketImpl.RawData): number {
+  if (Array.isArray(data)) return data.reduce((sum, chunk) => sum + chunk.length, 0);
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  return data.length;
 }
 
 /**
@@ -47,6 +58,9 @@ export class ReconnectingWebSocketClient {
   private socket: WebSocketImpl | null = null;
   private state: ConnectionState = 'closed';
   private lastMessageAt: number | null = null;
+  /** Inbound payload bytes across every socket this client has opened. */
+  private bytesReceived = 0;
+  private readonly countingSince = Date.now();
   private reconnectAttempts = 0;
   private consecutiveFailures = 0;
   private intentionalClose = false;
@@ -80,10 +94,14 @@ export class ReconnectingWebSocketClient {
   }
 
   getHealth(): ConnectionHealth {
+    const minutes = Math.max((Date.now() - this.countingSince) / 60_000, 1 / 60);
     return {
       state: this.state,
       lastMessageAt: this.lastMessageAt ? new Date(this.lastMessageAt).toISOString() : null,
       consecutiveFailures: this.consecutiveFailures,
+      bytesReceived: this.bytesReceived,
+      countingSince: new Date(this.countingSince).toISOString(),
+      mbPerMinute: Number((this.bytesReceived / 1024 / 1024 / minutes).toFixed(3)),
     };
   }
 
@@ -99,7 +117,16 @@ export class ReconnectingWebSocketClient {
 
     socket.on('open', () => this.handleOpen());
     socket.on('message', (data) => this.handleMessage(data));
-    socket.on('pong', () => this.clearPongTimeout());
+    socket.on('pong', () => {
+      this.clearPongTimeout();
+      // A pong is proof of life too. Without this, a healthy but quiet socket
+      // tripped the silent-connection watchdog: once subscriptions were scoped
+      // to watched mints, a minute without trades on those tokens is ordinary,
+      // and Helius was torn down and re-subscribed for it ("no messages for
+      // 68952ms"). Birdeye, watching one quiet mint, looped the same way every
+      // ~90s.
+      this.lastMessageAt = Date.now();
+    });
     socket.on('close', (code, reasonBuf) => this.handleClose(code, reasonBuf.toString()));
     socket.on('error', (err) => {
       logger.warn(`[${this.options.name}] WebSocket error`, { message: err.message });
@@ -120,6 +147,13 @@ export class ReconnectingWebSocketClient {
 
   private handleMessage(data: WebSocketImpl.RawData): void {
     this.lastMessageAt = Date.now();
+    this.bytesReceived += rawDataLength(data);
+    // Any inbound frame proves the connection is alive, so it answers the
+    // outstanding ping as well as a pong would. Without this a busy socket was
+    // killed for being busy: under the program sweep (~460 frames/s) the pong
+    // queued behind data frames past the 10s timeout, and Helius was torn down
+    // and re-subscribed 30 times in 13 minutes while delivering continuously.
+    this.clearPongTimeout();
     try {
       this.options.onMessage(data.toString());
     } catch (err) {

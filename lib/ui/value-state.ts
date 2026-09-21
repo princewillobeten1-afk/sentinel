@@ -21,6 +21,7 @@
 export type ValueState<T = number> =
   | { kind: 'value'; value: T }
   | { kind: 'zero' }
+  | { kind: 'stale'; value: T }
   | { kind: 'pending' }
   | { kind: 'unavailable'; reason?: string };
 
@@ -33,12 +34,13 @@ export type ValueState<T = number> =
  */
 export function toValueState(
   value: number | null | undefined,
-  options: { isPending?: boolean; reason?: string } = {},
+  options: { isPending?: boolean; isStale?: boolean; reason?: string } = {},
 ): ValueState<number> {
   if (options.isPending) return { kind: 'pending' };
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return { kind: 'unavailable', reason: options.reason };
   }
+  if (options.isStale) return { kind: 'stale', value };
   return value === 0 ? { kind: 'zero' } : { kind: 'value', value };
 }
 
@@ -60,6 +62,8 @@ export function sortValue(state: ValueState<number>): number {
       return state.value;
     case 'zero':
       return 0;
+    case 'stale':
+      return state.value;
     default:
       return Number.NEGATIVE_INFINITY;
   }
@@ -72,6 +76,8 @@ export function describeState(state: ValueState<number>, label: string): string 
       return `${label}: measured`;
     case 'zero':
       return `${label}: measured, and it is zero`;
+    case 'stale':
+      return `${label}: last measured value is stale`;
     case 'pending':
       return `${label} is still being computed`;
     case 'unavailable':

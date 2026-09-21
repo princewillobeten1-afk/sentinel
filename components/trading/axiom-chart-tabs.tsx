@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ShieldCheck,
   TrendingUp,
@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { AuditPills } from '@/components/ui/audit-pills';
 import { OpenOrdersDashboard } from '@/components/limit-orders/open-orders-dashboard';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
@@ -76,6 +77,10 @@ export interface TradeTransaction {
    */
   txHash: string | null;
   isWhale?: boolean;
+  /** ISO time of the trade, so the Age column keeps counting. */
+  timestamp?: string;
+  /** Unshortened maker address, for copy. */
+  fullWallet?: string;
 }
 
 export interface DevActivityEvent {
@@ -126,15 +131,20 @@ export interface LiquidityProvider {
 export interface MapClusterNode {
   id: string;
   label: string;
-  tag: 'dex' | 'dev' | 'whale' | 'insider' | 'sniper' | 'retail';
+  // `/bubble-map` only ever distinguishes a pool account from any other
+  // holder -- see the legend fix above. `dev`/`whale`/`insider`/`sniper`
+  // were never actually assigned by the backend.
+  tag: 'dex' | 'holder';
   address: string;
   balanceTokens: string;
-  supplyPct: number;
-  valueUsd: string;
+  supplyPct: number | null;
+  /** Always null: this endpoint reads balances, not prices. */
+  valueUsd: string | null;
   x: number;
   y: number;
   r: number;
-  fundingSource: string;
+  /** Always null: funding relationships between wallets are not mapped. */
+  fundingSource: string | null;
   color: string;
   borderColor: string;
 }
@@ -145,6 +155,110 @@ export interface AxiomChartTabsProps {
   tokenMint?: string;
   onOpenLimitBuilder?: () => void;
   onQuickTrade?: (type: 'buy' | 'sell', solAmount: number) => void;
+}
+
+/** Seconds, minutes, hours or days since `iso` — the tape's Age column. */
+function tapeAge(iso: string | undefined): string {
+  if (!iso) return '—';
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (!Number.isFinite(s)) return '—';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+function tapeCompact(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  if (a >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  // A fraction of a high-priced token is still a real position: 0.004 ORE was
+  // rounding to `0` next to its own $0.34 value.
+  if (a === 0) return '0';
+  if (a >= 0.0001) return n.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+  return n > 0 ? '<0.0001' : '>-0.0001';
+}
+
+function tapePrice(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return n >= 1 ? `$${n.toFixed(4)}` : `$${n.toPrecision(4)}`;
+}
+
+/**
+ * USD, with enough precision to stay true at dust size.
+ *
+ * Two decimals turned a real $0.0000017 trade into `$0`, which reads as
+ * missing data rather than as the dust it is.
+ */
+function tapeUsd(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a === 0) return '$0';
+  if (a >= 1) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (a >= 0.01) return `$${n.toFixed(4)}`;
+  if (a >= 0.000001) return `$${n.toFixed(8).replace(/0+$/, '')}`;
+  return n > 0 ? '<$0.000001' : '>-$0.000001';
+}
+
+/** SOL, same principle: a 0.000000017 SOL leg is not `0.0000`. */
+function tapeSol(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  const a = Math.abs(n);
+  if (a === 0) return '0';
+  if (a >= 1) return n.toFixed(2);
+  if (a >= 0.0001) return n.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+  return n > 0 ? '<0.0001' : '>-0.0001';
+}
+
+/**
+ * One tape row from a `/live-trades` trade or a `token.trade` push.
+ *
+ * Every field is what the source measured or a dash. The push handler this
+ * replaced filled the gaps: SOL from USD at a hardcoded $150, `0.5` SOL when
+ * nothing was known, `'1,000'` tokens, and a maker named `'anon...4kL2'`.
+ */
+function tapeRow(t: {
+  signature: string;
+  side?: string;
+  wallet?: string | null;
+  amountUsd?: number | string | null;
+  amountSol?: number | string | null;
+  amountTokens?: number | string | null;
+  priceUsd?: number | string | null;
+  timestamp?: string;
+}): TradeTransaction {
+  const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const sol = num(t.amountSol);
+  const usd = num(t.amountUsd);
+  const tokens = num(t.amountTokens);
+  const price = num(t.priceUsd);
+  const side = String(t.side ?? '').toUpperCase();
+  // Jupiter omits a price on trades its own price feed will not vouch for,
+  // which left most rows showing a dash. USD over tokens is not a guess at the
+  // market price — it is what this trade executed at, from two measured legs.
+  const executed = price !== null && price > 0
+    ? price
+    : usd !== null && tokens !== null && usd > 0 && tokens > 0
+      ? usd / tokens
+      : null;
+  return {
+    id: t.signature,
+    type: side === 'SELL' ? 'sell' : 'buy',
+    amountSol: sol === null ? '—' : tapeSol(sol),
+    tokens: tokens === null ? '—' : tapeCompact(tokens),
+    price: executed === null ? '—' : tapePrice(executed),
+    valueUsd: tapeUsd(usd),
+    time: tapeAge(t.timestamp),
+    timestamp: t.timestamp,
+    wallet: t.wallet ? `${t.wallet.slice(0, 4)}...${t.wallet.slice(-4)}` : '—',
+    fullWallet: t.wallet ?? undefined,
+    txHash: t.signature,
+    // The filter is labelled ">5 SOL"; it was testing $5,000.
+    isWhale: sol !== null && sol >= 5,
+  };
 }
 
 export function AxiomChartTabs({
@@ -174,33 +288,83 @@ export function AxiomChartTabs({
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const [totalLiquidityDisplay, setTotalLiquidityDisplay] = useState('$561K');
-  const [holdersDisplay, setHoldersDisplay] = useState('1.4K');
+  /**
+   * Total liquidity for the tab badge.
+   *
+   * Seeded '$561K' for every token, then overwritten with the endpoint's raw
+   * number — which rendered as "Liquidity (795318.3507655672)". Starts unknown
+   * and is formatted on arrival.
+   */
+  const [totalLiquidityDisplay, setTotalLiquidityDisplay] = useState<string | null>(null);
+  /**
+   * Holder count for the tab badge.
+   *
+   * Seeded '1.4K' for every token — the badge read "Holders (1.4K)" whether the
+   * token had a million holders or none, and the label never updated because
+   * `getTokenLargestAccounts` caps at 20 and cannot supply a total.
+   */
+  const [holdersDisplay, setHoldersDisplay] = useState<string | null>(null);
+  /** Real top-10 share for the Holders header, which read a fixed 24.50%. */
+  const [holdersTop10Pct, setHoldersTop10Pct] = useState<number | null>(null);
+  /**
+   * Deployer profile, from `/dev-activity`.
+   *
+   * Seeded previously with a complete fiction: creator `7xK9...3a19`, holding
+   * 0.85% of supply (the source of the "0.85% Dev" badge in the tab strip),
+   * `isVerified: true`, realised profit of +$48,250, and a `dumpRiskRating` of
+   * "LOW" — a risk verdict asserted for every token without anything being
+   * checked.
+   *
+   * Every field is nullable now. Jupiter supplies the creator address and its
+   * mint history; supply share and realised profit need a per-wallet balance
+   * and cost basis nothing computes, so they stay null and render as unknown.
+   */
   const [devProfile, setDevProfile] = useState<{
-    creatorWallet: string;
-    isVerified: boolean;
-    currentHoldingTokens: string;
-    currentHoldingUsd: string;
-    currentHoldingSupplyPct: string;
-    totalDevBoughtSol: string;
-    totalDevSoldSol: string;
-    netRealizedProfitSol: string;
-    netRealizedProfitUsd: string;
-    dumpRiskRating: string;
-    isLpBurned: boolean;
+    creatorWallet: string | null;
+    devMints: number | null;
+    devMigrations: number | null;
+    migrationRatePct: number | null;
+    mintAuthorityDisabled: boolean | null;
+    freezeAuthorityDisabled: boolean | null;
+    currentHoldingSupplyPct: number | null;
   }>({
-    creatorWallet: '7xK9...3a19',
-    isVerified: true,
-    currentHoldingTokens: `8,500,000 $${safeSymbol}`,
-    currentHoldingUsd: '$361,250.00',
-    currentHoldingSupplyPct: '0.85%',
-    totalDevBoughtSol: '45.00 SOL ($6,750.00)',
-    totalDevSoldSol: '366.60 SOL ($55,000.00)',
-    netRealizedProfitSol: '+321.60 SOL',
-    netRealizedProfitUsd: '+$48,250.00',
-    dumpRiskRating: 'LOW (Dev holds <1% supply)',
-    isLpBurned: true,
+    creatorWallet: null,
+    devMints: null,
+    devMigrations: null,
+    migrationRatePct: null,
+    mintAuthorityDisabled: null,
+    freezeAuthorityDisabled: null,
+    currentHoldingSupplyPct: null,
   });
+
+  /**
+   * Token Audit tab, from `/audit`.
+   *
+   * The whole tab used to be four tiles and a security checklist with fixed
+   * values -- a 14/100 risk score, "24.5% Cluster Top 10", "92.4% Authentic",
+   * "0/12 Rugged", mint/freeze authority and LP burn all asserted `true` -- for
+   * every token, and the tab never actually called this endpoint. Every field
+   * here starts unknown and is filled only by what `/audit` measured.
+   */
+  const [auditData, setAuditData] = useState<{
+    mintAuthorityDisabled: boolean | null;
+    freezeAuthorityDisabled: boolean | null;
+    lpTokensBurned: boolean | null;
+    honeypotTaxZero: boolean | null;
+    top10HoldersPct: number | null;
+    devBalancePct: number | null;
+    organicScore: number | null;
+    organicScoreLabel: string | null;
+    devMints: number | null;
+    devMigrations: number | null;
+    migrationRatePct: number | null;
+    snipersPct: number | null;
+    insidersPct: number | null;
+    bundlersPct: number | null;
+    holderTop10Pct: number | null;
+    totalHolders: number | null;
+    holderAuditPending: boolean;
+  } | null>(null);
 
   // Selected Map Node for Bubble Map Inspector
   const [selectedMapNode, setSelectedMapNode] = useState<MapClusterNode | null>(null);
@@ -230,10 +394,12 @@ export function AxiomChartTabs({
   const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch('/api/v1/analytics/market', { credentials: 'include' })
+    // `/analytics/market` never returned a SOL price, so this estimate never
+    // loaded. The live summary serves the same canonical price as the status bar.
+    fetch('/api/v1/market/live/summary', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        const price = j?.data?.marketSummary?.solPriceUsd ?? j?.data?.solPriceUsd;
+        const price = j?.data?.summary?.solPriceUsd;
         if (alive && Number.isFinite(Number(price))) setSolPriceUsd(Number(price));
       })
       .catch(() => {});
@@ -270,6 +436,25 @@ export function AxiomChartTabs({
    * fills is honest, a fictional one is not.
    */
   const [trades, setTrades] = useState<TradeTransaction[]>([]);
+  /** Distinguishes "still loading" and "failed" from a token with no trades. */
+  const [tradesState, setTradesState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [tradesCoverage, setTradesCoverage] = useState<string | null>(null);
+  /**
+   * Ordering guards for the tape.
+   *
+   * `tradesRequestRef` numbers each request and `tradesAppliedRef` records the
+   * newest one whose rows reached the screen, so a slow response is dropped
+   * only when fresher rows are already shown. Discarding it merely because a
+   * newer request had *started* left the tape stuck on "Loading": the poll
+   * fires every 5s and a request can take longer than that, so every response
+   * arrived with a newer one in flight and none was ever applied.
+   *
+   * `tradesInFlightRef` keeps the poll from stacking requests on a slow feed.
+   */
+  const tradesRequestRef = useRef(0);
+  const tradesAppliedRef = useRef(0);
+  const tradesInFlightRef = useRef(false);
+  const [topTradersMeta, setTopTradersMeta] = useState<{ trades: number } | null>(null);
 
   /**
    * Filled by `/dev-activity`, which now returns the deployer's real mint
@@ -293,6 +478,16 @@ export function AxiomChartTabs({
   const [mapClusterNodes, setMapClusterNodes] = useState<MapClusterNode[]>([]);
 
   /**
+   * The Maps tab's stats bar, from the same `/bubble-map` call above.
+   *
+   * The bar over it read "89/100 (Safe)" Decentralization Health, "2 Wallets
+   * (0.85%)" Dev Connected Wallets and "2.94% (4 Wallets)" Sniper Supply for
+   * every token -- none of that is measured anywhere in this platform. Only
+   * top-10 concentration is real; the rest stays null rather than invented.
+   */
+  const [mapTop10ConcentrationPct, setMapTop10ConcentrationPct] = useState<number | null>(null);
+
+  /**
    * Starts empty and is filled by `/liquidity`.
    *
    * These were seeded with two fictional pools — "Raydium CPMM" at address
@@ -303,51 +498,18 @@ export function AxiomChartTabs({
    */
   const [liquidityPools, setLiquidityPools] = useState<LiquidityPoolItem[]>([]);
 
-  const [topLiquidityProviders, setTopLiquidityProviders] = useState<LiquidityProvider[]>([
-    {
-      rank: 1,
-      provider: 'Solana Incinerator (Burn Address)',
-      tag: '🔥 100% LP Burnt',
-      pool: 'Raydium CPMM (SOL/SENT)',
-      lpTokens: '184,200,000 LP',
-      sharePct: '85.2%',
-      valueUsd: '$327,594.00',
-      lockStatus: 'Burned 🔥',
-    },
-    {
-      rank: 2,
-      provider: 'Raydium Protocol Vault',
-      tag: 'AMM Protocol Reserve',
-      pool: 'Raydium CPMM (SOL/SENT)',
-      lpTokens: '18,500,000 LP',
-      sharePct: '8.5%',
-      valueUsd: '$32,682.00',
-      lockStatus: 'Locked 🔒',
-      lockExpiry: 'Permanent Protocol Vault',
-    },
-    {
-      rank: 3,
-      provider: 'Streamflow Lock Vault (Orca)',
-      tag: 'Whale LP Lock',
-      pool: 'Orca Whirlpool (SOL/SENT)',
-      lpTokens: '8,400,000 LP',
-      sharePct: '4.2%',
-      valueUsd: '$16,149.00',
-      lockStatus: 'Locked 🔒',
-      lockExpiry: '342 days remaining',
-    },
-    {
-      rank: 4,
-      provider: 'Community DAO Treasury',
-      tag: 'Ecosystem Liquidity',
-      pool: 'Meteora DLMM (USDC/SENT)',
-      lpTokens: '4,500,000 LP',
-      sharePct: '2.1%',
-      valueUsd: '$8,074.50',
-      lockStatus: 'Locked 🔒',
-      lockExpiry: '168 days remaining',
-    },
-  ]);
+  /**
+   * Top LP providers table.
+   *
+   * Was seeded with four fictional rows for every token: "Solana Incinerator"
+   * holding 85.2% "Burned", a "Raydium Protocol Vault", a "Streamflow Lock
+   * Vault" with "342 days remaining", all denominated in the same nonexistent
+   * $SENT pair the rest of this file has been cleaned of. `/liquidity`
+   * deliberately returns no per-provider breakdown -- enumerating LP holders
+   * needs a query this platform does not perform -- so this starts empty and
+   * the tab says so, rather than falling back to the fiction it used to hold.
+   */
+  const topLiquidityProviders: LiquidityProvider[] = [];
 
   /**
    * Holders and top traders start empty and are filled by their endpoints.
@@ -362,44 +524,165 @@ export function AxiomChartTabs({
   const [topTraders, setTopTraders] = useState<any[]>([]);
 
   // Dev Tokens History
+  /**
+   * Deployer's launch history.
+   *
+   * Was a hardcoded object: creator `7xK9...3a19`, "98/100 (Tier 1 Verified)",
+   * and four invented launches led by `$SENT "Solana Sentinel"` — rendered on
+   * every token page including Wrapped SOL.
+   *
+   * `/dev-activity` returns the real creator plus `devMints` and
+   * `devMigrations`. A per-launch timeline needs a signature-history walk that
+   * nothing performs, so `recentLaunches` stays empty and the panel says so
+   * rather than listing tokens that do not exist.
+   */
   const devHistory = {
-    creator: '7xK9...3a19',
-    totalCreated: 100,
-    ruggedCount: 0,
-    avgPeakMarketCap: '$1.85M',
-    trustScore: '98/100 (Tier 1 Verified)',
-    recentLaunches: [
-      { symbol: '$SENT', name: 'Solana Sentinel', launchDate: 'Aug 2026', athMarketCap: '$42.5M (Active)', status: 'Active / Thriving', rugRisk: 'None (0%)' },
-      { symbol: '$SOLA', name: 'Solana Arbitrage', launchDate: 'Jul 2026', athMarketCap: '$4.2M', status: 'Graduated / LP Burnt', rugRisk: 'Clean' },
-      { symbol: '$ORBIT', name: 'Orbit DEX Engine', launchDate: 'May 2026', athMarketCap: '$1.1M', status: 'Community Owned', rugRisk: 'Clean' },
-      { symbol: '$NEXUS', name: 'Nexus Guard', launchDate: 'Mar 2026', athMarketCap: '$850K', status: 'Archived', rugRisk: 'Clean' },
-    ],
+    creator: devProfile.creatorWallet,
+    totalCreated: devProfile.devMints,
+    migratedCount: devProfile.devMigrations,
+    migrationRatePct: devProfile.migrationRatePct,
+    recentLaunches: [] as Array<{
+      symbol: string;
+      name: string;
+      launchDate: string;
+      athMarketCap?: string;
+      status?: string;
+      rugRisk?: string;
+    }>,
   };
 
   // ---------------------------------------------------------------------------
   // LIVE WEBSOCKET DATA: Stream Incoming Trades via internal Sentinel WS
   // ---------------------------------------------------------------------------
   useSentinelWS(safeMint ? [`token.trade:${safeMint}`, `token.price:${safeMint}`] : [], (data, msg) => {
-    if (msg.topic === `token.trade:${safeMint}`) {
-      const volUsd = data.priceUsd && data.amount ? Number(data.priceUsd) * Number(data.amount) : undefined;
-      const solEst = volUsd ? volUsd / 150 : data.amountSol ? Number(data.amountSol) : 0.5;
-      const isWhale = solEst >= 5;
-      const newTrade: TradeTransaction = {
-        id: data.signature || `ws_tx_${Date.now()}_${Math.random()}`,
-        type: data.side ? (data.side.toLowerCase() as 'buy' | 'sell') : 'buy',
-        amountSol: `${solEst.toFixed(2)} SOL`,
-        tokens: data.amount ? Number(data.amount).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '1,000',
-        price: data.priceUsd ? `$${Number(data.priceUsd).toFixed(4)}` : `$${safePrice.toFixed(4)}`,
-        valueUsd: volUsd ? `$${volUsd.toFixed(2)}` : `$${(solEst * 150).toFixed(2)}`,
-        time: 'Just now',
-        wallet: data.wallet ? `${data.wallet.slice(0, 4)}...${data.wallet.slice(-4)}` : 'anon...4kL2',
-        txHash: data.signature || 'tx',
-        isWhale,
-      };
-
-      setTrades((prev) => [newTrade, ...prev.slice(0, 49)]);
-    }
+    if (msg.topic !== `token.trade:${safeMint}` || !data?.signature) return;
+    // On this topic `amount` is the trade's USD value (see the broadcaster's
+    // payload), so tokens are derived from it and the price, not read from it.
+    const usd = data.amount === undefined || data.amount === null ? null : Number(data.amount);
+    const price = data.priceUsd === undefined || data.priceUsd === null ? null : Number(data.priceUsd);
+    const row = tapeRow({
+      signature: data.signature,
+      side: data.side ?? data.type,
+      wallet: data.wallet ?? null,
+      amountUsd: usd,
+      amountSol: data.amountSol ?? null,
+      amountTokens: usd !== null && price ? usd / price : null,
+      priceUsd: price,
+      timestamp: new Date(data.timestamp ?? Date.now()).toISOString(),
+    });
+    setTrades((prev) => (prev.some((p) => p.id === row.id) ? prev : [row, ...prev].slice(0, 50)));
   });
+
+  /**
+   * Loads the tape. Shared by the first load, the refresh button and the poll.
+   *
+   * The tape used to load once, from this platform's own capture only — empty
+   * on every page load — and never again unless refresh was pressed. It now
+   * reads `/live-trades` (indexer history merged with the live capture) and
+   * polls while the Trades tab is open.
+   */
+  const loadTrades = useCallback(async () => {
+    const request = ++tradesRequestRef.current;
+    const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
+    tradesInFlightRef.current = true;
+    try {
+      const res = await fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`);
+      const body = res.ok ? await res.json() : null;
+      // Stale only if fresher rows already landed.
+      if (request <= tradesAppliedRef.current) return;
+      const rows = body?.data?.trades;
+      if (!Array.isArray(rows)) {
+        setTradesState('error');
+        return;
+      }
+      tradesAppliedRef.current = request;
+      setTrades(rows.map(tapeRow));
+      setTradesCoverage(body?.data?.coverage ?? null);
+      setTradesState('loaded');
+    } catch {
+      if (request > tradesAppliedRef.current) setTradesState('error');
+    } finally {
+      tradesInFlightRef.current = false;
+    }
+  }, [safeMint, tradeFilter]);
+
+  const loadTopTraders = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/v1/tokens/solana/${safeMint}/top-traders?limit=15`);
+      const body = res.ok ? await res.json() : null;
+      if (!Array.isArray(body?.data?.topTraders)) return;
+      setTopTraders(body.data.topTraders);
+      setTopTradersMeta(
+        typeof body.data.tradesConsidered === 'number' ? { trades: body.data.tradesConsidered } : null,
+      );
+    } catch {
+      // The table keeps its last rows; the next poll retries.
+    }
+  }, [safeMint]);
+
+  // A different token starts from nothing, not from the last token's tape.
+  useEffect(() => {
+    setTrades([]);
+    setTradesState('loading');
+    setTradesCoverage(null);
+    // A new token's first response must not be judged stale against the old
+    // token's sequence.
+    tradesAppliedRef.current = 0;
+    tradesRequestRef.current = 0;
+    setTopTraders([]);
+    setTopTradersMeta(null);
+    setDevActivities([]);
+  }, [safeMint]);
+
+  // Live while visible: the tape every 5s on the Trades tab, rankings every
+  // 20s on Top Traders. A hidden tab polls nothing.
+  useEffect(() => {
+    if (activeTab !== 'trades' && activeTab !== 'top-traders') return;
+    const run = activeTab === 'trades' ? loadTrades : loadTopTraders;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      // Never stack a second request on a feed slower than the interval.
+      if (activeTab === 'trades' && tradesInFlightRef.current) return;
+      void run();
+    }, activeTab === 'trades' ? 5_000 : 20_000);
+    return () => clearInterval(id);
+  }, [activeTab, loadTrades, loadTopTraders]);
+
+  // Dev Activity: the deployer's own trades, from the same tape. `/dev-activity`
+  // returns no timeline, and its empty `events` used to be the whole table.
+  useEffect(() => {
+    const creator = devProfile.creatorWallet;
+    if (!creator) return;
+    let alive = true;
+    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?wallet=${encodeURIComponent(creator)}&limit=50`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        const rows = body?.data?.trades;
+        if (!alive || !Array.isArray(rows)) return;
+        setDevActivities(
+          rows.map((t: any): DevActivityEvent => {
+            const row = tapeRow(t);
+            return {
+              id: row.id,
+              type: row.type,
+              label: row.type === 'buy' ? 'Dev Buy' : 'Dev Sell',
+              amountSol: row.amountSol,
+              tokens: row.tokens,
+              price: row.price,
+              valueUsd: row.valueUsd,
+              devBalanceAfter: '—',
+              devSupplyPct: '—',
+              time: row.time,
+              txHash: row.txHash ?? '',
+            };
+          }),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [safeMint, devProfile.creatorWallet]);
 
   // ---------------------------------------------------------------------------
   // API ROUTING: Fetch Data Dynamically from API Endpoints
@@ -420,50 +703,60 @@ export function AxiomChartTabs({
       body: JSON.stringify({ mint: safeMint }),
     }).catch(() => {});
 
-    // 1. Trade tape, from trades this platform captured itself.
-    //
-    // Was `/trades`, which proxies Birdeye — whose compute-unit quota is
-    // exhausted, so it returned nothing and the tape sat empty. `/live-trades`
-    // reads `realtime_trades`, which the Helius stream has been filling all
-    // along and which no endpoint previously exposed.
-    const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
-    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const rows = data?.data?.trades;
-        if (!Array.isArray(rows) || !isMounted) return;
-        const dash = '—';
-        const usd = (v: string | null) =>
-          v == null ? dash : `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-
-        setTrades(
-          rows.map((t: any): TradeTransaction => ({
-            id: t.signature,
-            type: t.side === 'SELL' ? 'sell' : 'buy',
-            amountSol: t.amountSol == null ? dash : Number(t.amountSol).toFixed(4),
-            // The capture records a USD value, not a token quantity.
-            tokens: dash,
-            price: t.priceUsd == null ? dash : `$${Number(t.priceUsd).toPrecision(4)}`,
-            valueUsd: usd(t.amountUsd),
-            time: new Date(t.timestamp).toLocaleTimeString(),
-            wallet: t.wallet ? `${t.wallet.slice(0, 4)}...${t.wallet.slice(-4)}` : dash,
-            txHash: t.signature,
-            isWhale: t.amountUsd != null && Number(t.amountUsd) >= 5000,
-          })),
-        );
-      })
-      .catch(() => {});
+    // 1. Trade tape — see `loadTrades`.
+    void loadTrades();
 
     // 2. Fetch Dev Activity
     fetch(`/api/v1/tokens/solana/${safeMint}/dev-activity?filter=${devFilter}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.events && isMounted) {
-          setDevActivities(data.data.events);
+        // `events` is always empty here (no timeline is reconstructed); the
+        // deployer's trades come from the tape instead — see the effect above.
+        // `/dev-activity` returns the deployer's real identity and mint
+        // history. Fields it cannot know stay null rather than being filled.
+        const profile = data?.data;
+        if (profile && isMounted) {
+          setDevProfile({
+            creatorWallet: profile.creatorAddress ?? null,
+            devMints: typeof profile.devMints === 'number' ? profile.devMints : null,
+            devMigrations: typeof profile.devMigrations === 'number' ? profile.devMigrations : null,
+            migrationRatePct:
+              typeof profile.migrationRatePct === 'number' ? profile.migrationRatePct : null,
+            mintAuthorityDisabled: profile.mintAuthorityDisabled ?? null,
+            freezeAuthorityDisabled: profile.freezeAuthorityDisabled ?? null,
+            // Jupiter's own read of the dev wallet's balance against supply.
+            currentHoldingSupplyPct:
+              typeof profile.devBalancePct === 'number' ? profile.devBalancePct : null,
+          });
         }
-        if (data?.data?.devProfile && isMounted) {
-          setDevProfile(data.data.devProfile);
-        }
+      })
+      .catch(() => {});
+
+    // 2b. Fetch Token Audit
+    fetch(`/api/v1/tokens/solana/${safeMint}/audit`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const payload = data?.data;
+        if (!payload || !isMounted) return;
+        setAuditData({
+          mintAuthorityDisabled: payload.mintAuthorityDisabled ?? null,
+          freezeAuthorityDisabled: payload.freezeAuthorityDisabled ?? null,
+          lpTokensBurned: payload.lpTokensBurned ?? null,
+          honeypotTaxZero: payload.honeypotTaxZero ?? null,
+          top10HoldersPct: typeof payload.top10HoldersPct === 'number' ? payload.top10HoldersPct : null,
+          devBalancePct: typeof payload.devBalancePct === 'number' ? payload.devBalancePct : null,
+          organicScore: typeof payload.organicScore === 'number' ? payload.organicScore : null,
+          organicScoreLabel: payload.organicScoreLabel ?? null,
+          devMints: typeof payload.devMints === 'number' ? payload.devMints : null,
+          devMigrations: typeof payload.devMigrations === 'number' ? payload.devMigrations : null,
+          migrationRatePct: typeof payload.migrationRatePct === 'number' ? payload.migrationRatePct : null,
+          snipersPct: typeof payload.snipersPct === 'number' ? payload.snipersPct : null,
+          insidersPct: typeof payload.insidersPct === 'number' ? payload.insidersPct : null,
+          bundlersPct: typeof payload.bundlersPct === 'number' ? payload.bundlersPct : null,
+          holderTop10Pct: typeof payload.holderTop10Pct === 'number' ? payload.holderTop10Pct : null,
+          totalHolders: typeof payload.totalHolders === 'number' ? payload.totalHolders : null,
+          holderAuditPending: Boolean(payload.holderAuditPending),
+        });
       })
       .catch(() => {});
 
@@ -471,9 +764,12 @@ export function AxiomChartTabs({
     fetch(`/api/v1/tokens/solana/${safeMint}/bubble-map`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.data?.nodes && isMounted) {
-          setMapClusterNodes(data.data.nodes);
-        }
+        const payload = data?.data;
+        if (!payload || !isMounted) return;
+        if (payload.nodes) setMapClusterNodes(payload.nodes);
+        setMapTop10ConcentrationPct(
+          typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
+        );
       })
       .catch(() => {});
 
@@ -484,11 +780,19 @@ export function AxiomChartTabs({
         if (data?.data?.pools && isMounted) {
           setLiquidityPools(data.data.pools);
         }
-        if (data?.data?.topProviders && isMounted) {
-          setTopLiquidityProviders(data.data.topProviders);
-        }
+        // `/liquidity` returns no per-provider breakdown by design -- see the
+        // `topLiquidityProviders` state comment -- so there is nothing to set
+        // here. The table below renders its own "not available" state.
         if (data?.data?.totalLiquidityUsd && isMounted) {
-          setTotalLiquidityDisplay(data.data.totalLiquidityUsd);
+          const n = Number(data.data.totalLiquidityUsd);
+          setTotalLiquidityDisplay(
+            Number.isFinite(n)
+              ? n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B`
+                : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M`
+                : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K`
+                : `$${n.toFixed(2)}`
+              : null,
+          );
         }
       })
       .catch(() => {});
@@ -528,23 +832,21 @@ export function AxiomChartTabs({
         // The chain caps this view at 20 accounts, so the true holder count is
         // not observable. It was previously `holders.length * 175` — a total
         // manufactured by multiplying the row count by a constant.
+        // `getTokenLargestAccounts` caps at 20 and publishes no total, so this
+        // stays null and the badge simply reads "Holders".
+        setHoldersTop10Pct(
+          typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
+        );
         setHoldersDisplay(
-          payload.totalHoldersCount === null || payload.totalHoldersCount === undefined
-            ? '—'
-            : String(payload.totalHoldersCount),
+          typeof payload.totalHoldersCount === 'number'
+            ? payload.totalHoldersCount.toLocaleString()
+            : null,
         );
       })
       .catch(() => {});
 
-    // 6. Fetch Top Traders
-    fetch(`/api/v1/tokens/solana/${safeMint}/top-traders`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.data?.topTraders && isMounted) {
-          setTopTraders(data.data.topTraders);
-        }
-      })
-      .catch(() => {});
+    // 6. Top Traders — see `loadTopTraders`.
+    void loadTopTraders();
 
     return () => {
       isMounted = false;
@@ -556,7 +858,7 @@ export function AxiomChartTabs({
         body: JSON.stringify({ mint: null }),
       }).catch(() => {});
     };
-  }, [safeMint, tradeFilter, devFilter]);
+  }, [safeMint, tradeFilter, devFilter, loadTrades, loadTopTraders]);
 
   // Calculate live expected output
   const solNum = parseFloat(instantSolAmount) || 0;
@@ -722,20 +1024,85 @@ export function AxiomChartTabs({
     }
   };
 
-  // Mock Active User Position
-  const userPosition = {
-    token: `$${tokenSymbol}`,
-    mint: tokenMint,
-    amountTokens: '58,823.50',
-    avgEntryPrice: 0.0385,
-    currentPrice: currentPrice,
-    costBasisUsd: 2264.71,
-    currentValueUsd: 58823.5 * currentPrice,
-    unrealizedPnlUsd: 58823.5 * currentPrice - 2264.71,
-    unrealizedPnlPct: ((currentPrice - 0.0385) / 0.0385) * 100,
-    liquidationPrice: 0.0308,
-    safetyScore: 94,
-  };
+  /**
+   * The caller's real position in this token, or null.
+   *
+   * This was a hardcoded object — 58,823.50 tokens at an entry of $0.0385 with
+   * a safety score of 94 — rendered for every token and every visitor, badged
+   * "ACTIVE POSITION" and wired to live Sell 25/50/100% controls. A user could
+   * act on a holding they did not have. With `currentPrice` at 0 it also
+   * printed malformed figures like "+$-2264.71" and "+-100.00% ROI", which is
+   * how it became visible.
+   *
+   * Null means no position, and the tab says so rather than inventing one.
+   */
+  const [userPosition, setUserPosition] = useState<{
+    token: string;
+    mint: string;
+    amountTokens: number;
+    avgEntryPrice: number | null;
+    currentValueUsd: number | null;
+    unrealizedPnlUsd: number | null;
+    unrealizedPnlPct: number | null;
+  } | null>(null);
+  const [positionState, setPositionState] = useState<'no-wallet' | 'loading' | 'loaded' | 'error'>(
+    'no-wallet',
+  );
+
+  useEffect(() => {
+    const wallet = connectedWallet?.address;
+    if (!wallet) {
+      setUserPosition(null);
+      setPositionState('no-wallet');
+      return;
+    }
+
+    let alive = true;
+    setPositionState('loading');
+
+    fetch(`/api/v1/portfolio/${wallet}/positions`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (!alive) return;
+        const rows = body?.data?.positions ?? body?.positions;
+        if (!Array.isArray(rows)) {
+          setPositionState('error');
+          return;
+        }
+        const held = rows.find(
+          (row: any) => row?.mint === safeMint || row?.tokenMint === safeMint,
+        );
+        if (!held) {
+          setUserPosition(null);
+          setPositionState('loaded');
+          return;
+        }
+        const amount = Number(held.amount ?? held.quantity ?? 0);
+        const entry = Number(held.avgEntryPrice ?? held.averagePrice);
+        const value = Number(held.currentValueUsd ?? held.valueUsd);
+        setUserPosition({
+          token: `$${safeSymbol}`,
+          mint: safeMint,
+          amountTokens: Number.isFinite(amount) ? amount : 0,
+          avgEntryPrice: Number.isFinite(entry) ? entry : null,
+          currentValueUsd: Number.isFinite(value) ? value : null,
+          unrealizedPnlUsd: Number.isFinite(Number(held.unrealizedPnlUsd))
+            ? Number(held.unrealizedPnlUsd)
+            : null,
+          unrealizedPnlPct: Number.isFinite(Number(held.unrealizedPnlPct))
+            ? Number(held.unrealizedPnlPct)
+            : null,
+        });
+        setPositionState('loaded');
+      })
+      .catch(() => {
+        if (alive) setPositionState('error');
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [connectedWallet?.address, safeMint, safeSymbol]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -745,38 +1112,7 @@ export function AxiomChartTabs({
 
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    // Same source as the initial load: `/live-trades` reads the trades this
-    // platform captured. This still pointed at `/trades`, which proxies dead
-    // Birdeye and falls back to a hardcoded tape — so pressing refresh
-    // replaced real rows with fiction.
-    const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
-    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const rows = data?.data?.trades;
-        if (!Array.isArray(rows)) return;
-        const dash = '—';
-        setTrades(
-          rows.map((t: any): TradeTransaction => ({
-            id: t.signature,
-            type: t.side === 'SELL' ? 'sell' : 'buy',
-            amountSol: t.amountSol == null ? dash : Number(t.amountSol).toFixed(4),
-            tokens: dash,
-            price: t.priceUsd == null ? dash : `$${Number(t.priceUsd).toPrecision(4)}`,
-            valueUsd:
-              t.amountUsd == null
-                ? dash
-                : `$${Number(t.amountUsd).toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
-            time: new Date(t.timestamp).toLocaleTimeString(),
-            wallet: t.wallet ? `${t.wallet.slice(0, 4)}...${t.wallet.slice(-4)}` : dash,
-            txHash: t.signature,
-            isWhale: t.amountUsd != null && Number(t.amountUsd) >= 5000,
-          })),
-        );
-      })
-      .finally(() => {
-        setTimeout(() => setIsRefreshing(false), 500);
-      });
+    void loadTrades().finally(() => setTimeout(() => setIsRefreshing(false), 400));
   };
 
   // Filtered trades
@@ -799,10 +1135,11 @@ export function AxiomChartTabs({
       <div className="flex flex-wrap items-center justify-between border-b border-sentinel-800 bg-sentinel-950/90 px-3 py-1.5 gap-2 select-none">
         
         {/* Left Side: Horizontal Tab List with indicators */}
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-1">
+        <div className="terminal-detail-tabs flex min-w-0 max-w-full items-center gap-1 overflow-x-auto py-1" aria-label="Token details">
           {/* Trades Tab */}
           <button
             onClick={() => setActiveTab('trades')}
+            aria-pressed={activeTab === 'trades'}
             className={`relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'trades'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -811,15 +1148,12 @@ export function AxiomChartTabs({
           >
             <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
             <span>Trades</span>
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
           </button>
 
           {/* Positions Tab */}
           <button
             onClick={() => setActiveTab('positions')}
+            aria-pressed={activeTab === 'positions'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'positions'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -827,14 +1161,19 @@ export function AxiomChartTabs({
             }`}
           >
             <span>Positions</span>
-            <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-2xs font-mono text-emerald-400 font-bold">
-              1
-            </span>
+            {/* Was a hardcoded 1 — the tab claimed a position for every visitor,
+                matching the fabricated one it opened onto. */}
+            {userPosition && (
+              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-2xs font-mono text-emerald-400 font-bold">
+                1
+              </span>
+            )}
           </button>
 
           {/* Orders Tab */}
           <button
             onClick={() => setActiveTab('orders')}
+            aria-pressed={activeTab === 'orders'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'orders'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -843,14 +1182,12 @@ export function AxiomChartTabs({
           >
             <Target className="h-3.5 w-3.5 text-sky-400" />
             <span>Orders</span>
-            <span className="rounded-full bg-sentinel-800 px-1.5 py-0.2 text-2xs font-mono text-slate-400">
-              0
-            </span>
           </button>
 
           {/* Dev Activity Tab */}
           <button
             onClick={() => setActiveTab('dev-activity')}
+            aria-pressed={activeTab === 'dev-activity'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'dev-activity'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -859,14 +1196,17 @@ export function AxiomChartTabs({
           >
             <Activity className="h-3.5 w-3.5 text-rose-400" />
             <span>Dev Activity</span>
-            <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-2xs font-mono text-rose-300 font-bold">
-              {devProfile.currentHoldingSupplyPct} Dev
-            </span>
+            {devProfile.currentHoldingSupplyPct !== null && (
+              <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-2xs font-mono text-rose-300 font-bold">
+                {devProfile.currentHoldingSupplyPct.toFixed(2)}% Dev
+              </span>
+            )}
           </button>
 
           {/* Maps Tab (Bubble Maps / Cluster Graphs) */}
           <button
             onClick={() => setActiveTab('maps')}
+            aria-pressed={activeTab === 'maps'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'maps'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -875,14 +1215,12 @@ export function AxiomChartTabs({
           >
             <Network className="h-3.5 w-3.5 text-cyan-400" />
             <span>Maps</span>
-            <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.2 text-2xs font-mono text-cyan-300 font-bold">
-              Clusters
-            </span>
           </button>
 
           {/* Liquidity Providers & DEX Pools Tab */}
           <button
             onClick={() => setActiveTab('liquidity')}
+            aria-pressed={activeTab === 'liquidity'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'liquidity'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -890,7 +1228,7 @@ export function AxiomChartTabs({
             }`}
           >
             <Droplets className="h-3.5 w-3.5 text-blue-400" />
-            <span>Liquidity ({totalLiquidityDisplay})</span>
+            <span>Liquidity{totalLiquidityDisplay ? ` (${totalLiquidityDisplay})` : ''}</span>
           </button>
 
           {/* Token Audit Tab */}
@@ -916,7 +1254,7 @@ export function AxiomChartTabs({
             }`}
           >
             <Users className="h-3.5 w-3.5 text-slate-400" />
-            <span>Holders (1.4K)</span>
+            <span>Holders{holdersDisplay ? ` (${holdersDisplay})` : ''}</span>
           </button>
 
           {/* Top Traders Tab */}
@@ -942,7 +1280,11 @@ export function AxiomChartTabs({
             }`}
           >
             <Code2 className="h-3.5 w-3.5 text-indigo-400" />
-            <span>Dev History (100)</span>
+            {/* Was "(100)" regardless of deployer. */}
+            <span>
+              Dev History
+              {devProfile.devMints === null ? '' : ` (${devProfile.devMints.toLocaleString()})`}
+            </span>
           </button>
         </div>
 
@@ -1188,8 +1530,18 @@ export function AxiomChartTabs({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-2xs font-mono">
                     <span className="text-slate-400 font-semibold uppercase tracking-wider">Sell Portion</span>
+                    {/* Was a hardcoded 58,823.50 shown above the sell presets
+                        for every token and every visitor — the same figure the
+                        fabricated Positions tab reported. */}
                     <span className="text-rose-400 font-bold font-numeric">
-                      Holding: 58,823.50 ${safeSymbol}
+                      Holding:{' '}
+                      {userPosition
+                        ? `${userPosition.amountTokens.toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })} $${safeSymbol}`
+                        : positionState === 'no-wallet'
+                          ? 'connect a wallet'
+                          : 'n/a'}
                     </span>
                   </div>
                   <div className="grid grid-cols-5 gap-1 font-numeric">
@@ -1388,6 +1740,19 @@ export function AxiomChartTabs({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sentinel-800/60">
+                  {filteredTrades.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-xs font-mono text-slate-500">
+                        {tradesState === 'loading'
+                          ? 'Loading trades…'
+                          : tradesState === 'error'
+                            ? 'Trades could not be loaded — retrying.'
+                            : trades.length > 0
+                              ? 'No trades match this filter.'
+                              : (tradesCoverage ?? 'No trades found for this token yet.')}
+                      </td>
+                    </tr>
+                  )}
                   {filteredTrades.map((tr) => (
                     <tr key={tr.id} className="hover:bg-sentinel-800/50 transition-colors group">
                       <td className="py-2 px-2 whitespace-nowrap">
@@ -1411,18 +1776,18 @@ export function AxiomChartTabs({
                       <td className="py-2 px-2 font-bold text-slate-100">{currencyMode === 'USD' ? tr.valueUsd : tr.amountSol}</td>
                       <td className="py-2 px-2 font-mono text-slate-400">
                         <button
-                          onClick={() => handleCopy(tr.wallet)}
+                          onClick={() => handleCopy(tr.fullWallet ?? tr.wallet)}
                           className="inline-flex items-center gap-1 hover:text-sky-300 transition"
                         >
                           <span>{tr.wallet}</span>
-                          {copiedAddress === tr.wallet ? (
+                          {copiedAddress === (tr.fullWallet ?? tr.wallet) ? (
                             <Check className="h-3 w-3 text-emerald-400" />
                           ) : (
                             <Copy className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
                           )}
                         </button>
                       </td>
-                      <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{tr.time}</td>
+                      <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{tr.timestamp ? tapeAge(tr.timestamp) : tr.time}</td>
                       <td className="py-2 px-2 text-right font-mono text-2xs">
                         {/* A trade still confirming has no signature yet, and
                             an explorer link built from a fabricated one leads
@@ -1454,63 +1819,128 @@ export function AxiomChartTabs({
         {/* ========================================================================= */}
         {activeTab === 'positions' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-numeric text-xs">
-              <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 text-2xs font-mono uppercase block">Position Size</span>
-                <span className="text-base font-bold text-white">{userPosition.amountTokens} {userPosition.token}</span>
-                <span className="text-2xs text-slate-400 block font-mono">~${userPosition.currentValueUsd.toFixed(2)}</span>
+            {/* Three honest states. The tab previously rendered a fabricated
+                position for every visitor, badged ACTIVE and wired to live
+                Sell controls. */}
+            {positionState === 'no-wallet' && (
+              <div className="p-6 text-center border border-dashed border-sentinel-800 rounded-xl space-y-1.5">
+                <p className="text-xs font-bold text-slate-300">No wallet connected</p>
+                <p className="text-2xs text-slate-500">
+                  Connect a wallet to see your position in ${safeSymbol}.
+                </p>
               </div>
+            )}
 
-              <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 text-2xs font-mono uppercase block">Average Entry</span>
-                <span className="text-base font-bold text-slate-200">${userPosition.avgEntryPrice.toFixed(4)}</span>
-                <span className="text-2xs text-slate-500 block font-mono">Mark: ${userPosition.currentPrice.toFixed(4)}</span>
+            {positionState === 'loading' && (
+              <div className="p-6 text-center border border-dashed border-sentinel-800 rounded-xl">
+                <p className="text-2xs text-slate-500 font-mono">Loading your position…</p>
               </div>
+            )}
 
-              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
-                <span className="text-emerald-400 text-2xs font-mono uppercase block">Unrealized PnL</span>
-                <span className="text-base font-bold text-emerald-400">+${userPosition.unrealizedPnlUsd.toFixed(2)}</span>
-                <span className="text-2xs text-emerald-300 font-bold block font-mono">+{userPosition.unrealizedPnlPct.toFixed(2)}% ROI</span>
+            {positionState === 'error' && (
+              <div className="p-6 text-center border border-dashed border-rose-900/50 rounded-xl space-y-1.5">
+                <p className="text-xs font-bold text-rose-300">Could not load your position</p>
+                <p className="text-2xs text-slate-500">
+                  The portfolio service did not respond. Nothing is shown rather than an estimate.
+                </p>
               </div>
+            )}
 
-              <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80 flex flex-col justify-between">
-                <span className="text-slate-400 text-2xs font-mono uppercase block">Risk / Exit Strategy</span>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <button
-                    onClick={onOpenLimitBuilder}
-                    className="flex-1 py-1 px-2 rounded-lg bg-sentinel-800 hover:bg-sentinel-700 text-sky-300 font-bold text-2xs border border-sentinel-700 transition text-center"
-                  >
-                    + Add TP / SL
-                  </button>
-                  <button
-                    onClick={() => onQuickTrade?.('sell', 0.5)}
-                    className="flex-1 py-1 px-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-2xs border border-rose-500/40 transition text-center"
-                  >
-                    Close 100%
-                  </button>
+            {positionState === 'loaded' && !userPosition && (
+              <div className="p-6 text-center border border-dashed border-sentinel-800 rounded-xl space-y-1.5">
+                <p className="text-xs font-bold text-slate-300">You hold no ${safeSymbol}</p>
+                <p className="text-2xs text-slate-500">
+                  A position appears here once you buy.
+                </p>
+              </div>
+            )}
+
+            {positionState === 'loaded' && userPosition && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-numeric text-xs">
+                  <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
+                    <span className="text-slate-400 text-2xs font-mono uppercase block">Position Size</span>
+                    <span className="text-base font-bold text-white">
+                      {userPosition.amountTokens.toLocaleString(undefined, { maximumFractionDigits: 2 })}{' '}
+                      {userPosition.token}
+                    </span>
+                    <span className="text-2xs text-slate-400 block font-mono">
+                      {userPosition.currentValueUsd === null
+                        ? '—'
+                        : `~$${userPosition.currentValueUsd.toFixed(2)}`}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
+                    <span className="text-slate-400 text-2xs font-mono uppercase block">Average Entry</span>
+                    <span className="text-base font-bold text-slate-200">
+                      {userPosition.avgEntryPrice === null
+                        ? '—'
+                        : `$${userPosition.avgEntryPrice.toFixed(6)}`}
+                    </span>
+                    <span className="text-2xs text-slate-500 block font-mono">
+                      Mark: {currentPrice > 0 ? `$${currentPrice.toFixed(6)}` : '—'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
+                    <span className="text-slate-400 text-2xs font-mono uppercase block">Unrealized PnL</span>
+                    {/* Sign comes from the number, not a hardcoded '+'. The old
+                        markup produced "+$-2264.71" and "+-100.00% ROI". */}
+                    <span
+                      className={`text-base font-bold ${
+                        (userPosition.unrealizedPnlUsd ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {userPosition.unrealizedPnlUsd === null
+                        ? '—'
+                        : `${userPosition.unrealizedPnlUsd >= 0 ? '+' : '-'}$${Math.abs(
+                            userPosition.unrealizedPnlUsd,
+                          ).toFixed(2)}`}
+                    </span>
+                    <span className="text-2xs font-bold block font-mono text-slate-400">
+                      {userPosition.unrealizedPnlPct === null
+                        ? '—'
+                        : `${userPosition.unrealizedPnlPct >= 0 ? '+' : ''}${userPosition.unrealizedPnlPct.toFixed(2)}% ROI`}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
+                    <span className="text-slate-400 text-2xs font-mono uppercase block">Risk / Exit</span>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <button
+                        onClick={onOpenLimitBuilder}
+                        className="px-2 py-1 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 text-2xs font-bold"
+                      >
+                        + Add TP / SL
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Position Controls Bar */}
-            <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2">
-                <Badge variant="risk-low" size="sm">Active Position</Badge>
-                <span className="text-slate-400 font-mono text-2xs">Mint: {tokenMint.slice(0, 8)}...</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400 text-2xs">Quick Sell:</span>
-                {['25%', '50%', '100%'].map((pct) => (
-                  <button
-                    key={pct}
-                    onClick={() => onQuickTrade?.('sell', 0.5)}
-                    className="px-2 py-0.5 rounded bg-sentinel-900 border border-sentinel-750 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-2xs font-bold transition"
-                  >
-                    Sell {pct}
-                  </button>
-                ))}
-              </div>
-            </div>
+                {/* Sell controls exist only when there is something to sell. */}
+                <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="risk-low" size="sm">Active Position</Badge>
+                    <span className="text-slate-400 font-mono text-2xs">
+                      Mint: {safeMint.slice(0, 8)}...
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-2xs">Quick Sell:</span>
+                    {[25, 50, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        onClick={() => void handleExecuteInstantSell(pct)}
+                        className="px-2 py-0.5 rounded bg-sentinel-900 border border-sentinel-750 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-2xs font-bold transition"
+                      >
+                        Sell {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -1534,7 +1964,11 @@ export function AxiomChartTabs({
               </Button>
             </div>
             {/* Embedded Live OpenOrdersDashboard */}
-            <OpenOrdersDashboard currentPrice={currentPrice} />
+            <OpenOrdersDashboard
+              currentPrice={currentPrice}
+              mint={safeMint}
+              walletAddress={activeWallet?.address ?? null}
+            />
           </div>
         )}
 
@@ -1543,38 +1977,72 @@ export function AxiomChartTabs({
         {/* ========================================================================= */}
         {activeTab === 'dev-activity' && (
           <div className="space-y-3">
-            {/* Dev Metric Summary Card */}
+            {/* Deployer summary.
+                Four cards previously asserted a complete profile for every
+                token: a named creator, 0.85% of supply held, +$48,250 realised
+                profit, and a "LOW DUMP RISK" badge. Only the first is knowable
+                from the data available, so the others report what they are. */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs font-numeric">
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
                 <span className="text-slate-400 font-mono text-2xs uppercase block">Developer Wallet</span>
-                <button
-                  onClick={() => handleCopy(devProfile.creatorWallet)}
-                  className="font-bold text-sky-300 font-mono text-2xs hover:underline inline-flex items-center gap-1 mt-0.5"
-                >
-                  <span>{devProfile.creatorWallet}</span>
-                  <Copy className="h-3 w-3 text-slate-500" />
-                </button>
-                <span className="text-2xs text-emerald-400 block font-mono">Verified Deployer</span>
+                {devProfile.creatorWallet ? (
+                  <button
+                    onClick={() => handleCopy(devProfile.creatorWallet as string)}
+                    className="font-bold text-sky-300 font-mono text-2xs hover:underline inline-flex items-center gap-1 mt-0.5"
+                  >
+                    <span>
+                      {devProfile.creatorWallet.slice(0, 4)}…{devProfile.creatorWallet.slice(-4)}
+                    </span>
+                    <Copy className="h-3 w-3 text-slate-500" />
+                  </button>
+                ) : (
+                  <span className="text-slate-600 font-mono text-2xs block mt-0.5">n/a</span>
+                )}
               </div>
 
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Current Dev Holdings</span>
-                <span className="text-sm font-bold text-white font-mono block">{devProfile.currentHoldingTokens}</span>
-                <span className="text-2xs text-slate-400 block font-mono">{devProfile.currentHoldingSupplyPct} Supply (~{devProfile.currentHoldingUsd})</span>
-              </div>
-
-              <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
-                <span className="text-emerald-400 font-mono text-2xs uppercase block">Dev Realized PnL</span>
-                <span className="text-sm font-bold text-emerald-400 block">{devProfile.netRealizedProfitSol}</span>
-                <span className="text-2xs text-emerald-300 block font-mono">{devProfile.netRealizedProfitUsd} Realized</span>
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Tokens Minted By Dev</span>
+                <span className="text-sm font-bold text-white font-mono block">
+                  {devProfile.devMints === null ? 'n/a' : devProfile.devMints.toLocaleString()}
+                </span>
+                <span className="text-2xs text-slate-400 block font-mono">
+                  {devProfile.devMigrations === null
+                    ? 'migrations unknown'
+                    : `${devProfile.devMigrations.toLocaleString()} reached a pool`}
+                </span>
               </div>
 
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Dump Risk Rating</span>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Badge variant="risk-low" size="sm">LOW DUMP RISK</Badge>
-                </div>
-                <span className="text-2xs text-slate-400 block font-mono mt-0.5">{devProfile.dumpRiskRating}</span>
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Migration Rate</span>
+                {/* A deployer with thousands of mints and a handful of
+                    migrations is the signal here — a computed ratio, not a
+                    rating. */}
+                <span className="text-sm font-bold text-white font-mono block">
+                  {devProfile.migrationRatePct === null
+                    ? 'n/a'
+                    : `${devProfile.migrationRatePct.toFixed(2)}%`}
+                </span>
+                <span className="text-2xs text-slate-500 block font-mono">of this dev&apos;s mints</span>
+              </div>
+
+              <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Authorities</span>
+                <span className="text-2xs font-mono block mt-0.5 text-slate-300">
+                  Mint:{' '}
+                  {devProfile.mintAuthorityDisabled === null
+                    ? 'n/a'
+                    : devProfile.mintAuthorityDisabled
+                      ? 'renounced'
+                      : 'ACTIVE'}
+                </span>
+                <span className="text-2xs font-mono block text-slate-300">
+                  Freeze:{' '}
+                  {devProfile.freezeAuthorityDisabled === null
+                    ? 'n/a'
+                    : devProfile.freezeAuthorityDisabled
+                      ? 'disabled'
+                      : 'ACTIVE'}
+                </span>
               </div>
             </div>
 
@@ -1616,7 +2084,16 @@ export function AxiomChartTabs({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sentinel-800/60">
-                  {devActivities.map((act) => (
+                  {devActivities.filter((a) => devFilter === 'all' || a.type === devFilter).length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-xs font-mono text-slate-500">
+                        {devProfile.creatorWallet
+                          ? 'No trades by the deployer in the recent tape.'
+                          : 'Deployer not identified for this token.'}
+                      </td>
+                    </tr>
+                  )}
+                  {devActivities.filter((a) => devFilter === 'all' || a.type === devFilter).map((act) => (
                     <tr key={act.id} className="hover:bg-sentinel-800/40 transition">
                       <td className="py-2 px-2 whitespace-nowrap">
                         <span
@@ -1663,27 +2140,27 @@ export function AxiomChartTabs({
         {/* ========================================================================= */}
         {activeTab === 'maps' && (
           <div className="space-y-3">
-            {/* Cluster Stats Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-numeric">
-              <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Decentralization Health</span>
-                <span className="text-sm font-bold text-emerald-400 block font-mono">89/100 (Safe)</span>
-                <span className="text-2xs text-slate-500 block">Distributed organically</span>
-              </div>
+            {/* Cluster Stats Bar -- was four fixed numbers ("89/100 Safe",
+                "2 Wallets (0.85%)", "2.94% (4 Wallets)") for every token,
+                none of them computed. Only top-10 concentration and holder
+                count are actually measured; the rest say so plainly. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs font-numeric">
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
                 <span className="text-slate-400 font-mono text-2xs uppercase block">Top 10 Concentration</span>
-                <span className="text-sm font-bold text-white block font-mono">14.20% Supply</span>
-                <span className="text-2xs text-slate-500 block">Excluding LP Pool</span>
+                <span className="text-sm font-bold text-white block font-mono">
+                  {mapTop10ConcentrationPct === null ? 'Not available' : `${mapTop10ConcentrationPct.toFixed(2)}% Supply`}
+                </span>
+                <span className="text-2xs text-slate-500 block">Of the top 20 token accounts.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Dev Connected Wallets</span>
-                <span className="text-sm font-bold text-sky-300 block font-mono">2 Wallets (0.85%)</span>
-                <span className="text-2xs text-slate-500 block">No hidden insider dump rings</span>
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Total Holders</span>
+                <span className="text-sm font-bold text-sky-300 block font-mono">{holdersDisplay ?? 'Not available'}</span>
+                <span className="text-2xs text-slate-500 block">From on-chain token accounts.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Sniper Supply</span>
-                <span className="text-sm font-bold text-amber-400 block font-mono">2.94% (4 Wallets)</span>
-                <span className="text-2xs text-slate-500 block">Low sell pressure</span>
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Suspicious Clusters</span>
+                <span className="text-sm font-bold text-slate-500 block font-mono">Not determined</span>
+                <span className="text-2xs text-slate-500 block">Wallet-funding links are not mapped.</span>
               </div>
             </div>
 
@@ -1697,11 +2174,13 @@ export function AxiomChartTabs({
                     <span className="text-xs font-bold text-white font-mono">🗺️ Interactive Bubble Map</span>
                     <span className="text-2xs font-mono text-slate-500">(Live /api/v1/tokens/.../bubble-map)</span>
                   </div>
+                  {/* Only two categories are actually distinguishable on-chain
+                      here -- a pool account versus any other holder. "Dev",
+                      "Whales" and "Snipers" swatches used to sit alongside
+                      these with no wallet ever classified into them. */}
                   <div className="flex items-center gap-2 text-2xs font-mono text-slate-400">
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> DEX</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" /> Dev</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-400" /> Whales</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> Snipers</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> DEX Pool</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" /> Holder</span>
                   </div>
                 </div>
 
@@ -1715,10 +2194,12 @@ export function AxiomChartTabs({
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid_tabs)" />
 
-                    {/* Connection Lines between connected nodes */}
-                    <line x1="270" y1="110" x2="480" y2="140" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="1.5" strokeDasharray="4 4" />
-                    <line x1="270" y1="110" x2="230" y2="200" stroke="rgba(56, 189, 248, 0.4)" strokeWidth="1.5" strokeDasharray="4 4" />
-                    <line x1="160" y1="130" x2="270" y2="110" stroke="rgba(6, 182, 212, 0.3)" strokeWidth="1.5" />
+                    {/* No connection lines: drawing one between two wallets
+                        asserts a funding relationship between them, and
+                        `/bubble-map` explicitly does not determine that --
+                        see its `fundingSource: null`. These three used to be
+                        fixed coordinates drawn for every token regardless of
+                        which wallets, if any, were actually related. */}
 
                     {/* Render Cluster Bubbles */}
                     {mapClusterNodes.map((node) => {
@@ -1789,7 +2270,9 @@ export function AxiomChartTabs({
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Supply Share:</span>
-                          <span className="text-emerald-400 font-bold">{selectedMapNode.supplyPct}%</span>
+                          <span className="text-emerald-400 font-bold">
+                            {selectedMapNode.supplyPct === null ? '—' : `${selectedMapNode.supplyPct}%`}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Token Balance:</span>
@@ -1797,11 +2280,13 @@ export function AxiomChartTabs({
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-400">Value (USD):</span>
-                          <span className="text-slate-200 font-bold">{selectedMapNode.valueUsd}</span>
+                          <span className="text-slate-500 font-bold">{selectedMapNode.valueUsd ?? 'Not available'}</span>
                         </div>
                         <div className="flex justify-between pt-1 border-t border-sentinel-800">
                           <span className="text-slate-400">Inflow Route:</span>
-                          <span className="text-slate-300 text-2xs">{selectedMapNode.fundingSource}</span>
+                          <span className="text-slate-500 text-2xs">
+                            {selectedMapNode.fundingSource ?? 'Not mapped'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1841,7 +2326,33 @@ export function AxiomChartTabs({
         {/* ========================================================================= */}
         {activeTab === 'liquidity' && (
           <div className="space-y-4">
+            {/* Aggregate liquidity -- real, from Jupiter. Shown up front
+                because the per-pool cards below are empty by design: see the
+                `liquidityPools` state comment. */}
+            <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-2xs text-slate-400 font-mono uppercase block">Total Liquidity</span>
+                <span className="text-lg font-bold font-numeric text-white">
+                  {totalLiquidityDisplay ?? 'Not available'}
+                </span>
+              </div>
+              <span className="text-2xs text-slate-500 font-mono max-w-[220px] text-right">
+                Aggregate across all pools. Per-pool reserves need a DEX-by-DEX
+                query this platform does not perform.
+              </span>
+            </div>
+
             {/* Pools Summary Cards */}
+            {liquidityPools.length === 0 ? (
+              <div className="p-5 text-center border border-dashed border-sentinel-800 rounded-xl space-y-1">
+                <p className="text-xs font-bold text-slate-300">Per-pool breakdown not available</p>
+                <p className="text-2xs text-slate-500">
+                  Individual pool reserves, APY and lock status need a
+                  DEX-by-DEX query this endpoint does not perform. The total
+                  liquidity above is real.
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
               {liquidityPools.map((pool) => (
                 <div key={pool.id} className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3 space-y-2 font-numeric">
@@ -1889,14 +2400,24 @@ export function AxiomChartTabs({
                 </div>
               ))}
             </div>
+            )}
 
-            {/* Top Liquidity Providers Table */}
+            {/* Top Liquidity Providers Table -- always empty; see
+                `topLiquidityProviders`'s declaration for why. */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-sentinel-800">
                 <span className="font-bold text-white">Top Liquidity Providers on ${safeSymbol}</span>
-                <span className="font-mono text-2xs">85.2% LP permanently burned</span>
               </div>
 
+              {topLiquidityProviders.length === 0 ? (
+                <div className="p-5 text-center border border-dashed border-sentinel-800 rounded-xl space-y-1">
+                  <p className="text-xs font-bold text-slate-300">LP provider list not available</p>
+                  <p className="text-2xs text-slate-500">
+                    Identifying individual LP token holders and their lock or
+                    burn status needs a query this platform does not perform.
+                  </p>
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-numeric border-collapse">
                   <thead>
@@ -1930,6 +2451,7 @@ export function AxiomChartTabs({
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </div>
         )}
@@ -1939,81 +2461,147 @@ export function AxiomChartTabs({
         {/* ========================================================================= */}
         {activeTab === 'audit' && (
           <div className="space-y-4">
-            {/* Top 4 Core Metrics requested */}
+            {!auditData ? (
+              <div className="py-8 text-center text-xs text-slate-400 font-mono animate-pulse">
+                Loading token audit...
+              </div>
+            ) : (
+            <>
+            {/* Top 4 Core Metrics -- every value below is measured, not asserted.
+                This tab used to render a fixed 14/100 risk score, "24.5%
+                Cluster Top 10", "92.4% Authentic" and "0/12 Rugged" for every
+                token, and never called /audit at all. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              {/* Effective Ownership Risk */}
+              {/* Ownership Concentration */}
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
-                  <span>Effective Ownership Risk</span>
+                  <span>Top 10 Holder Concentration</span>
                   <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
                 </div>
-                <div className="pt-0.5">
-                  <Badge variant="risk-low" size="sm">LOW (24.5% Cluster Top 10)</Badge>
-                </div>
-                <p className="text-2xs text-slate-500 font-mono">No single controller holds &gt;10% liquid supply.</p>
+                {(() => {
+                  const pct = auditData.top10HoldersPct ?? auditData.holderTop10Pct;
+                  if (pct === null) {
+                    return <Badge variant="neutral" size="sm">Not available</Badge>;
+                  }
+                  const variant = pct >= 40 ? 'risk-high' : pct >= 20 ? 'risk-med' : 'risk-low';
+                  const label = pct >= 40 ? 'HIGH' : pct >= 20 ? 'MODERATE' : 'LOW';
+                  return <Badge variant={variant} size="sm">{label} ({pct.toFixed(1)}% Top 10)</Badge>;
+                })()}
+                <p className="text-2xs text-slate-500 font-mono">Share of supply held by the ten largest accounts.</p>
               </div>
 
-              {/* Organic Demand Ratio */}
+              {/* Organic Demand */}
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
-                  <span>Organic Demand Ratio</span>
+                  <span>Organic Demand</span>
                   <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
                 </div>
-                <div className="text-base font-bold font-numeric text-emerald-400">
-                  92.4% Authentic
-                </div>
-                <p className="text-2xs text-slate-500 font-mono">7.6% artificial / wash volume filtered out.</p>
+                {auditData.organicScore === null ? (
+                  <div className="text-sm font-bold font-mono text-slate-500">Not available</div>
+                ) : (
+                  <div className={`text-base font-bold font-numeric ${
+                    auditData.organicScoreLabel === 'high' ? 'text-emerald-400'
+                    : auditData.organicScoreLabel === 'medium' ? 'text-amber-400'
+                    : 'text-rose-400'
+                  }`}>
+                    {auditData.organicScore.toFixed(1)} / 100
+                  </div>
+                )}
+                <p className="text-2xs text-slate-500 font-mono">
+                  Jupiter&apos;s wash-trading filter{auditData.organicScoreLabel ? ` -- ${auditData.organicScoreLabel}` : ''}.
+                </p>
               </div>
 
-              {/* Creator History Audit */}
+              {/* Creator History */}
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
-                  <span>Creator History Audit</span>
+                  <span>Creator History</span>
                   <Award className="h-3.5 w-3.5 text-sky-400" />
                 </div>
                 <div className="text-sm font-bold font-mono text-slate-200">
-                  0/12 Rugged | Credible
+                  {auditData.devMints === null
+                    ? 'Not available'
+                    : `${auditData.devMigrations ?? 0}/${auditData.devMints} reached a pool`}
                 </div>
-                <p className="text-2xs text-slate-500 font-mono">Deployer history verified across 12 launches.</p>
+                <p className="text-2xs text-slate-500 font-mono">
+                  {auditData.migrationRatePct === null
+                    ? 'Deployer mint history from Jupiter.'
+                    : `${auditData.migrationRatePct.toFixed(2)}% of this deployer's launches migrated.`}
+                </p>
               </div>
 
-              {/* Executable Liquidity Depth */}
+              {/* Liquidity -- the same figure the tab badge already shows.
+                  This tile used to invent a "Max Safe Order: 45 SOL" price-
+                  impact estimate for every token; estimating one for real
+                  needs a per-DEX pool query this platform does not perform. */}
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
-                  <span>Executable Liquidity Depth</span>
+                  <span>Total Liquidity</span>
                   <Flame className="h-3.5 w-3.5 text-amber-400" />
                 </div>
                 <div className="text-sm font-bold font-numeric text-sky-300">
-                  Max Safe Order: 45 SOL
+                  {totalLiquidityDisplay ?? 'Not available'}
                 </div>
-                <p className="text-2xs text-slate-500 font-mono">&lt;2.0% price impact up to $6,750 buy order.</p>
+                <p className="text-2xs text-slate-500 font-mono">Aggregate, from Jupiter. Per-pool depth is not queried.</p>
               </div>
             </div>
 
-            {/* Deep Contract & Security Checklist */}
+            {/* Deep Contract & Security Checklist -- a grey "Not verified"
+                chip where nothing checks the claim, never a green one. */}
             <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3.5 space-y-2.5 text-xs">
               <span className="text-2xs font-bold text-white font-mono uppercase tracking-wider block">
-                Contract & On-Chain Security Verifications
+                Contract & On-Chain Security
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-2xs">
-                <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-slate-300">Mint Authority: Revoked</span>
-                </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-slate-300">Freeze Authority: Revoked</span>
-                </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-slate-300">LP Status: 100% Burnt</span>
-                </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-slate-300">Honeypot: 0% / 0% Tax</span>
-                </div>
+                {([
+                  ['Mint Authority', auditData.mintAuthorityDisabled, 'Revoked', 'ACTIVE'],
+                  ['Freeze Authority', auditData.freezeAuthorityDisabled, 'Revoked', 'ACTIVE'],
+                  ['LP Burn Status', auditData.lpTokensBurned, 'Burnt', 'Not burnt'],
+                  ['Honeypot / Tax', auditData.honeypotTaxZero, 'Clean', 'Tax detected'],
+                ] as const).map(([label, value, passLabel, failLabel]) => (
+                  <div
+                    key={label}
+                    className={`flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border ${
+                      value === null ? 'border-sentinel-800' : value ? 'border-emerald-900/60' : 'border-rose-900/60'
+                    }`}
+                  >
+                    {value === null ? (
+                      <ShieldAlert className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                    ) : value ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                    )}
+                    <span className={value === null ? 'text-slate-500' : 'text-slate-300'}>
+                      {label}: {value === null ? 'Not verified' : value ? passLabel : failLabel}
+                    </span>
+                  </div>
+                ))}
               </div>
+              <p className="text-2xs text-slate-500 font-mono">
+                Mint and freeze authority are read from the mint account. LP-burn status and honeypot/tax behavior
+                are not checked by this platform -- they show &quot;Not verified&quot; rather than an assumed pass.
+              </p>
             </div>
+
+            {/* Holder-profile audit -- the same measurement behind the
+                Discover cards&apos; audit pills. */}
+            <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3.5 space-y-2">
+              <span className="text-2xs font-bold text-white font-mono uppercase tracking-wider block">
+                Holder Profile
+              </span>
+              <AuditPills
+                top10HoldingsPct={auditData.holderTop10Pct ?? undefined}
+                devHoldingsPct={auditData.devBalancePct ?? undefined}
+                sniperPercentage={auditData.snipersPct ?? undefined}
+                insiderHoldingsPct={auditData.insidersPct ?? undefined}
+                bundlerPercentage={auditData.bundlersPct ?? undefined}
+                pending={auditData.holderAuditPending}
+                alwaysShow
+              />
+            </div>
+            </>
+            )}
           </div>
         )}
 
@@ -2023,8 +2611,12 @@ export function AxiomChartTabs({
         {activeTab === 'holders' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-sentinel-800">
-              <span className="font-bold text-white">Top 8 Token Holders Distribution</span>
-              <span className="font-mono text-2xs">Top 10 hold 24.50% of supply</span>
+              <span className="font-bold text-white">Top {topHolders.length > 0 ? topHolders.length : ''} Token Holders</span>
+              <span className="font-mono text-2xs">
+                {holdersTop10Pct === null
+                  ? 'Concentration unavailable'
+                  : `Top 10 hold ${holdersTop10Pct.toFixed(2)}% of supply`}
+              </span>
             </div>
 
             <div className="overflow-x-auto">
@@ -2040,6 +2632,13 @@ export function AxiomChartTabs({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sentinel-800/60">
+                  {topHolders.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-xs font-mono text-slate-500">
+                        Loading holders…
+                      </td>
+                    </tr>
+                  )}
                   {topHolders.map((h) => (
                     <tr key={h.rank} className="hover:bg-sentinel-800/40 transition">
                       <td className="py-2 px-2 font-mono text-slate-500 font-bold">{h.rank}</td>
@@ -2071,8 +2670,13 @@ export function AxiomChartTabs({
         {activeTab === 'top-traders' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-sentinel-800">
-              <span className="font-bold text-white">Top Performing Smart Traders on ${safeSymbol}</span>
-              <span className="font-mono text-2xs">Ranked by Realized PnL</span>
+              <span className="font-bold text-white">Most Active Traders on ${safeSymbol}</span>
+              {/* Was "Ranked by Realized PnL" over Win Rate / Profit / ROI
+                  columns the endpoint returns null for. These are the flows
+                  the recent tape actually shows. */}
+              <span className="font-mono text-2xs">
+                {topTradersMeta ? `By trade count · last ${topTradersMeta.trades} trades` : 'By trade count'}
+              </span>
             </div>
 
             <div className="overflow-x-auto">
@@ -2081,27 +2685,50 @@ export function AxiomChartTabs({
                   <tr className="border-b border-sentinel-800 text-2xs text-slate-400 font-mono uppercase">
                     <th className="py-1.5 px-2">Rank</th>
                     <th className="py-1.5 px-2">Wallet</th>
-                    <th className="py-1.5 px-2">Style</th>
-                    <th className="py-1.5 px-2">Trades</th>
-                    <th className="py-1.5 px-2">Win Rate</th>
-                    <th className="py-1.5 px-2">Total Profit</th>
-                    <th className="py-1.5 px-2 text-right">ROI</th>
+                    <th className="py-1.5 px-2">Trades (B / S)</th>
+                    <th className="py-1.5 px-2">Bought</th>
+                    <th className="py-1.5 px-2">Sold</th>
+                    <th className="py-1.5 px-2 text-right">Net Flow</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sentinel-800/60">
+                  {topTraders.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-xs font-mono text-slate-500">
+                        {topTradersMeta ? 'No trades found for this token yet.' : 'Loading traders…'}
+                      </td>
+                    </tr>
+                  )}
                   {topTraders.map((t) => (
-                    <tr key={t.rank} className="hover:bg-sentinel-800/40 transition">
+                    <tr key={t.fullWallet ?? t.rank} className="hover:bg-sentinel-800/40 transition">
                       <td className="py-2 px-2 font-mono font-bold text-amber-400">#{t.rank}</td>
-                      <td className="py-2 px-2 font-mono text-slate-300">{t.wallet}</td>
-                      <td className="py-2 px-2">
-                        <span className="px-2 py-0.5 rounded text-2xs font-mono bg-sky-500/10 text-sky-300 border border-sky-500/30">
-                          {t.tag}
+                      <td className="py-2 px-2 font-mono text-slate-300">
+                        <button
+                          onClick={() => handleCopy(t.fullWallet ?? t.wallet)}
+                          className="hover:text-sky-300 inline-flex items-center gap-1"
+                        >
+                          <span>{t.wallet}</span>
+                          <Copy className="h-2.5 w-2.5 opacity-60" />
+                        </button>
+                      </td>
+                      <td className="py-2 px-2 font-mono text-slate-300">
+                        {t.totalTrades}{' '}
+                        <span className="text-slate-500">
+                          (<span className="text-emerald-400">{t.buys}</span> / <span className="text-rose-400">{t.sells}</span>)
                         </span>
                       </td>
-                      <td className="py-2 px-2 font-mono text-slate-300">{t.totalTrades}</td>
-                      <td className="py-2 px-2 font-bold text-emerald-400 font-mono">{t.winRate}</td>
-                      <td className="py-2 px-2 font-bold text-emerald-400">{t.totalProfitUsd}</td>
-                      <td className="py-2 px-2 text-right font-bold text-emerald-300 font-mono">{t.roi}</td>
+                      <td className="py-2 px-2 font-bold text-emerald-400">{tapeUsd(t.buyVolumeUsd)}</td>
+                      <td className="py-2 px-2 font-bold text-rose-400">{tapeUsd(t.sellVolumeUsd)}</td>
+                      <td
+                        className={`py-2 px-2 text-right font-bold font-mono ${
+                          (t.netFlowUsd ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        }`}
+                        title="USD sold minus USD bought over the window. Positive means the wallet took money out."
+                      >
+                        {t.netFlowUsd === null || t.netFlowUsd === undefined
+                          ? '—'
+                          : `${t.netFlowUsd >= 0 ? '+' : '-'}${tapeUsd(Math.abs(t.netFlowUsd))}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2122,18 +2749,45 @@ export function AxiomChartTabs({
               </div>
               <div>
                 <span className="text-slate-400 font-mono text-2xs block">TOTAL LAUNCHES</span>
-                <span className="font-bold text-sky-300 font-numeric">{devHistory.totalCreated} Tokens</span>
+                <span className="font-bold text-sky-300 font-numeric">
+                  {devHistory.totalCreated === null
+                    ? 'n/a'
+                    : `${devHistory.totalCreated.toLocaleString()} Tokens`}
+                </span>
               </div>
               <div>
-                <span className="text-slate-400 font-mono text-2xs block">RUG RECORD</span>
-                <span className="font-bold text-emerald-400 font-numeric">0 Rugged (100% Clean)</span>
+                {/* Was "0 Rugged (100% Clean)", hardcoded — a clean record
+                    asserted for every deployer on the platform. Outcomes are
+                    not tracked, so the honest figure is how many reached a
+                    pool at all. */}
+                <span className="text-slate-400 font-mono text-2xs block">REACHED A POOL</span>
+                <span className="font-bold text-slate-200 font-numeric">
+                  {devHistory.migratedCount === null
+                    ? 'n/a'
+                    : devHistory.migratedCount.toLocaleString()}
+                </span>
               </div>
               <div>
-                <span className="text-slate-400 font-mono text-2xs block">TRUST TIER</span>
-                <span className="font-bold text-emerald-300 font-mono">{devHistory.trustScore}</span>
+                {/* Was "98/100 (Tier 1 Verified)" — a score nothing computed. */}
+                <span className="text-slate-400 font-mono text-2xs block">MIGRATION RATE</span>
+                <span className="font-bold text-slate-200 font-mono">
+                  {devHistory.migrationRatePct === null
+                    ? 'n/a'
+                    : `${devHistory.migrationRatePct.toFixed(2)}%`}
+                </span>
               </div>
             </div>
 
+            {devHistory.recentLaunches.length === 0 ? (
+              <div className="p-5 text-center border border-dashed border-sentinel-800 rounded-xl space-y-1">
+                <p className="text-xs font-bold text-slate-300">Launch timeline not collected</p>
+                <p className="text-2xs text-slate-500">
+                  Listing this deployer&apos;s previous tokens needs a
+                  signature-history walk that is not performed. The counts above
+                  are real; the per-launch table is not available.
+                </p>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-numeric border-collapse">
                 <thead>
@@ -2165,6 +2819,7 @@ export function AxiomChartTabs({
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 

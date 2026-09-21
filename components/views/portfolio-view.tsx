@@ -347,13 +347,13 @@ export function PortfolioView() {
 
   return (
     <div className="space-y-4 max-w-[1400px] mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+      <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <PieChart className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Portfolio Intelligence
+            <PieChart className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Portfolio
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-            Realized & unrealized returns calculated strictly after priority fees, DEX slippage, and gas expenses.
+            Track your positions, returns, and portfolio exposure.
           </p>
         </div>
 

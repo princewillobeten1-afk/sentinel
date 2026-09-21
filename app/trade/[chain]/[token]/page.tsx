@@ -14,7 +14,7 @@ import { TokenSocials } from '@/components/ui/token-socials';
 import { CompactActivityIndicator } from '@/components/trade/compact-activity-indicator';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { Decimal } from '@/lib/math/decimal';
-import { formatPercent } from '@/lib/discovery/format';
+import { formatPercent, formatTokenPrice } from '@/lib/discovery/format';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import { useAppState, useAppActions, useWatchlist } from '@/lib/store';
 import type { TokenOverview } from '@/lib/api/birdeye/stats';
@@ -35,6 +35,7 @@ export default function DynamicTokenPage() {
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [isOverviewLoading, setIsOverviewLoading] = useState(true);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const overviewUnavailable = isOverviewLoading || overviewError !== null;
 
   const loadOverview = React.useCallback(async () => {
     if (!tokenMint) {
@@ -139,7 +140,7 @@ export default function DynamicTokenPage() {
 
   return (
     <AppShell initialView="trade">
-      <div className="space-y-6 p-6 max-w-7xl mx-auto">
+      <div className="terminal-trade space-y-4 min-w-0">
         {/*
           Token header.
 
@@ -158,9 +159,9 @@ export default function DynamicTokenPage() {
               size="lg"
             />
             <div className="min-w-0">
-              <div className="flex items-baseline gap-2 min-w-0">
+              <div className="flex flex-wrap items-baseline gap-2 min-w-0">
                 <h1 className="text-xl font-bold text-slate-100 truncate">{tokenData.name}</h1>
-                <span className="text-sm font-numeric text-slate-400 shrink-0">${tokenData.symbol}</span>
+                <span className="text-xs font-numeric text-slate-400 truncate max-w-[160px]">${tokenData.symbol}</span>
                 <span className="label-micro shrink-0">{tokenData.chain}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
@@ -253,14 +254,14 @@ export default function DynamicTokenPage() {
           <div>
             <p className="label-micro">Price</p>
             <p className="text-3xl font-bold text-slate-100 font-numeric leading-tight">
-              {tokenData.priceUsd.formatUSD(4)}
+              {overviewUnavailable ? '—' : `$${formatTokenPrice(tokenData.priceUsd.toString())}`}
             </p>
             <p
               className={`text-xs font-semibold font-numeric ${
-                tokenData.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                overviewUnavailable ? 'text-slate-400' : tokenData.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >
-              {formatPercent(tokenData.priceChange24h)} 24h
+              {overviewUnavailable ? '—' : formatPercent(tokenData.priceChange24h)} 24h
             </p>
           </div>
 
@@ -272,14 +273,16 @@ export default function DynamicTokenPage() {
           ].map((stat) => (
             <div key={stat.label}>
               <p className="label-micro">{stat.label}</p>
-              <p className="text-base font-semibold text-slate-200 font-numeric">{stat.value}</p>
+              <p className="text-base font-semibold text-slate-200 font-numeric">{overviewUnavailable ? '—' : stat.value}</p>
             </div>
           ))}
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="terminal-trade-grid">
+          <div className="terminal-trade-chart min-w-0">
             <CandlestickChart initialTimeframe="15m" symbol={tokenMint} chain={chain} />
+          </div>
+          <div className="terminal-trade-details min-w-0 overflow-x-auto">
             <AxiomChartTabs
               currentPrice={livePrice || tokenData.priceUsd.toNumber()}
               tokenSymbol={tokenData.symbol}
@@ -287,7 +290,7 @@ export default function DynamicTokenPage() {
             />
           </div>
 
-          <div>
+          <div className="terminal-trade-order min-w-0">
             <TradingPanel
               tokenSymbol={tokenData.symbol}
               tokenMint={tokenData.mint}

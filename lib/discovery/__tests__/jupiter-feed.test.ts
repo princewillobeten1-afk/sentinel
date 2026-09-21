@@ -23,35 +23,50 @@ const token = (over: Partial<JupiterToken> = {}): JupiterToken => ({
   ...over,
 });
 
-describe('isOnBondingCurve', () => {
-  it('treats a pool id equal to the mint as still bonding', () => {
-    // pump.fun's pre-graduation "pool" is the bonding curve account, which
-    // Jupiter reports under the mint's own id.
+describe('isOnBondingCurve — graduation is the signal, not firstPool', () => {
+  it('does not present the mint itself as a confirmed liquidity pool', () => {
+    expect(mapJupiterToken(token()).liquidityPoolAddress).toBeUndefined();
+    expect(mapJupiterToken(token({ graduatedPool: POOL })).liquidityPoolAddress).toBe(POOL);
+  });
+  it('treats a launchpad token with no graduation record as on the curve', () => {
     expect(isOnBondingCurve(token())).toBe(true);
   });
 
-  it('treats a distinct pool id as migrated', () => {
-    expect(isOnBondingCurve(token({ firstPool: { id: POOL } }))).toBe(false);
+  it('treats a token with graduatedAt as graduated', () => {
+    expect(isOnBondingCurve(token({ graduatedAt: '2024-10-18T06:09:47Z' }))).toBe(false);
+    expect(isOnBondingCurve(token({ graduatedPool: 'Bzc9NZfMqkXR6fz1DBph' }))).toBe(false);
   });
 
-  it('treats a missing pool as not yet migrated', () => {
-    // A migrated token always has a pool distinct from its mint, so absence
-    // cannot mean graduated.
-    expect(isOnBondingCurve(token({ firstPool: undefined }))).toBe(true);
+  it('does NOT use firstPool.id to decide', () => {
+    // The regression this pins. `firstPool.id === mint` was used as the
+    // graduation test on the reasoning that a pump.fun token's first "pool" is
+    // its curve account. It is — and that record persists after graduation:
+    // Fartcoin migrated in October 2024 and still reports firstPool.id === mint
+    // at a $214M market cap. Checked across 100 tokens, the two tests disagreed
+    // on 91.
+    const graduatedButFirstPoolIsMint = token({
+      firstPool: { id: MINT },
+      graduatedAt: '2024-10-18T06:09:47Z',
+      mcap: 214_000_000,
+    });
+    expect(isOnBondingCurve(graduatedButFirstPoolIsMint)).toBe(false);
+  });
+
+  it('treats a token with no launchpad as never having had a curve', () => {
+    // cbBTC, JLP and similar list straight onto a DEX. They are neither
+    // bonding nor graduated, and belong in neither lifecycle column.
+    expect(isOnBondingCurve(token({ launchpad: undefined, id: 'SomeDexListedMint11111111' }))).toBe(false);
   });
 
   it('does not use market cap to decide', () => {
-    // The previous implementation inferred this from `mcap / 69000`, which
-    // misclassifies any token whose price moves between the curve completing
-    // and the pool appearing. A high-cap token still on its curve must still
-    // read as bonding.
+    // A high cap while still on the curve is possible; the curve state decides.
     expect(isOnBondingCurve(token({ mcap: 250_000 }))).toBe(true);
-    expect(isOnBondingCurve(token({ mcap: 10, firstPool: { id: POOL } }))).toBe(false);
+    expect(isOnBondingCurve(token({ mcap: 10, graduatedAt: '2025-01-01T00:00:00Z' }))).toBe(false);
   });
 
-  it('maps bondingStatus from the same structural test', () => {
+  it('maps bondingStatus from the same test', () => {
     expect(mapJupiterToken(token()).bondingStatus).toBe('bonding');
-    expect(mapJupiterToken(token({ firstPool: { id: POOL } })).bondingStatus).toBe('graduated');
+    expect(mapJupiterToken(token({ graduatedAt: '2025-01-01T00:00:00Z' })).bondingStatus).toBe('graduated');
   });
 });
 
@@ -114,11 +129,16 @@ describe('mapJupiterToken — real trade stats', () => {
     expect(mapped.buySellImbalancePct).toBe(50);
   });
 
-  it('reports zero pressure rather than NaN when nothing traded', () => {
+  it('keeps pressure unknown when the provider omitted both counts', () => {
     const mapped = mapJupiterToken(token({ stats1h: {} }));
+    expect(Number.isNaN(mapped.buyPressureRatio)).toBe(true);
+    expect(Number.isNaN(mapped.buySellImbalancePct)).toBe(true);
+  });
+
+  it('preserves a measured zero when the provider reported zero trades', () => {
+    const mapped = mapJupiterToken(token({ stats1h: { numBuys: 0, numSells: 0 } }));
     expect(mapped.buyPressureRatio).toBe(0);
     expect(mapped.buySellImbalancePct).toBe(0);
-    expect(Number.isNaN(mapped.buyPressureRatio)).toBe(false);
   });
 
   it('sums both sides for window volume', () => {
@@ -128,7 +148,7 @@ describe('mapJupiterToken — real trade stats', () => {
 
   it('falls back to fdv when mcap is absent, not to a made-up figure', () => {
     expect(mapJupiterToken(token({ mcap: undefined, fdv: 5000 })).marketCapUsd).toBe('5000');
-    expect(mapJupiterToken(token({ mcap: undefined, fdv: undefined })).marketCapUsd).toBe('0');
+    expect(mapJupiterToken(token({ mcap: undefined, fdv: undefined })).marketCapUsd).toBe('');
   });
 });
 
@@ -209,5 +229,46 @@ describe('collapseDuplicateLaunches', () => {
       tok({ mint: 'b', name: 'Beta', symbol: 'X', liquidityUsd: '10' }),
     ];
     expect(collapseDuplicateLaunches(rows)).toHaveLength(2);
+  });
+});
+
+describe('creator facts — carried from Jupiter, not derived', () => {
+  it('maps devBalancePercentage as a percentage, not a fraction', () => {
+    // Jupiter publishes this already scaled 0-100: observed 11.4964 for a dev
+    // holding 11.5% of supply. Dividing by 100 here would report 0.11%.
+    const mapped = mapJupiterToken(token({ audit: { devBalancePercentage: 11.4964285714286 } }));
+    expect(mapped?.devHoldingsPct).toBe(11.5);
+  });
+
+  it('leaves dev holdings undefined when Jupiter omits it', () => {
+    // Absent means "dev holds nothing to report", which is not the same claim
+    // as 0% and must not render as a measured zero.
+    const mapped = mapJupiterToken(token({ audit: { mintAuthorityDisabled: true } }));
+    expect(mapped?.devHoldingsPct).toBeUndefined();
+  });
+
+  it('carries both halves of the creator track record', () => {
+    // The card renders these as one fraction (350/19796). Either number alone
+    // says little; together they state the hit rate.
+    const mapped = mapJupiterToken(token({ audit: { devMints: 19796, devMigrations: 350 } }));
+    expect(mapped?.devMints).toBe(19796);
+    expect(mapped?.devMigrations).toBe(350);
+  });
+
+  it('does not invent a track record for a first-time deployer', () => {
+    const mapped = mapJupiterToken(token({ dev: 'Dev1111111111111111111111111111111111111111' }));
+    expect(mapped?.devMints).toBeUndefined();
+    expect(mapped?.devMigrations).toBeUndefined();
+    expect(mapped?.devAddress).toBe('Dev1111111111111111111111111111111111111111');
+  });
+
+  it('never fabricates holder concentration', () => {
+    // top10 needs getTokenLargestAccounts, which no free RPC serves. It stays
+    // undefined here so the card shows "not measured" rather than a number.
+    const mapped = mapJupiterToken(token({ holderCount: 190 }));
+    expect(mapped?.holdersCount).toBe(190);
+    expect(mapped?.top10HoldingsPct).toBeUndefined();
+    expect(mapped?.sniperPercentage).toBeUndefined();
+    expect(mapped?.bundlerPercentage).toBeUndefined();
   });
 });

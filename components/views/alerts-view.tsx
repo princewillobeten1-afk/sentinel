@@ -106,10 +106,10 @@ export function AlertsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div data-page-header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <ShieldAlert className="h-6 w-6 text-rose-400" /> Sentinel Risk Intelligence &amp; Threats
+            <ShieldAlert className="h-6 w-6 text-rose-400" /> Risk alerts
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Explainable risk evidence detailing why a token is flagged rather than unexplained scores.

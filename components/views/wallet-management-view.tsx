@@ -26,7 +26,7 @@ import { WalletReceiveModal } from './wallet-receive-modal';
 import { WalletSendModal } from './wallet-send-modal';
 
 export function WalletManagementView() {
-  const { linkedWallets, primaryWallet, authenticatedIdentity, sessionToken } = useWalletState();
+  const { linkedWallets, primaryWallet, authenticatedIdentity, sessionToken, status } = useWalletState();
   const {
     linkSecondaryWallet,
     setPrimaryWallet,
@@ -72,29 +72,27 @@ export function WalletManagementView() {
     <div className="space-y-6">
       {/* Top Banner Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Panel variant="subtle" className="p-4 space-y-1">
-          <p className="text-2xs font-mono uppercase text-slate-400">Total Account Wallets</p>
+        <Panel variant="subtle" className="space-y-1">
+          <p className="text-xs text-slate-400">Linked wallets</p>
           <div className="flex items-center justify-between">
             <span className="text-2xl font-bold font-numeric text-white">{linkedWallets.length} Wallets</span>
-            <Badge variant="info">Multi-Wallet</Badge>
           </div>
         </Panel>
 
-        <Panel variant="subtle" className="p-4 space-y-1">
-          <p className="text-2xs font-mono uppercase text-slate-400">Aggregated SOL Portfolio Balance</p>
+        <Panel variant="subtle" className="space-y-1">
+          <p className="text-xs text-slate-400">Total SOL balance</p>
           <div className="flex items-center justify-between">
             <span className="text-2xl font-bold font-numeric text-emerald-400">
               {totalBalance.toFixed(2)} SOL
             </span>
-            <span className="text-xs text-slate-400 font-numeric">~${(totalBalance * 142.5).toLocaleString()}</span>
           </div>
         </Panel>
 
-        <Panel variant="subtle" className="p-4 space-y-1">
-          <p className="text-2xs font-mono uppercase text-slate-400">Identity Security Tier</p>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-sky-300 font-mono">SIWS Cryptographic Proof</span>
-            <Badge variant="success">Verified</Badge>
+        <Panel variant="subtle" className="space-y-1">
+          <p className="text-xs text-slate-400">Account session</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+            <span className="text-sm font-medium text-slate-200">{status === 'authenticated' ? 'Signed in' : 'Not signed in'}</span>
+            <Badge variant={status === 'authenticated' ? 'success' : 'neutral'}>{status === 'authenticated' ? 'Authenticated' : 'Guest'}</Badge>
           </div>
         </Panel>
       </div>
@@ -107,15 +105,16 @@ export function WalletManagementView() {
         headerActions={
           <Button
             onClick={() => setWalletModalOpen(true)}
-            variant="buy"
+            variant="primary"
             size="sm"
             leftIcon={<Plus className="h-4 w-4" />}
           >
-            Link Additional Wallet
+            {linkedWallets.length ? 'Link wallet' : 'Connect wallet'}
           </Button>
         }
       >
         <div className="space-y-3">
+          {linkedWallets.length === 0 && <p className="py-6 text-center text-sm text-slate-400">No wallets connected. Connect a wallet to view balances and manage accounts.</p>}
           {linkedWallets.map((w) => {
             const isEditing = editingWalletId === w.id;
 

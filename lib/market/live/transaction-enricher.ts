@@ -3,11 +3,15 @@ import 'server-only';
 import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
 import { dbPool } from '@/lib/server/db/pool';
+import { getSolPriceUsd as getCanonicalSolPriceUsd } from '@/lib/market/canonical-price';
 import {
   WSOL_MINT,
-  netDeltasByMint,
+  traderDeltasByMint,
+  nativeSolDeltas,
   deriveTradeFromDeltas,
-  identifyTrader,
+  pickTrader,
+  isCreationTransaction,
+  STABLE_MINTS,
   type EnrichedTrade,
   type TokenBalanceEntry,
 } from './trade-derivation';
@@ -167,13 +171,32 @@ let solPriceUsd: number | null = null;
 let solPriceAt = 0;
 
 /**
- * SOL price from the enrichment table — a real measurement, refreshed at most
+ * SOL price for pricing enriched trades — a real measurement, refreshed at most
  * once a minute. Returns null when unknown, and the derivation then omits the
  * USD fields entirely rather than pricing a trade at zero.
+ *
+ * The canonical price source comes first: it is the one every other SOL figure
+ * on the site uses, so trade USD values agree with the status bar and the
+ * cards. This used to read *only* the `realtime_tokens` table, and with
+ * Postgres down (`ECONNREFUSED`) it stayed null permanently — every trade then
+ * carried no `priceUsd`, and since `token.price` only fires for a priced event,
+ * no live price update reached any card. The table stays as a fallback.
  */
 async function getSolPriceUsd(): Promise<number | null> {
   const now = Date.now();
   if (solPriceUsd !== null && now - solPriceAt < SOL_PRICE_TTL_MS) return solPriceUsd;
+
+  try {
+    const canonical = await getCanonicalSolPriceUsd();
+    if (canonical !== null && Number.isFinite(canonical) && canonical > 0) {
+      solPriceUsd = canonical;
+      solPriceAt = now;
+      return solPriceUsd;
+    }
+  } catch {
+    // Fall through to the table.
+  }
+
   try {
     const { rows } = await dbPool.query<{ price_usd: string | null }>(
       `SELECT price_usd FROM realtime_tokens WHERE mint = $1 AND price_usd IS NOT NULL LIMIT 1`,
@@ -194,6 +217,11 @@ interface TransactionResult {
   meta?: {
     preTokenBalances?: TokenBalanceEntry[];
     postTokenBalances?: TokenBalanceEntry[];
+    /** Lamports per account key, before and after. Where the SOL leg shows. */
+    preBalances?: number[];
+    postBalances?: number[];
+    /** Program logs, read only to recognise a launch transaction. */
+    logMessages?: string[];
     err?: unknown;
   };
   /**
@@ -214,19 +242,46 @@ async function decodeSlot(result: unknown): Promise<EnrichedTrade | null> {
     return null;
   }
 
-  const deltas = netDeltasByMint(meta.preTokenBalances ?? [], meta.postTokenBalances ?? []);
+  const parsed = result as TransactionResult | null;
+  const wallet = pickTrader(
+    parsed?.transaction?.message?.accountKeys,
+    meta.preTokenBalances ?? [],
+    meta.postTokenBalances ?? [],
+  );
+
+  // Without a trader the two sides of the swap cannot be told apart, and
+  // netting them together is what produced prices off by nine orders of
+  // magnitude. Skip rather than guess.
+  if (!wallet) {
+    droppedNoMint++;
+    return null;
+  }
+
+  const deltas = traderDeltasByMint(meta.preTokenBalances ?? [], meta.postTokenBalances ?? [], wallet);
   if (deltas.size === 0) {
     droppedNoMint++;
     return null;
   }
 
-  const parsed = result as TransactionResult | null;
-  const wallet = identifyTrader(parsed?.transaction?.message, [
-    ...(meta.postTokenBalances ?? []).map((b) => b.owner),
-    ...(meta.preTokenBalances ?? []).map((b) => b.owner),
-  ]);
+  const counterpartySol = nativeSolDeltas(
+    parsed?.transaction?.message?.accountKeys,
+    meta.preBalances,
+    meta.postBalances,
+    wallet,
+  );
 
-  const trade = deriveTradeFromDeltas(deltas, await getSolPriceUsd(), wallet);
+  const trade = deriveTradeFromDeltas(deltas, await getSolPriceUsd(), wallet, counterpartySol);
+
+  // A launch transaction's SOL flows include the new accounts' rent, so a
+  // SOL-priced launch trade is real but its price is not — emit it unpriced
+  // rather than let a launch-skewed figure become the card's price. Rent is
+  // paid in SOL, so a launch priced off a stablecoin leg (pump.fun now quotes
+  // some curves in USDC) is exact and keeps its price.
+  const stablePriced = [...deltas].some(([mint, delta]) => STABLE_MINTS.has(mint) && delta !== 0);
+  if (trade && !stablePriced && isCreationTransaction(meta.logMessages)) {
+    delete trade.volumeUsd;
+    delete trade.priceUsd;
+  }
   if (!trade) droppedNoMint++;
   return trade;
 }

@@ -46,6 +46,7 @@ export class EventNormalizer {
       dex: raw.dex,
       amount: raw.amount,
       amountSol: raw.amountSol,
+      amountUsd: raw.amountUsd,
       price: raw.price,
       priceUsd: raw.price,
       liquidityUsd: raw.liquidityUsd,

@@ -46,6 +46,7 @@ export interface NormalizedRealtimeEvent {
   dex?: string;
   amount?: number;
   amountSol?: number;
+  amountUsd?: number;
   price?: number;
   priceUsd?: number;
   liquidityUsd?: number;

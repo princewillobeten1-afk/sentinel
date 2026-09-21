@@ -1,0 +1,457 @@
+import 'server-only';
+
+import { logger } from '@/lib/server/logger';
+import { fetchHolderProfileResult, type HolderProfile } from './holder-profile';
+import { getTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache';
+import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
+import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
+import { redis } from '@/lib/server/redis';
+
+/**
+ * Fills the ownership audit behind the feed, off the fast path.
+ *
+ * ## Why a worker and not an inline fetch
+ *
+ * `/token/v1/holder-profile` takes one mint per request. Resolving a 50-row
+ * column inline would cost 50 requests per 4-second cycle, and this key
+ * sustains roughly **0.49/sec** — see `REQUEST_GAP_MS`. So rows render
+ * immediately from cache and the misses are queued.
+ *
+ * The price and bonding fields never wait on this, which is the point: the
+ * fast path stays fast and the audit fills in behind it.
+ *
+ * ## The three states a caller must distinguish
+ *
+ * - **cached profile** — measured, render the number
+ * - **queued, no profile yet** — `auditPending`, render the pending pip
+ * - **not queued and not cached** — unknown, render `n/a`
+ *
+ * A failed request caches nothing, so a token whose lookup errored is retried
+ * rather than remembered as a clean 0%.
+ */
+
+const HIT_TTL_MS = 10 * 60 * 1000;
+const VISIBLE_OWNERSHIP_TTL_MS = 60_000;
+const MIGRATED_OWNERSHIP_TTL_MS = 3 * 60_000;
+
+/**
+ * Gap between requests, measured against sustained load rather than a burst.
+ *
+ * Three measurements, each correcting the one before:
+ *
+ *  - 600ms  — 6/6 in isolation, but under real load (worker draining while
+ *             feed sections queue) it drew 429s and lost 11 of 15 lookups.
+ *  - 1100ms — 8/8 over a nine-second burst, then only 2 of 15 resolved in
+ *             three minutes of actual running. A burst that fits inside one
+ *             rate window says nothing about the sustained ceiling.
+ *  - 2000ms — 25/25 over 70 seconds, zero 429s, **21 successes per minute**.
+ *
+ * The lesson is in the second line: measure long enough to cross a rate
+ * window, or the number is about the window, not the limit.
+ */
+const REQUEST_GAP_MS = 2_000;
+
+/** Extra wait after a 429, on top of the normal gap. */
+const RATE_LIMIT_BACKOFF_MS = 5_000;
+const MAX_RATE_LIMIT_BACKOFF_MS = 60_000;
+
+const MAX_QUEUE = 300;
+/** Give up on a mint after this many rate-limited attempts. */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * How long to stay paused after the compute-unit budget is spent.
+ *
+ * Quota is an account-level fact, not a per-request one: retrying sooner only
+ * produces the same 400 for every mint in the queue.
+ */
+const QUOTA_RETRY_MS = 15 * 60 * 1000;
+const AUDIT_LEASE_SECONDS = 30;
+const CIRCUIT_FAILURE_THRESHOLD = 5;
+const CIRCUIT_COOLDOWN_MS = 60_000;
+
+const globalForAudit = globalThis as unknown as {
+  sentinelAuditCache?: Map<string, HolderProfile>;
+  sentinelAuditQueued?: Set<string>;
+};
+
+const cache: Map<string, HolderProfile> = (globalForAudit.sentinelAuditCache ??= new Map());
+const queued: Set<string> = (globalForAudit.sentinelAuditQueued ??= new Set());
+
+const pending: string[] = [];
+/** Mints each rendered section currently wants audited, in display order. */
+const targetsBySection = new Map<string, string[]>();
+/** Rate-limited attempts per mint, so a requeue cannot loop forever. */
+const attempts = new Map<string, number>();
+let draining = false;
+let activeMint: string | null = null;
+let consecutiveFailures = 0;
+/** When the provider last reported its quota spent, or 0. */
+let quotaExhaustedAt = 0;
+let rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+let circuitOpenUntil = 0;
+
+function circuitOpen(): boolean {
+  return Date.now() < circuitOpenUntil;
+}
+
+/** A measured profile, or null when none is fresh. */
+export function getAudit(mint: string): HolderProfile | null {
+  const hit = cache.get(mint);
+  if (!hit) return null;
+  if (Date.now() - hit.fetchedAt > HIT_TTL_MS) {
+    cache.delete(mint);
+    return null;
+  }
+  return hit;
+}
+
+/** Whether a lookup is in flight, so the card can show a pending state. */
+export function isAuditPending(mint: string): boolean {
+  return queued.has(mint);
+}
+
+/**
+ * Declares the mints a section is currently rendering.
+ *
+ * **Replaces that section's targets rather than appending to a growing queue.**
+ * Appending was why the audit never resolved for New Pairs: rows there are
+ * seconds old and rotate out every few polls, so a FIFO draining at one lookup
+ * per 2.4s spent its entire budget on tokens that had already left the screen.
+ * Measured before this change: 0 of 22 rows populated, `auditPending: true` on
+ * 17, and never once `false`.
+ *
+ * Targets are keyed by section so the five sections do not overwrite each
+ * other, and the queue is rebuilt from their union in section order, so the
+ * top of a column resolves first.
+ *
+ * A mint dropped because it rotated off screen is *not* a failure — it keeps
+ * no attempt count and is retried immediately if it returns.
+ */
+export function setAuditTargets(section: string, mints: string[]): void {
+  targetsBySection.set(section, mints.filter(Boolean));
+  if (quotaPaused() || circuitOpen()) {
+    const observedAt = new Date().toISOString();
+    for (const mint of mints) {
+      if (getAudit(mint)) continue;
+      updateTokenCard(mint, {
+        auditPending: false,
+        ownershipEvidence: {
+          status: 'unavailable',
+          source: 'birdeye-holder-profile',
+          observedAt,
+          reason: quotaPaused()
+            ? 'Provider compute-unit quota is exhausted.'
+            : 'Ownership provider circuit breaker is cooling down after repeated failures.',
+        },
+      }, 'birdeye-holder-profile', 'stale', observedAt);
+    }
+    return;
+  }
+  const previouslyQueued = new Set(queued);
+  rebuildQueue();
+  for (const mint of mints) {
+    if (!getAudit(mint) && queued.has(mint) && !previouslyQueued.has(mint)) {
+      updateTokenCard(mint, {
+        auditPending: true,
+        ownershipEvidence: {
+          status: 'loading',
+          source: 'birdeye-holder-profile',
+          observedAt: new Date().toISOString(),
+        },
+      }, 'audit-coordinator');
+    }
+  }
+  if (!draining) void drain();
+}
+
+/** True while the provider's compute-unit budget is known to be spent. */
+export function quotaPaused(): boolean {
+  return quotaExhaustedAt > 0 && Date.now() - quotaExhaustedAt < QUOTA_RETRY_MS;
+}
+
+/**
+ * Rebuilds the pending queue from the current on-screen targets.
+ *
+ * Anything queued but no longer targeted is dropped, so the budget always
+ * follows what a reader can actually see.
+ */
+function rebuildQueue(): void {
+  const wanted: string[] = [];
+  const seen = new Set<string>();
+  // The actual viewport is the hard priority. REST section fallbacks are kept
+  // only for clients that cannot establish a WebSocket connection; they must
+  // never spend quota ahead of cards the reader can currently see.
+  const sections: Array<{ visible: boolean; mints: string[] }> = [
+    { visible: true, mints: targetsBySection.get('visible') ?? [] },
+    ...[...targetsBySection.entries()]
+      .filter(([section]) => section !== 'visible')
+      .map(([, mints]) => ({ visible: false, mints })),
+  ];
+  for (const { visible, mints } of sections) {
+    for (const mint of mints) {
+      if (seen.has(mint)) continue;
+      seen.add(mint);
+      if (mint === activeMint) continue;
+      const hit = getAudit(mint);
+      if (hit) {
+        if (!visible) continue;
+        const lifecycle = getTokenCardPatch(mint)?.changedFields.lifecycleState;
+        const refreshAfter = lifecycle === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+        if (Date.now() - hit.fetchedAt < refreshAfter) continue;
+      }
+      wanted.push(mint);
+    }
+  }
+
+  pending.length = 0;
+  for (const mint of wanted) {
+    if (pending.length >= MAX_QUEUE) break;
+    pending.push(mint);
+  }
+
+  // `queued` drives the card's pending pip, so it must match what is really
+  // outstanding — otherwise a rotated-out token shows a pip forever.
+  for (const mint of [...queued]) {
+    if (!seen.has(mint)) {
+      queued.delete(mint);
+      attempts.delete(mint);
+    }
+  }
+  for (const mint of pending) queued.add(mint);
+}
+
+/**
+ * Adds mints without displacing existing targets.
+ *
+ * For callers that are not a rendered section — a token detail view, say.
+ */
+export function queueAudit(mints: string[]): void {
+  for (const mint of mints) {
+    if (!mint || mint === activeMint || queued.has(mint) || getAudit(mint)) continue;
+    if (pending.length >= MAX_QUEUE) break;
+    queued.add(mint);
+    pending.push(mint);
+  }
+  if (!draining) void drain();
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function drain(): Promise<void> {
+  if (draining) return;
+  draining = true;
+
+  try {
+    while (pending.length > 0) {
+      const mint = pending.shift();
+      if (!mint) continue;
+      activeMint = mint;
+
+      // A Redis lease makes the visible-card queue one logical coordinator
+      // across server instances. Without it every instance spends one paid
+      // holder-profile request on the same card. When Redis is unavailable,
+      // its in-process fallback preserves the existing single-instance path.
+      const claimed = await redis.claim(`sentinel:audit-lease:${mint}`, AUDIT_LEASE_SECONDS);
+      if (!claimed) {
+        const remoteEvidence = getTokenCardPatch(mint)?.changedFields.ownershipEvidence;
+        if (remoteEvidence?.status === 'measured') {
+          queued.delete(mint);
+          attempts.delete(mint);
+        } else if ([...targetsBySection.values()].some((mints) => mints.includes(mint))) {
+          pending.push(mint);
+        }
+        await sleep(REQUEST_GAP_MS);
+        continue;
+      }
+
+      const result = await fetchHolderProfileResult(mint);
+
+      if (result.kind === 'ok') {
+        cache.set(mint, result.profile);
+        queued.delete(mint);
+        const observedAt = new Date(result.profile.fetchedAt).toISOString();
+        const security = getTokenCardPatch(mint)?.changedFields;
+        const ownershipTtl = security?.lifecycleState === 'migrated'
+          ? MIGRATED_OWNERSHIP_TTL_MS
+          : VISIBLE_OWNERSHIP_TTL_MS;
+        const completeProfile = [result.profile.top10Pct, result.profile.totalHolders,
+          result.profile.snipersPct, result.profile.insidersPct, result.profile.bundlersPct,
+          result.profile.devPct, result.profile.proTraders, result.profile.kols].every((value) => value !== null);
+        const rugRisk = calculateRugRisk({
+          top10Pct: result.profile.top10Pct,
+          devPct: result.profile.devPct,
+          snipersPct: result.profile.snipersPct,
+          insidersPct: result.profile.insidersPct,
+          bundlersPct: result.profile.bundlersPct,
+          mintAuthorityRevoked: security?.isMintRenounced,
+          freezeAuthorityRevoked: security?.isFreezeDisabled,
+          liquidityLocked: security?.isLiquidityLocked,
+        });
+        updateTokenCard(mint, {
+          top10HoldingsPct: result.profile.top10Pct ?? undefined,
+          holdersCount: result.profile.totalHolders ?? undefined,
+          sniperPercentage: result.profile.snipersPct ?? undefined,
+          insiderHoldingsPct: result.profile.insidersPct ?? undefined,
+          bundlerPercentage: result.profile.bundlersPct ?? undefined,
+          devHoldingsPct: result.profile.devPct ?? undefined,
+          proTradersCount: result.profile.proTraders ?? undefined,
+          kolsCount: result.profile.kols ?? undefined,
+          auditPending: false,
+          auditVersion: RUG_RISK_VERSION,
+          rugRisk: rugRisk ?? undefined,
+          ownershipEvidence: {
+            status: completeProfile ? 'measured' : 'unavailable',
+            source: 'birdeye-holder-profile',
+            observedAt,
+            expiresAt: new Date(result.profile.fetchedAt + ownershipTtl).toISOString(),
+            reason: completeProfile ? undefined : 'Provider returned incomplete ownership fields; retained values are not a complete current audit.',
+          },
+        }, 'birdeye-holder-profile', 'fresh', observedAt);
+        void saveTokenCardEvidence(mint, 'ownership', {
+          top10HoldingsPct: result.profile.top10Pct,
+          holdersCount: result.profile.totalHolders,
+          sniperPercentage: result.profile.snipersPct,
+          insiderHoldingsPct: result.profile.insidersPct,
+          bundlerPercentage: result.profile.bundlersPct,
+          devHoldingsPct: result.profile.devPct,
+          proTradersCount: result.profile.proTraders,
+          kolsCount: result.profile.kols,
+          rugRisk,
+        }, observedAt, RUG_RISK_VERSION);
+        consecutiveFailures = 0;
+        rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+      } else if (result.kind === 'rate-limited') {
+        // Requeue rather than discard: the token is fine, we asked too fast.
+        // Discarding here is what left rows permanently unresolved while the
+        // queue raced on to the next mint at the same rate.
+        const tries = (attempts.get(mint) ?? 0) + 1;
+        attempts.set(mint, tries);
+
+        if (tries < MAX_ATTEMPTS) {
+          pending.push(mint);
+        } else {
+          queued.delete(mint);
+          attempts.delete(mint);
+          updateTokenCard(mint, {
+            auditPending: false,
+            ownershipEvidence: {
+              status: 'unavailable',
+              source: 'birdeye-holder-profile',
+              observedAt: new Date().toISOString(),
+              reason: 'Provider rate limit did not recover after three attempts.',
+            },
+          }, 'birdeye-holder-profile', 'stale');
+        }
+
+        await sleep(Math.max(rateLimitBackoffMs, result.retryAfterMs ?? 0));
+        rateLimitBackoffMs = Math.min(MAX_RATE_LIMIT_BACKOFF_MS, rateLimitBackoffMs * 2);
+      } else if (result.kind === 'quota-exhausted') {
+        // The provider is out of compute units, so every remaining mint will
+        // fail identically. Stop the pass and clear the queue rather than
+        // grinding through it re-failing — and say so once, plainly, because
+        // this reads as a generic 400 and is easy to mistake for a bug in the
+        // request.
+        const affected = [...new Set([mint, ...pending, ...queued])];
+        queued.delete(mint);
+        attempts.delete(mint);
+        quotaExhaustedAt = Date.now();
+        pending.length = 0;
+        queued.clear();
+        const observedAt = new Date().toISOString();
+        for (const affectedMint of affected) {
+          updateTokenCard(affectedMint, {
+            auditPending: false,
+            ownershipEvidence: {
+              status: 'unavailable',
+              source: 'birdeye-holder-profile',
+              observedAt,
+              reason: 'Provider compute-unit quota is exhausted.',
+            },
+          }, 'birdeye-holder-profile', 'stale', observedAt);
+        }
+        logger.warn('[audit] Birdeye compute-unit quota exhausted — ownership audit paused', {
+          retryAfterMs: QUOTA_RETRY_MS,
+        });
+        return;
+      } else {
+        // A hard failure will not improve by waiting. Nothing is cached, so the
+        // card shows "not measured" rather than a reassuring zero.
+        queued.delete(mint);
+        attempts.delete(mint);
+        consecutiveFailures += 1;
+        updateTokenCard(mint, {
+          auditPending: false,
+          ownershipEvidence: {
+            status: 'unavailable',
+            source: 'birdeye-holder-profile',
+            observedAt: new Date().toISOString(),
+            reason: result.status ? `Provider returned HTTP ${result.status}.` : 'Provider request failed.',
+          },
+        }, 'birdeye-holder-profile', 'stale');
+        if (consecutiveFailures === 10) {
+          logger.warn('[audit] holder-profile lookups failing', {
+            consecutiveFailures,
+            status: result.status,
+            queueDepth: pending.length,
+          });
+        }
+        if (consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
+          circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+          const affected = [...new Set([...pending, ...queued])];
+          pending.length = 0;
+          queued.clear();
+          const observedAt = new Date().toISOString();
+          for (const affectedMint of affected) {
+            updateTokenCard(affectedMint, {
+              auditPending: false,
+              ownershipEvidence: {
+                status: 'unavailable',
+                source: 'birdeye-holder-profile',
+                observedAt,
+                reason: 'Ownership provider circuit breaker is cooling down after repeated failures.',
+              },
+            }, 'birdeye-holder-profile', 'stale', observedAt);
+          }
+          return;
+        }
+      }
+
+      await sleep(REQUEST_GAP_MS);
+    }
+  } finally {
+    activeMint = null;
+    draining = false;
+  }
+}
+
+export function auditStats() {
+  return {
+    cached: cache.size,
+    sections: targetsBySection.size,
+    queued: queued.size,
+    pending: pending.length,
+    draining,
+    consecutiveFailures,
+    quotaPaused: quotaPaused(),
+    circuitOpen: circuitOpen(),
+    circuitRetryAfterMs: circuitOpen() ? Math.max(0, circuitOpenUntil - Date.now()) : 0,
+    rateLimitBackoffMs,
+    requestGapMs: REQUEST_GAP_MS,
+  };
+}
+
+/** Test seam. */
+export function __resetAudit(): void {
+  cache.clear();
+  queued.clear();
+  pending.length = 0;
+  draining = false;
+  activeMint = null;
+  consecutiveFailures = 0;
+  rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+  attempts.clear();
+  targetsBySection.clear();
+  quotaExhaustedAt = 0;
+  circuitOpenUntil = 0;
+}

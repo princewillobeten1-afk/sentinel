@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Opt-in, isolated compiler cache for the local UI verification harness.
+  ...(process.env.SENTINEL_UI_PREVIEW === 'true' ? {
+    distDir: '.next-ui-preview',
+    typescript: { tsconfigPath: 'scripts/tsconfig.ui-preview.json' },
+  } : {}),
   reactStrictMode: true,
   swcMinify: true,
   transpilePackages: ['lucide-react'],

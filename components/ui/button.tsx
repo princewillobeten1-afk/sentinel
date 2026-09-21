@@ -27,17 +27,17 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-sky-400 text-slate-950 font-bold border border-sky-400 shadow-[0_0_12px_rgba(0,240,255,0.35)] hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
+    'bg-sky-400 text-slate-950 font-semibold border border-sky-400 hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
   default:
-    'bg-sky-400 text-slate-950 font-bold border border-sky-400 shadow-[0_0_12px_rgba(0,240,255,0.35)] hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
+    'bg-sky-400 text-slate-950 font-semibold border border-sky-400 hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
 
   secondary:
     'bg-sentinel-800 text-slate-200 border border-sentinel-700/80 hover:bg-sentinel-750 hover:border-sentinel-600 hover:text-white active:bg-sentinel-850',
 
   buy:
-    'bg-emerald-400 text-slate-950 font-extrabold border border-emerald-400 shadow-[0_0_14px_rgba(0,229,153,0.4)] hover:bg-emerald-300 hover:border-emerald-300 active:bg-emerald-500',
+    'bg-emerald-400 text-slate-950 font-semibold border border-emerald-400 hover:bg-emerald-300 hover:border-emerald-300 active:bg-emerald-500',
   sell:
-    'bg-rose-500 text-white font-extrabold border border-rose-500 shadow-[0_0_14px_rgba(255,59,105,0.4)] hover:bg-rose-400 hover:border-rose-400 active:bg-rose-600',
+    'bg-rose-400 text-slate-950 font-semibold border border-rose-400 hover:bg-rose-300 hover:border-rose-300 active:bg-rose-500',
 
   outline:
     'bg-transparent text-slate-200 border border-sentinel-700 hover:border-sky-500/50 hover:bg-sentinel-800 hover:text-white active:bg-sentinel-750',
@@ -57,11 +57,11 @@ const variantStyles: Record<ButtonVariant, string> = {
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
-  xs: 'h-6 px-2 text-2xs rounded gap-1',
-  sm: 'h-7 px-2.5 text-xs rounded-md gap-1.5',
-  md: 'h-8 px-3.5 text-xs rounded-lg gap-1.5',
-  lg: 'h-10 px-5 text-sm rounded-xl gap-2',
-  icon: 'h-8 w-8 p-0 rounded-lg gap-0',
+  xs: 'h-7 px-2 text-2xs rounded-md gap-1',
+  sm: 'h-8 px-3 text-xs rounded-md gap-1.5',
+  md: 'h-9 px-3.5 text-xs rounded-md gap-1.5',
+  lg: 'h-11 px-5 text-sm rounded-md gap-2',
+  icon: 'h-9 w-9 p-0 rounded-md gap-0',
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -70,6 +70,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         disabled={disabled || isLoading}
+        aria-busy={isLoading || undefined}
+        data-ui="button"
         className={clsx(
           'inline-flex items-center justify-center whitespace-nowrap font-medium',
           'transition-all duration-150 select-none active:scale-[0.98]',
@@ -81,15 +83,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
         {...props}
       >
-        {isLoading ? (
+        {isLoading && (
           <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden="true" />
-        ) : (
-          <>
-            {leftIcon && <span className="shrink-0">{leftIcon}</span>}
-            {children}
-            {rightIcon && <span className="shrink-0">{rightIcon}</span>}
-          </>
         )}
+        {!isLoading && leftIcon && <span className="shrink-0">{leftIcon}</span>}
+        {children}
+        {!isLoading && rightIcon && <span className="shrink-0">{rightIcon}</span>}
       </button>
     );
   }

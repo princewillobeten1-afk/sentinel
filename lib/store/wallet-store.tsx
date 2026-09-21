@@ -21,6 +21,11 @@ export interface QuickBuyTokenData {
   mcap: string;
   customAmountSol?: number;
   customAmountUsd?: number;
+  liquidity?: string;
+  volume24h?: string;
+  priceChange24h?: number;
+  holders?: number;
+  logoURI?: string;
 }
 
 export type WalletTab = 'overview' | 'deposit' | 'withdraw' | 'history' | 'wallets';

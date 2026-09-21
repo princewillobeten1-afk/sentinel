@@ -29,6 +29,16 @@ export async function POST() {
   const { tokenRefreshWorker } = await import('@/lib/market-data/refresh/token-refresh-worker');
   tokenRefreshWorker.start();
 
+  // Owns the canonical lifecycle state for every tracked token. Reads bonding
+  // curves off chain and confirms migrations from program events; the Discover
+  // columns read it rather than filtering API responses themselves.
+  const { lifecycleWorker } = await import('@/lib/market/lifecycle/lifecycle-worker');
+  lifecycleWorker.start();
+
+  // Streams real-time DexScreener paid boosts, active countdowns and Dex Paid badges
+  const { dexScreenerBoostsService } = await import('@/lib/discovery/dexscreener-boosts');
+  dexScreenerBoostsService.start();
+
   if (!wss) {
     return jsonResponse({ webSocketAttached: false, reason: 'No WebSocketServer published on globalThis (not running under server.js).' });
   }

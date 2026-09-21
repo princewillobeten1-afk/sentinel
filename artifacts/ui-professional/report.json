@@ -1,0 +1,342 @@
+{
+  "measurements": [
+    {
+      "route": "terminal",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "terminal",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "terminal",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "terminal",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "portfolio",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "portfolio",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "portfolio",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "portfolio",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "watchlist",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "watchlist",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "watchlist",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "watchlist",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "alerts",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "alerts",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "alerts",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "alerts",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "settings",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "settings",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "settings",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "settings",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "analytics",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "analytics",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "analytics",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "analytics",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "intelligence",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "intelligence",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "intelligence",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "intelligence",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "help",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "help",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "help",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "help",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "developers",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "developers",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "developers",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "developers",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "launchpad",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "launchpad",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "launchpad",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "launchpad",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "ai",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "ai",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "ai",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "ai",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    },
+    {
+      "route": "admin",
+      "viewport": 1440,
+      "width": 1440,
+      "headerWidth": 1440,
+      "overflow": []
+    },
+    {
+      "route": "admin",
+      "viewport": 1280,
+      "width": 1280,
+      "headerWidth": 1280,
+      "overflow": []
+    },
+    {
+      "route": "admin",
+      "viewport": 768,
+      "width": 768,
+      "headerWidth": 768,
+      "overflow": []
+    },
+    {
+      "route": "admin",
+      "viewport": 390,
+      "width": 390,
+      "headerWidth": 390,
+      "overflow": []
+    }
+  ],
+  "errors": [],
+  "interactions": "passed"
+}

@@ -4,12 +4,12 @@ import { filterDiscoveryTokens } from './service';
 import {
   fetchJupiterFeed,
   mapJupiterToken,
-  isOnBondingCurve,
   formatAge,
   collapseDuplicateLaunches,
   type JupiterFeed,
   type JupiterToken,
 } from './jupiter-feed';
+import { getLifecycleDiscoveryTokens } from './lifecycle-feed';
 
 /**
  * The live token source behind every Discover column.
@@ -101,10 +101,7 @@ async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
 }
 
 /**
- * The freshly-launched pool, used by New, Bonding and Migrated.
- *
- * One request serves all three: they are the same 30 tokens partitioned by the
- * structural bonding test, not three separate queries.
+ * Fresh launches for New Pairs. Lifecycle columns have their own evidence feed.
  */
 async function recentTokens(): Promise<{ token: DiscoveryToken; raw: JupiterToken }[]> {
   const { raw, mapped } = await loadFeed('recent');
@@ -141,9 +138,8 @@ export async function fetchLiveSolanaTokens(): Promise<DiscoveryToken[]> {
 /**
  * Resolves one Discover section to real tokens.
  *
- * The three launch-oriented sections share a single `/recent` response and
- * differ only by the structural bonding test, so the column set costs one
- * request rather than three.
+ * New Pairs uses /recent; Final Stretch and Migrated use the on-chain lifecycle
+ * engine plus by-mint metadata so lifecycle membership never depends on listing age.
  */
 export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>): Promise<DiscoveryToken[]> {
   const section = filter?.section;
@@ -163,29 +159,11 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       return apply(collapsed).sort((a, b) => a.ageMinutes - b.ageMinutes);
     }
 
-    case 'migrating': {
-      // Still on the bonding curve. Structural, not a market-cap threshold —
-      // see jupiter-feed.ts#isOnBondingCurve.
-      const rows = await recentTokens();
-      const bonding = collapseDuplicateLaunches(
-        rows.filter((r) => isOnBondingCurve(r.raw)).map((r) => r.token),
-        { includeZeroLiquidity: filter?.includeZeroLiquidity },
-      );
-      return apply(bonding).sort(
-        (a, b) => parseFloat(b.marketCapUsd || '0') - parseFloat(a.marketCapUsd || '0'),
-      );
-    }
-
-    case 'graduated': {
-      const rows = await recentTokens();
-      const migrated = collapseDuplicateLaunches(
-        rows.filter((r) => !isOnBondingCurve(r.raw)).map((r) => r.token),
-        { includeZeroLiquidity: filter?.includeZeroLiquidity },
-      );
-      return apply(migrated).sort(
-        (a, b) => parseFloat(b.marketCapUsd || '0') - parseFloat(a.marketCapUsd || '0'),
-      );
-    }
+    case 'migrating':
+    case 'graduated':
+      // Not partitions of /recent: old launches can migrate just now, while
+      // a brand-new Raydium pool may never have had a bonding curve at all.
+      return apply(await getLifecycleDiscoveryTokens(section));
 
     case 'hot': {
       // Jupiter's own organic-score label, which is a published measurement of

@@ -43,6 +43,16 @@ export interface LimitOrder {
   chainId: string;
   tokenIn: string;
   tokenOut: string;
+  /**
+   * The real mint address of the token being traded.
+   *
+   * `tokenIn`/`tokenOut` were display strings only ("SOL" / "SENT"), and
+   * nothing in the system ever recorded which actual token an order was for
+   * -- every order silently defaulted to a nonexistent "SENT" token
+   * regardless of which token's trade page created it. This is what the
+   * order is actually scoped and filtered by.
+   */
+  tokenMint: string;
   side: 'buy' | 'sell';
   targetPrice: number;
   amountIn: number;

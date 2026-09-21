@@ -49,6 +49,7 @@ const badgeVariants: Record<BadgeVariant, string> = {
 export function Badge({ className, variant = 'neutral', size = 'md', pulse = false, children, ...props }: BadgeProps) {
   return (
     <span
+      data-ui="badge"
       className={clsx(
         'inline-flex items-center gap-1 rounded-md font-semibold uppercase select-none whitespace-nowrap',
         'tracking-[0.06em] leading-none',

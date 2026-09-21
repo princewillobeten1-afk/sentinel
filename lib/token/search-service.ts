@@ -8,7 +8,7 @@ export interface NormalizedSearchResult {
   priceChange24h: number;
   marketCapUsd: string;
   liquidityUsd: string;
-  riskRating: 'low' | 'med' | 'high' | 'critical';
+  riskRating: 'low' | 'med' | 'high' | 'critical' | 'unknown';
 }
 
 export const TOKEN_DATABASE: NormalizedSearchResult[] = [

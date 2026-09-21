@@ -1,0 +1,394 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; background: #07090D; }
+    a { color: #5A9FF3; text-decoration: none; }
+    a:hover { color: #7FB2F6; }
+    .num { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+    .row { transition: background 120ms ease, border-color 120ms ease; }
+    .row:hover { background: #26303E; border-color: #445366; }
+    .tab:hover { color: #F2F5F9; }
+    .btn:hover { background: #26303E; }
+    .buybtn:hover { background: #12B574; color: #07090D; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #33404F; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #07090D; color: #C6CEDA; display: flex; overflow: hidden;">
+
+  <!-- Rail -->
+  <div style="width: 172px; flex-shrink: 0; background: #0E131B; border-right: 1px solid #33404F; display: flex; flex-direction: column;">
+    <div style="padding: 16px 14px; border-bottom: 1px solid #33404F; display: flex; align-items: center; gap: 9px;">
+      <div style="width: 26px; height: 26px; border-radius: 7px; background: #3B8FF0; display: flex; align-items: center; justify-content: center;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#07090D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      </div>
+      <div>
+        <div style="font-size: 8px; letter-spacing: 0.14em; color: #6E7A8A; font-weight: 600;">PROJECT</div>
+        <div style="font-size: 13px; font-weight: 700; color: #F2F5F9; letter-spacing: -0.01em;">SENTINEL</div>
+      </div>
+    </div>
+
+    <div style="padding: 12px 8px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="font-size: 9px; letter-spacing: 0.13em; color: #6E7A8A; font-weight: 600; padding: 0 6px 7px;">MAIN TERMINAL</div>
+      <sc-for list="{{nav}}" as="n" hint-placeholder-count="6">
+        <div onClick="{{n.pick}}" class="tab" style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: {{n.weight}}; color: {{n.fg}}; background: {{n.bg}};">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{n.icon}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="{{n.d}}"></path></svg>
+          <span>{{n.label}}</span>
+          <sc-if value="{{n.live}}" hint-placeholder-val="{{ true }}">
+            <span class="num" style="margin-left: auto; font-size: 8px; font-weight: 700; color: #12B574; border: 1px solid #0B764C; background: #04281B; padding: 1px 4px; border-radius: 3px;">LIVE</span>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; padding: 12px; border-top: 1px solid #33404F;">
+      <div style="font-size: 9px; letter-spacing: 0.12em; color: #6E7A8A; font-weight: 600; margin-bottom: 6px;">NETWORK</div>
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #2CC189;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #12B574; display: block;"></span>
+        <span>Solana Mainnet</span>
+      </div>
+      <div class="num" style="font-size: 10px; color: #6E7A8A; margin-top: 4px;">slot {{slot}}</div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- Status strip -->
+    <div style="height: 34px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; gap: 18px; padding: 0 14px;">
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: #C6CEDA;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #12B574; display: block;"></span>
+        <span style="font-weight: 600;">Solana Mainnet-Beta</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #98A3B3;">SOL <span class="num" style="color: #F2F5F9; font-weight: 600;">${{sol}}</span><span class="num" style="color: {{solFg}};">{{solDelta}}</span></div>
+      <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #98A3B3;">TPS <span class="num" style="color: #C6CEDA;">{{tps}}</span></div>
+      <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #98A3B3;">Fee <span class="num" style="color: #FBBF24;">{{fee}}</span></div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <span class="num" style="font-size: 10px; color: #6E7A8A;">US-East 18ms</span>
+        <span style="font-size: 10px; font-weight: 700; color: #12B574; border: 1px solid #0B764C; background: #04281B; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.04em;">STREAM LIVE</span>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div style="height: 46px; flex-shrink: 0; border-bottom: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; gap: 10px; padding: 0 14px;">
+      <div style="display: flex; align-items: center; gap: 7px; background: #151C26; border: 1px solid #33404F; border-radius: 7px; padding: 6px 10px; width: 260px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6E7A8A" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span style="font-size: 11px; color: #6E7A8A;">Search token, symbol, CA…</span>
+      </div>
+
+      <div style="display: flex; background: #151C26; border: 1px solid #33404F; border-radius: 7px; padding: 2px; gap: 1px;">
+        <sc-for list="{{windows}}" as="w" hint-placeholder-count="6">
+          <div onClick="{{w.pick}}" class="tab" style="padding: 4px 9px; border-radius: 5px; font-size: 11px; font-weight: {{w.weight}}; cursor: pointer; color: {{w.fg}}; background: {{w.bg}};">{{w.label}}</div>
+        </sc-for>
+      </div>
+
+      <div class="btn" style="display: flex; align-items: center; gap: 6px; background: #151C26; border: 1px solid #33404F; border-radius: 7px; padding: 6px 10px; cursor: pointer;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span style="font-size: 11px; color: #C6CEDA;">Quick Buy</span>
+        <span class="num" style="font-size: 11px; color: #F2F5F9; font-weight: 600;">0.05</span>
+      </div>
+
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <div class="btn" style="display: flex; align-items: center; gap: 6px; background: #151C26; border: 1px solid #33404F; border-radius: 7px; padding: 6px 10px; cursor: pointer;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#98A3B3" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          <span style="font-size: 11px; color: #C6CEDA;">Filters</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; background: #04281B; border: 1px solid #0B764C; border-radius: 7px; padding: 6px 11px;">
+          <span style="width: 5px; height: 5px; border-radius: 50%; background: #12B574; display: block;"></span>
+          <span style="font-size: 11px; color: #2CC189; font-weight: 700; letter-spacing: 0.03em;">LIVE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columns -->
+    <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: #33404F; min-height: 0;">
+      <sc-for list="{{columns}}" as="col" hint-placeholder-count="3">
+        <div style="background: #0E131B; display: flex; flex-direction: column; min-height: 0;">
+
+          <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #33404F; background: #151C26;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{col.accent}}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="{{col.d}}"></path></svg>
+            <span style="font-size: 11px; font-weight: 700; color: #F2F5F9; letter-spacing: 0.06em;">{{col.title}}</span>
+            <span class="num" style="font-size: 10px; color: #98A3B3; background: #1C2531; border: 1px solid #33404F; padding: 1px 6px; border-radius: 10px;">{{col.count}}</span>
+            <span style="margin-left: auto; font-size: 10px; color: #6E7A8A;">{{col.sort}}</span>
+          </div>
+
+          <div style="flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 7px;">
+            <sc-for list="{{col.rows}}" as="t" hint-placeholder-count="4">
+              <div onClick="{{t.pick}}" class="row" style="background: #1C2531; border: 1px solid {{t.border}}; border-radius: 9px; padding: 9px; cursor: pointer; display: flex; flex-direction: column; gap: 7px;">
+
+                <div style="display: flex; align-items: flex-start; gap: 8px;">
+                  <div style="width: 30px; height: 30px; border-radius: 7px; background: {{t.tint}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; font-weight: 700; color: #07090D;">{{t.initial}}</div>
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                      <span style="font-size: 12px; font-weight: 700; color: #F2F5F9;">{{t.symbol}}</span>
+                      <span style="font-size: 10px; color: #6E7A8A; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 76px;">{{t.name}}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px;">
+                      <span class="num" style="font-size: 10px; color: #2CC189;">{{t.age}}</span>
+                      <span class="num" style="font-size: 10px; color: #6E7A8A;">{{t.mint}}</span>
+                      <span style="font-size: 9px; color: #98A3B3; border: 1px solid #33404F; background: #151C26; padding: 0 4px; border-radius: 3px;">{{t.venue}}</span>
+                    </div>
+                  </div>
+                  <div style="text-align: right; flex-shrink: 0;">
+                    <div class="num" style="font-size: 11px; font-weight: 700; color: #F2F5F9;">{{t.price}}</div>
+                    <div class="num" style="font-size: 10px; font-weight: 700; color: {{t.deltaFg}};">{{t.delta}}</div>
+                  </div>
+                </div>
+
+                <sc-if value="{{t.showCurve}}" hint-placeholder-val="{{ true }}">
+                  <div>
+                    <div style="display: flex; justify-content: space-between; font-size: 9px; margin-bottom: 3px;">
+                      <span style="color: #FBBF24; font-weight: 600;">Bonding curve</span>
+                      <span class="num" style="color: #F2F5F9; font-weight: 700;">{{t.curve}}%</span>
+                    </div>
+                    <div style="height: 4px; background: #07090D; border-radius: 2px; overflow: hidden;">
+                      <div style="height: 100%; width: {{t.curve}}%; background: linear-gradient(90deg, #FFB800, #12B574); border-radius: 2px;"></div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{t.showPool}}" hint-placeholder-val="{{ true }}">
+                  <div style="display: flex; align-items: center; gap: 6px; background: #04281B; border: 1px solid #0B764C; border-radius: 6px; padding: 4px 7px;">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2CC189" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    <span style="font-size: 10px; font-weight: 700; color: #2CC189;">{{t.dex}}</span>
+                    <span class="num" style="font-size: 9px; color: #6E7A8A; margin-left: auto;">{{t.pool}}</span>
+                  </div>
+                </sc-if>
+
+                <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 10px; background: #151C26; border: 1px solid #33404F; border-radius: 6px; padding: 6px 8px;">
+                  <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">MC</span><span class="num" style="font-size: 10px; font-weight: 700; color: #FBBF24;">{{t.mc}}</span></div>
+                  <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">VOL</span><span class="num" style="font-size: 10px; font-weight: 600; color: #C6CEDA;">{{t.vol}}</span></div>
+                  <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">LIQ</span><span class="num" style="font-size: 10px; font-weight: 700; color: #5A9FF3;">{{t.liq}}</span></div>
+                  <div style="display: flex; justify-content: space-between;"><span style="font-size: 9px; color: #6E7A8A;">TX</span><span class="num" style="font-size: 10px; font-weight: 600; color: #C6CEDA;">{{t.tx}}</span></div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                  <sc-for list="{{t.pills}}" as="p" hint-placeholder-count="5">
+                    <span style="display: flex; align-items: center; gap: 3px; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 9px; border: 1px solid {{p.bd}}; background: {{p.bg}}; color: {{p.fg}};" class="num">
+                      <span style="font-family: Inter, sans-serif; font-weight: 600; opacity: 0.75;">{{p.k}}</span>{{p.v}}
+                    </span>
+                  </sc-for>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span style="font-size: 9px; color: #6E7A8A;">{{t.devLabel}}</span>
+                  <span class="num" style="font-size: 9px; font-weight: 700; color: {{t.devFg}};">{{t.dev}}</span>
+                  <div style="margin-left: auto; display: flex; gap: 4px;">
+                    <span class="buybtn num" style="font-size: 10px; font-weight: 700; color: #2CC189; background: #04281B; border: 1px solid #0B764C; padding: 3px 9px; border-radius: 5px; cursor: pointer;">BUY 0.05</span>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- Footer -->
+    <div style="height: 28px; flex-shrink: 0; border-top: 1px solid #33404F; background: #0E131B; display: flex; align-items: center; gap: 16px; padding: 0 14px;">
+      <span style="font-size: 10px; color: #2CC189;">● Engine operational</span>
+      <span class="num" style="font-size: 10px; color: #98A3B3;">last event {{lastEvent}}s ago</span>
+      <span class="num" style="font-size: 10px; color: #98A3B3;">{{tracking}} tracked</span>
+      <span style="margin-left: auto; font-size: 10px; color: #6E7A8A;">{{selected}}</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#3B8FF0","options":["#3B8FF0","#A855F7","#12B574","#FFB800"]},"density":{"editor":"enum","default":"comfortable","options":["comfortable","compact"]}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      tab: 'discover',
+      window: '15m',
+      tick: 0,
+      selected: 'No token selected',
+      seeds: [
+        { s: 'CAN',      n: 'Cheeto and Nuts', a: 45,  p: 0.0000292, d: 12.4,  mc: 27900,  vol: 33000, liq: 3130,  tx: 573,  curve: 4.4,   col: 0, dev: '34/1280',  venue: 'Pump V1', tint: '#FBBF24' },
+        { s: 'GUS',      n: 'Gus Coin',        a: 8,   p: 0.0000484, d: 0.7,   mc: 4840,   vol: 229,   liq: 271,   tx: 3,    curve: 0.9,   col: 0, dev: '0/256',    venue: 'Pump V1', tint: '#5A9FF3' },
+        { s: 'macaw',    n: 'macaw',           a: 16,  p: 0.0000374, d: -5.4,  mc: 3740,   vol: 8.7,   liq: 3060,  tx: 4,    curve: 0.4,   col: 0, dev: '6/78',     venue: 'Pump V1', tint: '#2CC189' },
+        { s: 'RISE',     n: 'Rise Protocol',   a: 26,  p: 0.0000515, d: 2.1,   mc: 5150,   vol: 1040,  liq: 4150,  tx: 9,    curve: 2.2,   col: 0, dev: '1/24',     venue: 'Pump V1', tint: '#C084FC' },
+        { s: 'POPCASH',  n: 'Pop Cash',        a: 214, p: 0.0002140, d: 41.8,  mc: 68400,  vol: 91200, liq: 18400, tx: 1840, curve: 87.2,  col: 1, dev: '12/40',    venue: 'Pump V1', tint: '#FFB800' },
+        { s: 'HOODCATS', n: 'Hood Cats',       a: 402, p: 0.0001180, d: 18.2,  mc: 41200,  vol: 52800, liq: 12900, tx: 962,  curve: 58.3,  col: 1, dev: '3/19',     venue: 'Pump V1', tint: '#EF7176' },
+        { s: 'Elonymous',n: 'Elonymous',       a: 618, p: 0.0000904, d: 9.6,   mc: 33800,  vol: 29400, liq: 9800,  tx: 611,  curve: 55.3,  col: 1, dev: '7/895',    venue: 'Pump V1', tint: '#5A9FF3' },
+        { s: 'TJROF',    n: 'TJ Rof',          a: 744, p: 0.0000712, d: -3.1,  mc: 25900,  vol: 16700, liq: 7400,  tx: 388,  curve: 51.8,  col: 1, dev: '2/61',     venue: 'Pump V1', tint: '#2CC189' },
+        { s: 'PIT',      n: 'Pit Token',       a: 62,  p: 0.0004551, d: 111.4, mc: 54900,  vol: 41500, liq: 8930,  tx: 340,  curve: 100,   col: 2, dev: '1/1',      venue: 'PumpSwap', tint: '#2CC189', pool: 'nGeXRwVE89FkWh' },
+        { s: 'WOFI',     n: 'Wofi',            a: 148, p: 0.0015200, d: 62.9,  mc: 1520000,vol: 388000,liq: 96400, tx: 4120, curve: 100,   col: 2, dev: '18/62',    venue: 'PumpSwap', tint: '#FBBF24', pool: 'CmZefRkzjhF9mz' },
+        { s: 'GOAF',     n: 'Goaf',            a: 260, p: 0.0136600, d: 208.4, mc: 13600000,vol:2140000,liq:412000,tx: 18200,curve: 100,   col: 2, dev: '41/97',    venue: 'PumpSwap', tint: '#C084FC', pool: '6r67b8QD8bGDpD' },
+        { s: 'POMP',     n: 'Pomp',            a: 385, p: 0.0000963, d: 27.1,  mc: 96300,  vol: 71400, liq: 21800, tx: 1290, curve: 100,   col: 2, dev: '5/143',    venue: 'PumpSwap', tint: '#5A9FF3' },
+      ],
+    };
+  }
+
+  componentDidMount() {
+    // Live feel: ages advance, prices drift, the slot counter climbs.
+    this.timer = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  /**
+   * Icon path data, not markup.
+   *
+   * A `{{hole}}` renders as a text node — HTML in the value is escaped — so
+   * binding an `<svg>` string paints the source code on the page. Attributes
+   * DO interpolate, so the markup carries a fixed `<svg><path d="{{...}}">`
+   * and only the geometry travels through the hole. Multi-stroke icons are
+   * written as one path with several subpaths.
+   */
+  icon(name) {
+    return {
+      compass: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M15.5 8.5l-2 5-5 2 2-5z',
+      spark:   'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18',
+      chart:   'M3 3v18h18M7 14l3-4 3 3 4-6',
+      wallet:  'M5 6h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM16 12h3',
+      star:    'm12 3 2.7 5.6 6.3.9-4.5 4.4 1 6.1-5.5-2.9-5.5 2.9 1-6.1L3 9.5l6.3-.9z',
+      bell:    'M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M10.5 21a1.9 1.9 0 0 0 3 0',
+      flame:   'M12 22c4 0 7-2.7 7-6.5 0-4.5-4-6-4-10 0 0-4 2-4 6 0-1-1-2.5-2-3-1.5 1.5-4 3.5-4 7C5 19.3 8 22 12 22z',
+      grad:    'M12 4 2 9l10 5 10-5-10-5zM6 11.5V17c0 1.5 3 3 6 3s6-1.5 6-3v-5.5',
+      trend:   'm3 17 6-6 4 4 8-8M15 7h6v6',
+    }[name] || '';
+  }
+
+  money(v) {
+    if (v >= 1000000) return '$' + (v / 1000000).toFixed(2) + 'M';
+    if (v >= 1000) return '$' + (v / 1000).toFixed(1) + 'K';
+    return '$' + v.toFixed(0);
+  }
+
+  price(p) {
+    const s = p.toFixed(9).replace(/0+$/, '');
+    const m = s.match(/^0\.(0+)(\d{3})/);
+    if (m) return '$0.0' + String(m[1].length) + m[2];
+    return '$' + p.toPrecision(3);
+  }
+
+  age(sec) {
+    if (sec < 60) return sec + 's';
+    if (sec < 3600) return Math.floor(sec / 60) + 'm';
+    return Math.floor(sec / 3600) + 'h';
+  }
+
+  /** Audit pills. `n/a` is neutral grey — never green — because unmeasured
+      must not read as safe. */
+  pills(t, colIndex) {
+    const known = colIndex === 2;
+    const na = { bd: '#33404F', bg: '#151C26', fg: '#6E7A8A' };
+    const band = (v, warn, danger) => v > danger
+      ? { bd: '#8C2429', bg: '#3D1013', fg: '#EF7176' }
+      : v > warn ? { bd: '#B45309', bg: '#451A03', fg: '#FBBF24' }
+                 : { bd: '#0B764C', bg: '#04281B', fg: '#2CC189' };
+    const spec = [
+      { k: 'T10', v: 66.3, warn: 30, danger: 60 },
+      { k: 'DEV', v: 3.4,  warn: 5,  danger: 20 },
+      { k: 'SNP', v: 0,    warn: 5,  danger: 10 },
+      { k: 'INS', v: 9.2,  warn: 5,  danger: 15 },
+      { k: 'BND', v: 1.8,  warn: 5,  danger: 20 },
+    ];
+    return spec.map((s) => {
+      const tone = known ? band(s.v, s.warn, s.danger) : na;
+      return { k: s.k, v: known ? Math.round(s.v) + '%' : 'n/a', bd: tone.bd, bg: tone.bg, fg: tone.fg };
+    });
+  }
+
+  renderVals() {
+    const t = this.state.tick;
+    const accent = this.props.accent ?? '#3B8FF0';
+
+    const nav = [
+      ['discover', 'Discover', 'compass', true],
+      ['trade', 'Trade', 'trend', false],
+      ['overview', 'Overview', 'chart', false],
+      ['portfolio', 'Portfolio', 'wallet', false],
+      ['watchlist', 'Watchlist', 'star', false],
+      ['alerts', 'Alerts', 'bell', false],
+    ].map(([id, label, ic, live]) => ({
+      label, live,
+      d: this.icon(ic),
+      bg: this.state.tab === id ? '#1C2531' : 'transparent',
+      fg: this.state.tab === id ? '#F2F5F9' : '#98A3B3',
+      icon: this.state.tab === id ? accent : '#6E7A8A',
+      weight: this.state.tab === id ? 600 : 500,
+      pick: () => this.setState({ tab: id }),
+    }));
+
+    const windows = ['1m', '5m', '15m', '1h', '4h', '24h'].map((w) => ({
+      label: w,
+      bg: this.state.window === w ? accent : 'transparent',
+      fg: this.state.window === w ? '#07090D' : '#98A3B3',
+      weight: this.state.window === w ? 700 : 500,
+      pick: () => this.setState({ window: w }),
+    }));
+
+    const build = (colIndex) => this.state.seeds
+      .filter((s) => s.col === colIndex)
+      .map((s, i) => {
+        const drift = Math.sin((t + i * 7) / 5) * 0.012;
+        const p = s.p * (1 + drift);
+        const delta = s.d + drift * 90;
+        const migrated = colIndex === 2;
+        const devParts = s.dev.split('/');
+        const rate = Number(devParts[0]) / Math.max(1, Number(devParts[1]));
+        return {
+          symbol: s.s,
+          name: s.n,
+          initial: s.s.slice(0, 2).toUpperCase(),
+          tint: s.tint,
+          age: this.age(s.a + t),
+          mint: s.s.slice(0, 4).toLowerCase() + '…pump',
+          venue: s.venue,
+          price: this.price(p),
+          delta: (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%',
+          deltaFg: delta >= 0 ? '#2CC189' : '#EF7176',
+          mc: this.money(s.mc),
+          vol: this.money(s.vol),
+          liq: this.money(s.liq),
+          tx: s.tx >= 1000 ? (s.tx / 1000).toFixed(1) + 'K' : String(s.tx),
+          showCurve: !migrated,
+          showPool: migrated,
+          curve: s.curve.toFixed(1),
+          dex: s.venue,
+          pool: s.pool ? s.pool.slice(0, 10) + '…' : '',
+          pills: this.pills(s, colIndex),
+          devLabel: 'graduated',
+          dev: s.dev,
+          devFg: rate < 0.02 ? '#EF7176' : rate < 0.1 ? '#FBBF24' : '#2CC189',
+          border: this.state.selected === s.s ? accent : '#33404F',
+          pick: () => this.setState({ selected: s.s }),
+        };
+      });
+
+    const columns = [
+      { title: 'NEW PAIRS',     sort: 'newest',           accent: '#5A9FF3', d: this.icon('spark'), rows: build(0) },
+      { title: 'FINAL STRETCH', sort: 'curve % desc',     accent: '#FBBF24', d: this.icon('flame'), rows: build(1) },
+      { title: 'MIGRATED',      sort: 'newest migration', accent: '#2CC189', d: this.icon('grad'),  rows: build(2) },
+    ].map((c) => ({ ...c, count: String(c.rows.length) }));
+
+    const solDrift = Math.sin(t / 8) * 0.9;
+    return {
+      nav, windows, columns,
+      sol: (102.13 + solDrift).toFixed(2),
+      solDelta: (solDrift >= 0 ? '+' : '') + (solDrift / 1.02).toFixed(2) + '%',
+      solFg: solDrift >= 0 ? '#2CC189' : '#EF7176',
+      tps: String(2840 + Math.round(Math.sin(t / 3) * 180)),
+      fee: '0.00' + (5 + (t % 3)) + ' SOL',
+      slot: String(444556467 + t * 2),
+      lastEvent: String(t % 4),
+      tracking: String(392 + (t % 11)),
+      selected: this.state.selected === 'No token selected' ? 'No token selected' : 'Selected ' + this.state.selected,
+    };
+  }
+}
+</script>
+</body>
+</html>

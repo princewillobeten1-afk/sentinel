@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DiscoveryFilter } from './types';
+import { ApiError } from '@/lib/server/errors';
 
 /**
  * Discovery Query Model (Section 33)
@@ -30,8 +31,15 @@ export const discoveryQuerySchema = z.object({
   chain: chainSchema,
   timeWindow: timeWindowSchema,
   sort: sortSchema,
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
+  // Bounds carry their own messages: Zod's default for a failed bound is
+  // "Invalid input", which tells a caller nothing about what to send instead.
+  limit: z.coerce
+    .number()
+    .int('must be a whole number')
+    .min(1, 'must be at least 1')
+    .max(100, 'must be 100 or fewer — page with `cursor` for more')
+    .default(20),
+  offset: z.coerce.number().int('must be a whole number').min(0, 'cannot be negative').default(0),
   cursor: z.string().optional(),
   searchQuery: z.string().optional(),
 
@@ -54,6 +62,14 @@ export const discoveryQuerySchema = z.object({
   maxPriceChange: z.coerce.number().optional(),
   minOrganicScore: z.coerce.number().min(0).max(100).optional(),
   maxTop5Share: z.coerce.number().min(0).max(1).optional(),
+  maxTop10Holdings: z.coerce.number().min(0).max(100).optional(),
+  maxDevHoldings: z.coerce.number().min(0).max(100).optional(),
+  maxSnipers: z.coerce.number().min(0).max(100).optional(),
+  maxInsiders: z.coerce.number().min(0).max(100).optional(),
+  maxBundlers: z.coerce.number().min(0).max(100).optional(),
+  minRiskScore: z.coerce.number().min(0).max(100).optional(),
+  mintRenouncedOnly: z.coerce.boolean().optional(),
+  liquidityLockedOnly: z.coerce.boolean().optional(),
   noCoordinatedSignals: z.coerce.boolean().optional(),
 });
 
@@ -90,6 +106,14 @@ export const discoveryScreenSchema = z.object({
   maxPriceChange: z.number().optional(),
   minOrganicScore: z.number().min(0).max(100).optional(),
   maxTop5Share: z.number().min(0).max(1).optional(),
+  maxTop10Holdings: z.number().min(0).max(100).optional(),
+  maxDevHoldings: z.number().min(0).max(100).optional(),
+  maxSnipers: z.number().min(0).max(100).optional(),
+  maxInsiders: z.number().min(0).max(100).optional(),
+  maxBundlers: z.number().min(0).max(100).optional(),
+  minRiskScore: z.number().min(0).max(100).optional(),
+  mintRenouncedOnly: z.boolean().optional(),
+  liquidityLockedOnly: z.boolean().optional(),
   noCoordinatedSignals: z.boolean().optional(),
 });
 
@@ -104,7 +128,32 @@ export function parseDiscoveryQuery(url: URL): DiscoveryQueryParams {
   url.searchParams.forEach((value, key) => {
     raw[key] = value;
   });
-  return discoveryQuerySchema.parse(raw);
+  const parsed = discoveryQuerySchema.safeParse(raw);
+  if (!parsed.success) throw badQuery(parsed.error);
+  return parsed.data;
+}
+
+/**
+ * A rejected query parameter is the caller's fault, and must say so.
+ *
+ * Every discovery route funnels its parse through here inside a `try` that ends
+ * in `new ApiError(..., 500)`. A bare `ZodError` therefore surfaced as
+ * `{"code":"INTERNAL_ERROR"}` with a 500 — `?limit=300` (the schema caps it at
+ * 100) read as "the server is broken" rather than "that limit is too large",
+ * which is both wrong for the caller and noise in error monitoring.
+ *
+ * Raising an `ApiError` with a 400 fixes every route at once, and names the
+ * offending field so the caller can act on it.
+ */
+function badQuery(error: z.ZodError): ApiError {
+  const first = error.issues[0];
+  const field = first?.path.join('.') || 'query';
+  return new ApiError(
+    `Invalid query parameter \`${field}\`: ${first?.message ?? 'failed validation'}`,
+    400,
+    'INVALID_QUERY',
+    error.issues.map((issue) => ({ field: issue.path.join('.'), message: issue.message })),
+  );
 }
 
 /**
@@ -134,6 +183,14 @@ export function queryToFilter(params: DiscoveryQueryParams | DiscoveryScreenPara
     priceChangeMax: params.maxPriceChange,
     organicVolumeMin: params.minOrganicScore,
     top5VolumeShareMax: params.maxTop5Share,
+    top10HoldingsMax: params.maxTop10Holdings,
+    devHoldingsMax: params.maxDevHoldings,
+    snipersMax: params.maxSnipers,
+    insidersMax: params.maxInsiders,
+    bundlersMax: params.maxBundlers,
+    minRiskScore: params.minRiskScore,
+    mintRenouncedOnly: params.mintRenouncedOnly,
+    liquidityLockedOnly: params.liquidityLockedOnly,
     noCoordinatedSignals: params.noCoordinatedSignals,
   };
 }
@@ -162,6 +219,14 @@ export function filterToQueryParams(filter: Partial<DiscoveryFilter>): Record<st
   if (filter.priceChangeMax !== undefined) params.maxPriceChange = String(filter.priceChangeMax);
   if (filter.organicVolumeMin !== undefined) params.minOrganicScore = String(filter.organicVolumeMin);
   if (filter.top5VolumeShareMax !== undefined) params.maxTop5Share = String(filter.top5VolumeShareMax);
+  if (filter.top10HoldingsMax !== undefined) params.maxTop10Holdings = String(filter.top10HoldingsMax);
+  if (filter.devHoldingsMax !== undefined) params.maxDevHoldings = String(filter.devHoldingsMax);
+  if (filter.snipersMax !== undefined) params.maxSnipers = String(filter.snipersMax);
+  if (filter.insidersMax !== undefined) params.maxInsiders = String(filter.insidersMax);
+  if (filter.bundlersMax !== undefined) params.maxBundlers = String(filter.bundlersMax);
+  if (filter.minRiskScore !== undefined) params.minRiskScore = String(filter.minRiskScore);
+  if (filter.mintRenouncedOnly !== undefined) params.mintRenouncedOnly = String(filter.mintRenouncedOnly);
+  if (filter.liquidityLockedOnly !== undefined) params.liquidityLockedOnly = String(filter.liquidityLockedOnly);
   if (filter.noCoordinatedSignals !== undefined) params.noCoordinatedSignals = String(filter.noCoordinatedSignals);
 
   // Support legacy numeric filter aliases if present.

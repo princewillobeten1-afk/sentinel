@@ -139,6 +139,49 @@ const SUMMARY_CACHE_TTL_MS = 8000;
 const tokenCache = new Map<string, { data: TokenMarketData; timestamp: number }>();
 const TOKEN_CACHE_TTL_MS = 6000;
 
+/**
+ * Rejects a SOL price that jumped implausibly since the last accepted one.
+ *
+ * Defence in depth behind the single-source fix. A wrong SOL price does not
+ * just mis-render one number: it scales every USD figure derived from it, so a
+ * bad tick propagates across the whole page. Solana does not move 15% in under
+ * a minute, so a reading that claims to is far more likely a stale value, a
+ * different quote pair, or a decimals mistake than a real move.
+ *
+ * A rejected tick keeps the previous known-good value rather than blanking —
+ * the number stays right, and the log says a source disagreed.
+ */
+let lastGoodSol: { price: number; at: number } | null = null;
+const SOL_DEVIATION_LIMIT = 0.15;
+const SOL_DEVIATION_WINDOW_MS = 60_000;
+
+export function acceptSolPrice(next: number | null): number | null {
+  if (next === null || !Number.isFinite(next) || next <= 0) {
+    return lastGoodSol?.price ?? null;
+  }
+
+  const now = Date.now();
+  if (lastGoodSol && now - lastGoodSol.at < SOL_DEVIATION_WINDOW_MS) {
+    const deviation = Math.abs(next - lastGoodSol.price) / lastGoodSol.price;
+    if (deviation > SOL_DEVIATION_LIMIT) {
+      logger.warn('[solana-provider] rejected implausible SOL price', {
+        rejected: next,
+        keeping: lastGoodSol.price,
+        deviationPct: Number((deviation * 100).toFixed(1)),
+      });
+      return lastGoodSol.price;
+    }
+  }
+
+  lastGoodSol = { price: next, at: now };
+  return next;
+}
+
+/** Test seam. */
+export function __resetSolPriceGuard(): void {
+  lastGoodSol = null;
+}
+
 export class SolanaMarketDataProvider implements MarketDataProvider {
   async getMarketSummary(): Promise<MarketSummary> {
     const now = Date.now();
@@ -161,9 +204,25 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
       const totalLiquidityUsd = sum(trendingTokens.map((t) => t.liquidity));
       const totalVolume24hUsd = sum(trendingTokens.map((t) => t.volume24hUSD));
 
+      /**
+       * The SOL price comes from the canonical source on **both** paths.
+       *
+       * It used to be `solPriceVolume.price` here and the canonical source
+       * only in the catch below. While Birdeye's key was quota-dead the catch
+       * ran every time and the status bar agreed with the rest of the site; a
+       * fresh key re-enabled this path and the bar began alternating between
+       * ~$184 and ~$105 as the two sources took turns. Two independent
+       * references — Birdeye `/defi/price` and Jupiter `/price/v3` — both read
+       * $104.9 at the time, so this path was the wrong one.
+       *
+       * Birdeye still supplies the aggregate fields below, which is the only
+       * reason the call remains.
+       */
+      const canonicalSol = await getTokenPriceUsd(CANONICAL_SOL_MINT);
+
       const summary: MarketSummary = {
-        solPriceUsd: solPriceVolume.price,
-        solChange24h: solPriceVolume.priceChangePercent,
+        solPriceUsd: acceptSolPrice(canonicalSol?.usdPrice ?? null),
+        solChange24h: canonicalSol?.priceChange24h ?? null,
         totalMarketCapUsd,
         totalLiquidityUsd,
         totalVolume24hUsd,
@@ -194,7 +253,7 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
       // invented.
       const sol = await getTokenPriceUsd(CANONICAL_SOL_MINT);
       return {
-        solPriceUsd: sol?.usdPrice ?? null,
+        solPriceUsd: acceptSolPrice(sol?.usdPrice ?? null),
         solChange24h: sol?.priceChange24h ?? null,
         totalMarketCapUsd: null,
         totalLiquidityUsd: null,

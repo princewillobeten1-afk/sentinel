@@ -7,6 +7,7 @@ import { NotificationsStoreProvider, useNotificationsState, useNotificationsActi
 import { PreferencesProvider, usePreferencesState, usePreferencesActions } from './preferences-store';
 import { WatchlistProvider, useWatchlist } from './watchlist-store';
 import { TradeHistoryProvider, useTradeHistory } from './trade-history-store';
+import { TokenFiltersProvider, useTokenFilters } from './token-filters-store';
 
 export type { ThemeMode, QuickBuyTokenData, AppNotification, ExecutionLog, SelectedToken };
 export type AppView =
@@ -33,11 +34,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     <UIStoreProvider>
       <WalletStoreProvider>
         <PreferencesProvider>
-          <WatchlistProvider>
-            <TradeHistoryProvider>
-              <NotificationsStoreProvider>{children}</NotificationsStoreProvider>
-            </TradeHistoryProvider>
-          </WatchlistProvider>
+          <TokenFiltersProvider>
+            <WatchlistProvider>
+              <TradeHistoryProvider>
+                <NotificationsStoreProvider>{children}</NotificationsStoreProvider>
+              </TradeHistoryProvider>
+            </WatchlistProvider>
+          </TokenFiltersProvider>
         </PreferencesProvider>
       </WalletStoreProvider>
     </UIStoreProvider>
@@ -102,4 +105,5 @@ export {
 
 export { useWatchlist } from './watchlist-store';
 export { useTradeHistory } from './trade-history-store';
+export { useTokenFilters } from './token-filters-store';
 

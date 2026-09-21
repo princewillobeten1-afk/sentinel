@@ -90,7 +90,7 @@ export function FooterStatusBar() {
         : 'text-rose-300';
 
   return (
-    <footer className="sticky bottom-0 z-20 flex items-center justify-between border-t border-white/[0.08] bg-sentinel-950/90 backdrop-blur-2xl px-3 sm:px-4 py-1 text-[11px] font-numeric text-slate-400 select-none">
+    <footer className="terminal-footer shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-sentinel-700 bg-sentinel-950 px-3 sm:px-4 py-2 text-2xs font-numeric text-slate-400 select-none">
       {/* Left: Operational Metrics */}
       <div className="flex items-center gap-3 sm:gap-4">
         {/* Subsystem Health Indicator */}
@@ -104,8 +104,8 @@ export function FooterStatusBar() {
                   : 'bg-rose-500'
             }`}
           />
-          <span className="text-slate-300 font-bold">
-            Engine: {engineOk ? (isHealthy ? 'Operational' : 'Degraded') : 'Unreachable'}
+          <span className="text-slate-300 font-medium whitespace-nowrap">
+            <span className="hidden sm:inline">Engine: </span>{engineOk ? (isHealthy ? 'Operational' : 'Degraded') : 'Unreachable'}
           </span>
         </div>
 
@@ -155,7 +155,7 @@ export function FooterStatusBar() {
           }`}
         >
           <Terminal className="h-2.5 w-2.5 text-sky-400" />
-          <span>Live Console</span>
+          <span>Console</span>
         </button>
 
         <button
@@ -163,7 +163,7 @@ export function FooterStatusBar() {
           className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sentinel-900/90 text-slate-400 border border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700 transition text-2xs font-mono"
         >
           <Command className="h-2.5 w-2.5 text-slate-400" />
-          <span>Hotkeys (?)</span>
+          <span>Hotkeys</span>
         </button>
       </div>
     </footer>

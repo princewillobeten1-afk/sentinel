@@ -12,7 +12,7 @@ import {
   type UTCTimestamp,
   type LogicalRange,
 } from 'lightweight-charts';
-import { BarChart2, RefreshCw, AlertCircle } from 'lucide-react';
+import { BarChart2, RefreshCw, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 export interface CandlestickChartProps {
   symbol?: string;
@@ -138,12 +138,9 @@ export function CandlestickChart({
     }
   }, [chain, symbol, timeframe]);
 
-  // Always-current ref so the range-change subscription (wired once, in the
-  // chart-lifecycle effect below) never closes over a stale timeframe/symbol.
   const loadOlderRef = useRef(loadOlder);
   loadOlderRef.current = loadOlder;
 
-  // ── Chart lifecycle: created once per mount ──
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -162,8 +159,39 @@ export function CandlestickChart({
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: 'rgba(148, 163, 184, 0.2)' },
       timeScale: { borderColor: 'rgba(148, 163, 184, 0.2)', timeVisible: true, secondsVisible: false },
+      // CRITICAL FOR SCROLLING: Keep vertical touch drag and mouse wheel scrolling/scaling disabled by default
+      // so normal wheel and swipe gestures bubble up to scroll the page instead of trapping the viewport.
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        mouseWheel: false,
+        pinch: true,
+        axisPressedMouseMove: true,
+        axisDoubleClickReset: true,
+      },
       autoSize: true,
     });
+
+    // When the user holds Ctrl or Meta (or uses pinch-to-zoom gesture on trackpad),
+    // enable wheel zoom on the chart; otherwise allow normal page scrolling!
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        chart.applyOptions({
+          handleScale: { mouseWheel: true },
+          handleScroll: { mouseWheel: true },
+        });
+      } else {
+        chart.applyOptions({
+          handleScale: { mouseWheel: false },
+          handleScroll: { mouseWheel: false },
+        });
+      }
+    };
+    container.addEventListener('wheel', handleWheel, { passive: true });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#12B574',
@@ -182,10 +210,6 @@ export function CandlestickChart({
     chartRef.current = chart;
     seriesRef.current = candleSeries;
 
-    // Progressive "load older" (Sprint 31 — Item 12): scrolling/zooming
-    // toward the earliest loaded candle triggers a `before=<oldestTime>`
-    // fetch and prepends the result, rather than loading the whole history
-    // up front.
     const handleVisibleRangeChange = (range: LogicalRange | null) => {
       if (!range) return;
       if (range.from <= LOAD_OLDER_THRESHOLD) {
@@ -195,6 +219,7 @@ export function CandlestickChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
 
     return () => {
+      container.removeEventListener('wheel', handleWheel);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       chart.remove();
       chartRef.current = null;
@@ -202,7 +227,6 @@ export function CandlestickChart({
     };
   }, []);
 
-  // ── Initial data load on symbol/chain/timeframe change + live polling ──
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
@@ -231,10 +255,6 @@ export function CandlestickChart({
         setIsLoading(false);
       })
       .finally(() => {
-        // Belt and braces. Both branches above are guarded by `cancelled`, so
-        // under React StrictMode's double-mount the first pass could return
-        // early and leave `isLoading` true forever — stranding a fully opaque
-        // spinner overlay on top of candles that had actually loaded.
         if (!cancelled) setIsLoading(false);
       });
 
@@ -248,7 +268,6 @@ export function CandlestickChart({
             candlesRef.current = fresh;
             seriesRef.current?.setData(fresh);
             setOhlc(fresh[fresh.length - 1] ?? null);
-            // The poll proves data is arriving; never leave the overlay up.
             setIsLoading(false);
             setHasError(false);
           }
@@ -289,6 +308,38 @@ export function CandlestickChart({
     return () => clearInterval(tickInterval);
   }, []);
 
+  const handleZoomIn = () => {
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return;
+    const range = timeScale.getVisibleLogicalRange();
+    if (!range) return;
+    const span = range.to - range.from;
+    const center = (range.from + range.to) / 2;
+    const newSpan = Math.max(10, span * 0.7);
+    timeScale.setVisibleLogicalRange({
+      from: center - newSpan / 2,
+      to: center + newSpan / 2,
+    });
+  };
+
+  const handleZoomOut = () => {
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return;
+    const range = timeScale.getVisibleLogicalRange();
+    if (!range) return;
+    const span = range.to - range.from;
+    const center = (range.from + range.to) / 2;
+    const newSpan = span * 1.4;
+    timeScale.setVisibleLogicalRange({
+      from: center - newSpan / 2,
+      to: center + newSpan / 2,
+    });
+  };
+
+  const handleResetZoom = () => {
+    chartRef.current?.timeScale().fitContent();
+  };
+
   const handleSelectTimeframe = (tf: string) => {
     setTimeframe(tf);
     onTimeframeChange?.(tf);
@@ -305,9 +356,36 @@ export function CandlestickChart({
           </div>
 
           <div className="flex items-center gap-1">
+            <div className="flex items-center border-r border-sentinel-800/80 pr-1 mr-1 gap-0.5">
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                title="Zoom In (or Ctrl+Scroll)"
+                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                title="Zoom Out (or Ctrl+Scroll)"
+                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleResetZoom}
+                title="Reset Chart View"
+                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            </div>
             {SUPPORTED_TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
+                type="button"
                 onClick={() => handleSelectTimeframe(tf)}
                 className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
                   timeframe === tf
@@ -359,10 +437,37 @@ export function CandlestickChart({
           <span className="font-bold text-slate-200 uppercase tracking-wider">{displaySymbol(symbol)}/USD Price Chart</span>
         </div>
 
-        <div className="flex items-center gap-1 bg-sentinel-900/80 p-1 rounded-lg border border-sentinel-800 text-xs">
+        <div className="flex flex-wrap items-center gap-1 bg-sentinel-900/80 p-1 rounded-md border border-sentinel-800 text-xs">
+          <div className="flex items-center border-r border-sentinel-750 pr-1 mr-1 gap-0.5">
+            <button
+              type="button"
+              onClick={handleZoomIn}
+              title="Zoom In (or Ctrl+Scroll)"
+              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              title="Zoom Out (or Ctrl+Scroll)"
+              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              title="Reset View"
+              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          </div>
           {SUPPORTED_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
+              type="button"
               onClick={() => handleSelectTimeframe(tf)}
               className={`px-2.5 py-1 rounded text-center transition font-bold ${
                 timeframe === tf
