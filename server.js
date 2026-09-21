@@ -33,7 +33,7 @@ const { WebSocketServer } = require('ws');
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number(process.env.PORT) || 3000;
-const hostname = process.env.HOSTNAME || 'localhost';
+const hostname = process.env.HOSTNAME || (dev ? 'localhost' : '0.0.0.0');
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -87,7 +87,7 @@ app.prepare().then(() => {
     }
   });
 
-  server.listen(port, () => {
+  server.listen(port, hostname, () => {
     console.log(`> Sentinel ready on http://${hostname}:${port}`);
     console.log(`> WebSocket streaming on ws://${hostname}:${port}/ws`);
 
@@ -96,7 +96,8 @@ app.prepare().then(() => {
     // because this file is plain CommonJS and can't import the TypeScript
     // in lib/ws/* — see app/api/internal/ws-bootstrap/route.ts for why that
     // logic lives in an ordinary API route instead of instrumentation.ts.
-    fetch(`http://${hostname}:${port}/api/internal/ws-bootstrap`, { method: 'POST' })
+    const internalHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+    fetch(`http://${internalHost}:${port}/api/internal/ws-bootstrap`, { method: 'POST' })
       .then((res) => res.json())
       .then((body) => console.log('> WS bootstrap:', JSON.stringify(body)))
       .catch((err) => console.error('> WS bootstrap failed:', err.message));
