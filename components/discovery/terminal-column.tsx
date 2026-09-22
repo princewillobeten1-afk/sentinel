@@ -273,8 +273,8 @@ export function TerminalColumn({
     }
     if (config.type === 'migrating') {
       return {
-        title: 'Nothing near migration',
-        detail: 'No token is far enough along its bonding curve yet. Curves cross this point quickly, so this fills and empties often.',
+        title: 'No active bonding curves',
+        detail: 'Final Stretch keeps the 20 newest fresh bonding-curve tokens. New launches appear at the top as they enter the window.',
       };
     }
     if (config.type === 'graduated') {

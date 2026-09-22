@@ -53,14 +53,15 @@ function parseSizeToBytes(sizeStr) {
  * Tree-drawing prefix, a route symbol (○ static / ƒ dynamic / ● SSG), the
  * route path, then two size columns (own JS, First Load JS).
  */
-const ROUTE_LINE_REGEX = /^[│\s]*[├└]\s+([○ƒ●])\s+(\/\S*)\s+([\d.]+\s*[A-Za-z]+)\s+([\d.]+\s*[A-Za-z]+)\s*$/;
+const ANSI_ESCAPE_REGEX = /\u001B\[[0-?]*[ -/]*[@-~]/g;
+const ROUTE_LINE_REGEX = /[├└]\s+\S+\s+(\/\S*)\s+([\d.]+\s*[A-Za-z]+)\s+([\d.]+\s*[A-Za-z]+)\s*$/;
 
 export function parseBuildOutput(text) {
   const routes = [];
-  for (const line of text.split('\n')) {
+  for (const line of text.replace(ANSI_ESCAPE_REGEX, '').split('\n')) {
     const match = line.match(ROUTE_LINE_REGEX);
     if (!match) continue;
-    const [, , route, ownSize, firstLoad] = match;
+    const [, route, ownSize, firstLoad] = match;
     const firstLoadBytes = parseSizeToBytes(firstLoad);
     // API routes always print "0 B / 0 B" — not meaningful bundle-size data.
     if (firstLoadBytes === null || firstLoadBytes === 0) continue;

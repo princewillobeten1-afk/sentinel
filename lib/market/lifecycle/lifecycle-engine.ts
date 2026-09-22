@@ -56,6 +56,7 @@ export const MIGRATED_WINDOW_MS = (() => {
 
 /** A stalled RPC feed must not keep advertising an old curve as active. */
 export const CURVE_FRESHNESS_MS = 120_000;
+export const FINAL_STRETCH_LIMIT = 20;
 
 /**
  * State lives on `globalThis`.
@@ -262,40 +263,25 @@ export function newPairs(): TokenLifecycle[] {
   return getAllByState('NEW_PAIR').sort((a, b) => b.firstSeenAt - a.firstSeenAt);
 }
 
-/**
- * Final Stretch, ordered by proximity to migration.
- *
- * Curve completion is the sort key, not volume or market cap — the column
- * exists to show what is closest to migrating.
- */
+/** Final Stretch is a rolling newest-first window of active bonding curves. */
 export function finalStretch(now = Date.now()): TokenLifecycle[] {
-  return closestToMigrating(finalStretchThreshold(), now);
+  return [...records.values()]
+    .filter(
+      (record) =>
+        (record.state === 'NEW_PAIR' || record.state === 'FINAL_STRETCH') &&
+        record.curve !== null && !record.curve.complete &&
+        Number.isFinite(record.curve.progress) && record.curve.progress >= 0 &&
+        record.curve.progress < 1 &&
+        now >= record.curve.readAt && now - record.curve.readAt <= CURVE_FRESHNESS_MS,
+    )
+    .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
+    .slice(0, FINAL_STRETCH_LIMIT);
 }
 
 /**
- * Fresh, incomplete curves at or above the configured threshold, nearest first.
- *
- * ## What this column means
- *
- * "On the curve now and heading for migration." Both halves matter, and the
- * measured distribution is why:
- *
- *        0-5%  ██████████████████████████████████████████ 42
- *       5-25%  ██████ 6
- *      25-50%  ██ 2
- *      50-75%   0
- *      75-90%   0
- *     90-100%  █ 1
- *
- * Two failure modes sit on either side of that shape. Filtering hard at 80%
- * matched almost nothing — tokens accelerate through the upper band in
- * seconds, so 50-90% is empty most of the time and the column read as broken.
- * Ordering with no floor at all was worse in a quieter way: it filled the
- * column with the 42 tokens at 0-5%, most of which have barely started and
- * will never migrate, under a heading that says they are about to.
- *
- * The former 10%/minimum-count fallback diluted this column with early launches.
- * The configured threshold is now a hard admission rule, even for an empty feed.
+ * Legacy threshold-based selector retained for callers and diagnostics that
+ * need the narrower near-migration view. Discover's Final Stretch uses the
+ * rolling newest-first `finalStretch` window above.
  */
 export function closestToMigrating(minProgress = finalStretchThreshold(), now = Date.now()): TokenLifecycle[] {
   return [...records.values()]
