@@ -50,8 +50,8 @@ interface TerminalTopBarProps {
 
 const AVAILABLE_NEW_COLUMNS: { type: DiscoverySection; title: string; desc: string }[] = [
   { type: 'new', title: 'New Pairs', desc: 'Tokens freshly deployed on bonding curves & DEXs' },
-  { type: 'migrating', title: 'Final Stretch', desc: 'Tokens near migration (~100% bonding curve completion)' },
-  { type: 'graduated', title: 'Migrated', desc: 'Moved to the AMM/DEX (graduated trading pairs)' },
+  { type: 'migrating', title: 'Final Stretch', desc: 'Tokens nearing graduation across Pump.fun, Moonshot, LaunchLab, Meteora DBC, and more' },
+  { type: 'graduated', title: 'Migrated', desc: 'Graduated tokens with confirmed liquidity pools on Raydium CPMM, AMM, Meteora, and PumpSwap' },
   { type: 'trending', title: 'Trending', desc: 'Ranked by recent market attention and activity' },
   { type: 'top-gainers', title: 'Gainers', desc: 'Largest measured positive price moves' },
   { type: 'volume', title: 'Volume', desc: 'Highest measured traded volume' },

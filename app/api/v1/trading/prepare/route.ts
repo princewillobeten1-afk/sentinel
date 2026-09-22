@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { parseJsonBody, validateSchema } from '@/lib/server/validation';
-import { getSwapQuote } from '@/lib/trading/jupiter-quote';
+import { getSwapQuote, getSwapTransaction, SOL_MINT } from '@/lib/trading/jupiter-quote';
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
 import { PreTradeRiskEngine } from '@/lib/order/risk';
@@ -23,6 +23,7 @@ const prepareSchema = z.object({
   amount: z.string().min(1),
   slippage: z.number().min(0.01).max(15.0),
   walletAddress: z.string().min(20, 'Valid wallet address is required'),
+  quoteResponse: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -93,10 +94,7 @@ export const POST = withApiGateway(
       );
     }
 
-    // quoteRouter is Solana-only today; side isn't carried explicitly in QuoteRequest, so
-    // it's inferred the same way SolanaJupiterQuoteProvider infers direction internally —
-    // SOL as input means acquiring the other token (BUY), SOL as output means SELL.
-    const side = data.inputToken.toUpperCase() === 'SOL' ? 'BUY' : 'SELL';
+    const side = data.inputToken === SOL_MINT ? 'BUY' : 'SELL';
 
     const riskResult = await riskEngine.evaluate({
       walletAddress: data.walletAddress,
@@ -122,13 +120,23 @@ export const POST = withApiGateway(
       });
     }
 
+    const prepared = await getSwapTransaction({
+      // The browser quote is display context only. Always prepare from the
+      // fresh server-side Jupiter quote so a stale client payload cannot be
+      // signed after the route or price has changed.
+      quoteResponse: swap.providerQuote,
+      userPublicKey: data.walletAddress,
+    });
+
     return jsonResponse({
       preparedTransaction: {
         id: `prep_${Date.now()}`,
         user: user.userId,
         wallet: data.walletAddress,
         quote,
-        unsignedTxBase64: 'AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==',
+        unsignedTxBase64: prepared.swapTransaction,
+        lastValidBlockHeight: prepared.lastValidBlockHeight,
+        prioritizationFeeLamports: prepared.prioritizationFeeLamports,
         expiresAt: new Date(Date.now() + 60000).toISOString(),
       },
       riskWarnings: riskResult.decision === 'WARN' ? riskResult.reasoning : [],

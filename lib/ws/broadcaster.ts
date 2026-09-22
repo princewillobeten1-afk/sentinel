@@ -8,6 +8,7 @@ import { eventBus } from '@/lib/server/events/event-bus';
 import type { NormalizedRealtimeEvent } from '@/lib/server/events/event-types';
 import { dexScreenerBoostsService } from '@/lib/discovery/dexscreener-boosts';
 import { onTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache';
+import { onChartFrame } from '@/lib/market/live/chart-stream';
 
 /** Maps a discovery signal type onto the WS topic kind subscribers listen on. */
 function topicKindForSignal(signal: DiscoverySignal): TopicKind | null {
@@ -28,9 +29,11 @@ class WsBroadcaster {
   private eventBusListener: ((event: NormalizedRealtimeEvent) => void) | null = null;
   private unsubscribeBoost: (() => void) | null = null;
   private unsubscribeCard: (() => void) | null = null;
+  private unsubscribeChart: (() => void) | null = null;
 
   start(): void {
     if (this.unsubscribeSignal || this.eventBusListener || this.unsubscribeBoost || this.unsubscribeCard) return;
+    this.unsubscribeChart = onChartFrame(frame => broadcast(`token.ohlcv:${frame.address}:${frame.timeframe}`, frame));
 
     // One complete per-mint channel is the browser contract. Producers update
     // the cache; this bridge fans the patch out and the WS server replays the
@@ -204,6 +207,8 @@ class WsBroadcaster {
   }
 
   stop(): void {
+    this.unsubscribeChart?.();
+    this.unsubscribeChart = null;
     this.unsubscribeSignal?.();
     this.unsubscribeSignal = null;
     if (this.eventBusListener) {

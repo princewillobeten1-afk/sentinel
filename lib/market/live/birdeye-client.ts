@@ -10,6 +10,7 @@ import { updateTokenCard } from './card-cache';
 import { lifecycleWorker } from '@/lib/market/lifecycle/lifecycle-worker';
 import { eventBus } from '@/lib/server/events/event-bus';
 import { EVENT_TYPES } from '@/lib/server/events/event-types';
+import { publishBirdeyeCandle, type ChartDemand } from './chart-stream';
 
 /**
  * Only these two channels are wired for v1. Birdeye also exposes
@@ -20,8 +21,9 @@ const PRICE_SUBSCRIBE_TYPE = 'SUBSCRIBE_PRICE';
 const TXS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TXS';
 const STATS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TOKEN_STATS';
 
-export function buildBirdeyeSubscriptions(mints: string[]): Record<string, unknown>[] {
-  const visible = [...new Set(mints.filter(Boolean))].slice(0, 100);
+export function buildBirdeyeSubscriptions(mints: string[], charts: ChartDemand[] = []): Record<string, unknown>[] {
+  // Active charts get budget first; the entire price query is rebuilt atomically.
+  const visible = [...new Set([...charts.map(chart => chart.mint), ...mints.filter(Boolean)])].slice(0, 100);
   if (visible.length === 0) {
     return [
       { type: 'UNSUBSCRIBE_PRICE' },
@@ -30,9 +32,14 @@ export function buildBirdeyeSubscriptions(mints: string[]): Record<string, unkno
       { type: 'SUBSCRIBE_NEW_PAIR' },
     ];
   }
-  const priceQuery = visible
-    .map((mint) => `(address = ${mint} AND chartType = 1m AND currency = usd)`)
-    .join(' OR ');
+  const queries = [...new Set([
+    ...charts.filter(chart => visible.includes(chart.mint)).map(chart => `${chart.mint}:${chart.timeframe}`),
+    ...visible.map(mint => `${mint}:1m`),
+  ])].slice(0, 100);
+  const priceQuery = queries.map(query => {
+    const [mint, timeframe] = query.split(':');
+    return `(address = ${mint} AND chartType = ${timeframe} AND currency = usd)`;
+  }).join(' OR ');
   const txQuery = visible.map((mint) => `address = ${mint}`).join(' OR ');
   return [
     { type: PRICE_SUBSCRIBE_TYPE, data: { queryType: 'complex', query: priceQuery } },
@@ -67,6 +74,7 @@ export class BirdeyeClient {
   private readonly onRawEvent: (event: RawMarketEvent) => void;
   private readonly onDegraded: (reason: string) => void;
   private providerError: string | undefined;
+  private charts: ChartDemand[] = [];
 
   constructor(options: BirdeyeClientOptions) {
     this.mints = options.mints;
@@ -102,10 +110,11 @@ export class BirdeyeClient {
   }
 
   /** Replaces the visible-mint set and atomically rebuilds each Birdeye subscription. */
-  setMints(mints: string[]): void {
+  setMints(mints: string[], charts: ChartDemand[] = []): void {
     const next = [...new Set(mints.filter(Boolean))].slice(0, 100);
-    if (next.join(',') === this.mints.join(',')) return;
+    if (next.join(',') === this.mints.join(',') && JSON.stringify(charts) === JSON.stringify(this.charts)) return;
     this.mints = next;
+    this.charts = charts;
     this.subscribeAll();
   }
 
@@ -113,7 +122,7 @@ export class BirdeyeClient {
     // Birdeye allows one active subscription per message type. Repeating a
     // simple subscribe in a loop overwrites the previous mint, which meant
     // only the final card in the array actually received data.
-    for (const message of buildBirdeyeSubscriptions(this.mints)) this.client.send(message);
+    for (const message of buildBirdeyeSubscriptions(this.mints, this.charts)) this.client.send(message);
     logger.info('[birdeye] subscribed', { mintCount: this.mints.length });
   }
 
@@ -219,6 +228,8 @@ export class BirdeyeClient {
 
     const priceEvent = normalizeBirdeyePrice(mint, message);
     if (priceEvent) {
+      this.providerError = undefined;
+      publishBirdeyeCandle(message, mint);
       this.onRawEvent(priceEvent);
       return;
     }

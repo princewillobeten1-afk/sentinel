@@ -199,6 +199,7 @@ export function TradeView({ tokenMint: propTokenMint, tokenSymbol: propTokenSymb
             height="h-[250px] sm:h-[265px]"
             timeframe={timeframe}
             symbol={currentToken.mint}
+            tokenSymbol={currentToken.symbol}
             onTimeframeChange={setTimeframe}
           />
         </div>

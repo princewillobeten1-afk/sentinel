@@ -13,6 +13,8 @@ import { parseClientMessage, serialize, type ServerMessage } from './protocol';
 import { parseTopic, TOPIC_SCOPES } from './topics';
 import { liveMarketCache } from '@/lib/market/live/live-cache';
 import { getTokenCardPatch } from '@/lib/market/live/card-cache';
+import { getChartFrame, noteChartTopics } from '@/lib/market/live/chart-stream';
+import { parseChartTarget } from '@/lib/market/chart-model';
 import {
   noteClientConnected,
   noteClientDisconnected,
@@ -205,6 +207,7 @@ function dropConnection(id: string): void {
   // Release what it was watching, so the upstream stream stops paying for
   // mints nobody is looking at any more.
   noteMintsReleased(mintsOf(connection.topics));
+  noteChartTopics(connection.topics, -1);
   noteClientDisconnected();
 }
 
@@ -218,7 +221,10 @@ function mintsOf(topics: Iterable<string>): string[] {
   const mints: string[] = [];
   for (const topic of topics) {
     const parsed = parseTopic(topic);
-    if (parsed && parsed.kind.startsWith('token.')) mints.push(parsed.target);
+    if (parsed?.kind === 'token.ohlcv') {
+      const chart = parseChartTarget(parsed.target);
+      if (chart) mints.push(chart.mint);
+    } else if (parsed && parsed.kind.startsWith('token.')) mints.push(parsed.target);
   }
   return mints;
 }
@@ -286,6 +292,7 @@ function handleMessage(connection: Connection, raw: string): void {
     // reference to the same mint.
     const released = message.topics.filter((topic) => connection.topics.delete(topic));
     noteMintsReleased(mintsOf(released));
+    noteChartTopics(released, -1);
     send(connection, { type: 'unsubscribed', topics: message.topics });
     return;
   }
@@ -298,7 +305,7 @@ function handleMessage(connection: Connection, raw: string): void {
 
   for (const topic of message.topics) {
     const parsedTopic = parseTopic(topic);
-    if (!parsedTopic) {
+    if (!parsedTopic || parsedTopic.kind === 'token.ohlcv' && !parseChartTarget(parsedTopic.target)) {
       send(connection, { type: 'error', code: 'UNKNOWN_TOPIC', message: `Unrecognized topic: ${topic}` });
       continue;
     }
@@ -331,6 +338,11 @@ function handleMessage(connection: Connection, raw: string): void {
     if (!connection.topics.has(topic)) added.push(topic);
     connection.topics.add(topic);
     accepted.push(topic);
+    const chartSnapshot = parsedTopic.kind === 'token.ohlcv' ? getChartFrame(parsedTopic.target) : undefined;
+    if (chartSnapshot) send(connection, {
+      type: 'event', topic, sequence: nextTopicSequence(connection.topicSequences, topic),
+      data: chartSnapshot, ts: new Date().toISOString(),
+    });
 
     // Send the current cached value immediately so a subscriber isn't blind
     // until the next live event fires.
@@ -358,6 +370,7 @@ function handleMessage(connection: Connection, raw: string): void {
   // Tell the upstream stream about mints this connection newly watches.
   // Reported once per message, so a 28-topic subscribe is one demand change.
   noteMintsWanted(mintsOf(added));
+  noteChartTopics(added, 1);
 
   if (accepted.length > 0) send(connection, { type: 'subscribed', topics: accepted });
 }

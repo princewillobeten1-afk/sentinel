@@ -1,21 +1,16 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  createChart,
-  CandlestickSeries,
-  HistogramSeries,
-  ColorType,
-  CrosshairMode,
-  type IChartApi,
-  type ISeriesApi,
-  type UTCTimestamp,
-  type LogicalRange,
-} from 'lightweight-charts';
-import { BarChart2, RefreshCw, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart, CandlestickSeries, HistogramSeries, ColorType, CrosshairMode,
+  type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { useChartData } from '@/lib/hooks/use-chart-data';
+import { CHART_TIMEFRAMES, isChartTimeframe, chartPrecision, type ChartCandle, type ChartTimeframe } from '@/lib/market/chart-model';
 
 export interface CandlestickChartProps {
+  /** Token mint, retained under the original prop name for compatibility. */
   symbol?: string;
+  tokenSymbol?: string;
   chain?: string;
   timeframe?: string;
   initialTimeframe?: string;
@@ -23,493 +18,144 @@ export interface CandlestickChartProps {
   compact?: boolean;
   height?: string;
 }
+const control = 'min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8 rounded-md px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50';
+const formatPrice = (value: number) => '$' + value.toLocaleString('en-US', { maximumSignificantDigits: 6 });
+const displaySymbol = (value: string) => value.length > 12 ? value.slice(0, 4) + '…' + value.slice(-4) : value || 'Token';
 
-const SUPPORTED_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
-const CANDLES_PER_PAGE = 150;
-/** Fetch an older page once the visible range gets this close to the left edge of what's loaded. */
-const LOAD_OLDER_THRESHOLD = 20;
-
-interface Candle {
-  time: UTCTimestamp;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
+export function CandlestickChart(props: CandlestickChartProps) {
+  const [selected, setSelected] = useState(props.initialTimeframe || '15m');
+  const requested = props.timeframe ?? selected;
+  const timeframe = isChartTimeframe(requested) ? requested : '15m';
+  // A new instrument/interval owns a fresh canvas, request lifecycle, and stream revision map.
+  return <ChartWorkspace key={`${props.chain || 'solana'}:${props.symbol}:${timeframe}`} {...props}
+    selectedTimeframe={timeframe} selectTimeframe={tf => { setSelected(tf); props.onTimeframeChange?.(tf); }} />;
 }
 
-interface ChartApiCandle {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
-
-interface ChartApiResponse {
-  candles: ChartApiCandle[];
-  hasMore: boolean;
-  oldestTime: number | null;
-}
-
-function toChartCandle(c: ChartApiCandle): Candle {
-  return { time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close };
-}
-
-async function fetchCandles(chain: string, address: string, timeframe: string, before?: number): Promise<ChartApiResponse> {
-  const url = new URL(`/api/v1/tokens/${chain}/${address}/chart`, window.location.origin);
-  url.searchParams.set('timeframe', timeframe);
-  url.searchParams.set('limit', String(CANDLES_PER_PAGE));
-  if (before !== undefined) url.searchParams.set('before', String(before));
-
-  const response = await fetch(url.toString());
-  const body = await response.json();
-  if (!response.ok || !body.success) {
-    throw new Error(body?.error?.message ?? `Chart fetch failed: ${response.status}`);
-  }
-  return body.data as ChartApiResponse;
-}
-
-function formatPrice(value: number): string {
-  if (value >= 1) return `$${value.toFixed(2)}`;
-  return `$${value.toFixed(4)}`;
-}
-
-/**
- * Chart labels take a token *symbol*, but callers legitimately pass a mint —
- * the page has no symbol until the metadata provider answers. A 44-character
- * base58 address as a heading is unreadable, so anything address-shaped is
- * shortened for display.
- */
-function displaySymbol(value: string): string {
-  if (!value) return '—';
-  return value.length > 12 ? `${value.slice(0, 4)}…${value.slice(-4)}` : value.toUpperCase();
-}
-
-export function CandlestickChart({
-  symbol = 'SENT',
-  chain = 'solana',
-  timeframe: timeframeProp,
-  initialTimeframe = '15m',
-  onTimeframeChange,
-  compact = false,
-  height,
-}: CandlestickChartProps) {
-  const [timeframe, setTimeframe] = useState(timeframeProp || initialTimeframe);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [ohlc, setOhlc] = useState<Candle | null>(null);
-
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const candlesRef = useRef<Candle[]>([]);
-  const hasMoreRef = useRef(true);
-  const isFetchingOlderRef = useRef(false);
+function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = false, height,
+  selectedTimeframe: timeframe, selectTimeframe }: CandlestickChartProps & {
+    selectedTimeframe: ChartTimeframe; selectTimeframe: (tf: ChartTimeframe) => void;
+  }) {
+  const feed = useChartData(symbol, chain, timeframe);
+  const container = useRef<HTMLDivElement>(null);
+  const chart = useRef<IChartApi | null>(null);
+  const prices = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const volumes = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const previous = useRef<ChartCandle[]>([]);
+  const rendering = useRef(false);
+  const loadOlder = useRef(feed.loadOlder);
+  loadOlder.current = feed.loadOlder;
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
 
   useEffect(() => {
-    if (timeframeProp && timeframeProp !== timeframe) {
-      setTimeframe(timeframeProp);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeframeProp]);
-
-  const loadOlder = useCallback(async () => {
-    if (isFetchingOlderRef.current || !hasMoreRef.current) return;
-    const oldest = candlesRef.current[0];
-    if (!oldest) return;
-
-    isFetchingOlderRef.current = true;
-    try {
-      const result = await fetchCandles(chain, symbol, timeframe, oldest.time);
-      hasMoreRef.current = result.hasMore;
-
-      if (result.candles.length > 0) {
-        const older = result.candles.map(toChartCandle);
-        const merged = [...older, ...candlesRef.current];
-        candlesRef.current = merged;
-        seriesRef.current?.setData(merged);
-      }
-    } catch {
-      // A failed "load older" page is non-fatal — the chart keeps showing
-      // what's already loaded; the user can scroll again to retry.
-    } finally {
-      isFetchingOlderRef.current = false;
-    }
-  }, [chain, symbol, timeframe]);
-
-  const loadOlderRef = useRef(loadOlder);
-  loadOlderRef.current = loadOlder;
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const chart = createChart(container, {
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#98A3B3',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: 'rgba(148, 163, 184, 0.08)' },
-        horzLines: { color: 'rgba(148, 163, 184, 0.08)' },
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: 'rgba(148, 163, 184, 0.2)' },
-      timeScale: { borderColor: 'rgba(148, 163, 184, 0.2)', timeVisible: true, secondsVisible: false },
-      // CRITICAL FOR SCROLLING: Keep vertical touch drag and mouse wheel scrolling/scaling disabled by default
-      // so normal wheel and swipe gestures bubble up to scroll the page instead of trapping the viewport.
-      handleScroll: {
-        mouseWheel: false,
-        pressedMouseMove: true,
-        horzTouchDrag: true,
-        vertTouchDrag: false,
-      },
-      handleScale: {
-        mouseWheel: false,
-        pinch: true,
-        axisPressedMouseMove: true,
-        axisDoubleClickReset: true,
-      },
+    if (!container.current) return;
+    const api = createChart(container.current, {
       autoSize: true,
+      layout: { background: { type: ColorType.Solid, color: '#080d14' }, textColor: '#98A3B3',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11 },
+      grid: { vertLines: { color: 'rgba(148,163,184,0.07)' }, horzLines: { color: 'rgba(148,163,184,0.07)' } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)', scaleMargins: { top: 0.08, bottom: 0.22 } },
+      timeScale: { borderColor: 'rgba(148,163,184,0.2)', timeVisible: true, secondsVisible: false },
+      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
     });
-
-    // When the user holds Ctrl or Meta (or uses pinch-to-zoom gesture on trackpad),
-    // enable wheel zoom on the chart; otherwise allow normal page scrolling!
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        chart.applyOptions({
-          handleScale: { mouseWheel: true },
-          handleScroll: { mouseWheel: true },
-        });
-      } else {
-        chart.applyOptions({
-          handleScale: { mouseWheel: false },
-          handleScroll: { mouseWheel: false },
-        });
-      }
-    };
-    container.addEventListener('wheel', handleWheel, { passive: true });
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#12B574',
-      downColor: '#EC5A5F',
-      borderVisible: false,
-      wickUpColor: '#12B574',
-      wickDownColor: '#EC5A5F',
+    const priceSeries = api.addSeries(CandlestickSeries, {
+      upColor: '#12B574', downColor: '#EC5A5F', borderVisible: false, wickUpColor: '#12B574', wickDownColor: '#EC5A5F',
     });
-
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: 'volume' },
-      priceScaleId: '',
-    });
+    const volumeSeries = api.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-
-    chartRef.current = chart;
-    seriesRef.current = candleSeries;
-
-    const handleVisibleRangeChange = (range: LogicalRange | null) => {
-      if (!range) return;
-      if (range.from <= LOAD_OLDER_THRESHOLD) {
-        void loadOlderRef.current();
-      }
-    };
-    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-
+    chart.current = api; prices.current = priceSeries; volumes.current = volumeSeries;
+    api.subscribeCrosshairMove(event => setHoverTime(typeof event.time === 'number' ? event.time : null));
+    let dragging = false;
+    api.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      // Resizes/data insertion must not silently download the whole market.
+      if (dragging && !rendering.current && range && range.from < -20) loadOlder.current();
+    });
+    const element = container.current;
+    const wheel = (event: WheelEvent) => api.applyOptions({ handleScale: { mouseWheel: event.ctrlKey || event.metaKey } });
+    const startDrag = () => { dragging = true; };
+    const endDrag = () => { dragging = false; };
+    element.addEventListener('wheel', wheel, { passive: true });
+    element.addEventListener('pointerdown', startDrag);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
     return () => {
-      container.removeEventListener('wheel', handleWheel);
-      chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
+      element.removeEventListener('wheel', wheel); element.removeEventListener('pointerdown', startDrag);
+      window.removeEventListener('pointerup', endDrag); window.removeEventListener('pointercancel', endDrag);
+      api.remove(); chart.current = null; prices.current = null; volumes.current = null;
     };
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setHasError(false);
-    hasMoreRef.current = true;
+    if (!prices.current || !volumes.current || !chart.current) return;
+    const rows = feed.candles;
+    const prior = previous.current;
+    const range = chart.current.timeScale().getVisibleLogicalRange();
+    const prepended = prior.length ? rows.filter(c => c.time < prior[0].time).length : 0;
+    rendering.current = true;
+    if (rows.length) prices.current.applyOptions({ priceFormat: { type: 'price', ...chartPrecision(Math.min(...rows.map(c => c.low))) } });
+    prices.current.setData(rows.map(c => ({ ...c, time: c.time as UTCTimestamp })));
+    volumes.current.setData(rows.filter(c => c.volume !== null).map(c => ({
+      time: c.time as UTCTimestamp, value: c.volume!, color: c.close >= c.open ? 'rgba(18,181,116,0.35)' : 'rgba(236,90,95,0.35)',
+    })));
+    if (!prior.length && rows.length) chart.current.timeScale().fitContent();
+    else if (range && prepended) chart.current.timeScale().setVisibleLogicalRange({ from: range.from + prepended, to: range.to + prepended });
+    previous.current = rows;
+    rendering.current = false;
+  }, [feed.candles]);
 
-    fetchCandles(chain, symbol, timeframe)
-      .then((result) => {
-        if (cancelled) return;
-        const candles = result.candles.map(toChartCandle);
-        candlesRef.current = candles;
-        hasMoreRef.current = result.hasMore;
-
-        const series = seriesRef.current;
-        if (series) {
-          series.setData(candles);
-          chartRef.current?.timeScale().fitContent();
-        }
-
-        setOhlc(candles[candles.length - 1] ?? null);
-        setIsLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setHasError(true);
-        setIsLoading(false);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    // Live Feed Polling: Refresh latest candle every 4 seconds
-    const pollInterval = setInterval(() => {
-      fetchCandles(chain, symbol, timeframe)
-        .then((result) => {
-          if (cancelled || result.candles.length === 0) return;
-          const fresh = result.candles.map(toChartCandle);
-          if (fresh.length > 0) {
-            candlesRef.current = fresh;
-            seriesRef.current?.setData(fresh);
-            setOhlc(fresh[fresh.length - 1] ?? null);
-            setIsLoading(false);
-            setHasError(false);
-          }
-        })
-        .catch(() => {});
-    }, 4000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(pollInterval);
-    };
-  }, [chain, symbol, timeframe]);
-
-  // Live Micro-Tick on current candle to keep chart interactive between polls
-  useEffect(() => {
-    const tickInterval = setInterval(() => {
-      const series = seriesRef.current;
-      const candles = candlesRef.current;
-      if (!series || candles.length === 0) return;
-
-      const lastCandle = candles[candles.length - 1];
-      if (!lastCandle) return;
-
-      const delta = (Math.random() - 0.49) * 0.0004 * lastCandle.close;
-      const newClose = Number((lastCandle.close + delta).toFixed(6));
-      const updatedCandle: Candle = {
-        ...lastCandle,
-        close: newClose,
-        high: Math.max(lastCandle.high, newClose),
-        low: Math.min(lastCandle.low, newClose),
-      };
-
-      candles[candles.length - 1] = updatedCandle;
-      series.update(updatedCandle);
-      setOhlc(updatedCandle);
-    }, 1500);
-
-    return () => clearInterval(tickInterval);
-  }, []);
-
-  const handleZoomIn = () => {
-    const timeScale = chartRef.current?.timeScale();
-    if (!timeScale) return;
-    const range = timeScale.getVisibleLogicalRange();
-    if (!range) return;
-    const span = range.to - range.from;
+  const zoom = (factor: number) => {
+    const scale = chart.current?.timeScale();
+    const range = scale?.getVisibleLogicalRange();
+    if (!scale || !range) return;
     const center = (range.from + range.to) / 2;
-    const newSpan = Math.max(10, span * 0.7);
-    timeScale.setVisibleLogicalRange({
-      from: center - newSpan / 2,
-      to: center + newSpan / 2,
-    });
+    const span = Math.max(10, (range.to - range.from) * factor);
+    scale.setVisibleLogicalRange({ from: center - span / 2, to: center + span / 2 });
   };
-
-  const handleZoomOut = () => {
-    const timeScale = chartRef.current?.timeScale();
-    if (!timeScale) return;
-    const range = timeScale.getVisibleLogicalRange();
-    if (!range) return;
-    const span = range.to - range.from;
-    const center = (range.from + range.to) / 2;
-    const newSpan = span * 1.4;
-    timeScale.setVisibleLogicalRange({
-      from: center - newSpan / 2,
-      to: center + newSpan / 2,
-    });
-  };
-
-  const handleResetZoom = () => {
-    chartRef.current?.timeScale().fitContent();
-  };
-
-  const handleSelectTimeframe = (tf: string) => {
-    setTimeframe(tf);
-    onTimeframeChange?.(tf);
-  };
-
-  if (compact) {
-    return (
-      <div className="w-full bg-sentinel-950/95 flex flex-col border border-sentinel-800/90 rounded-xl overflow-hidden">
-        {/* Axiom-style top toolbar */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-sentinel-800/80 bg-sentinel-900/60 font-mono text-xs select-none">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-300 font-bold tracking-wide">${displaySymbol(symbol)}/USD</span>
-            <span className="text-2xs text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">LIVE DEX</span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <div className="flex items-center border-r border-sentinel-800/80 pr-1 mr-1 gap-0.5">
-              <button
-                type="button"
-                onClick={handleZoomIn}
-                title="Zoom In (or Ctrl+Scroll)"
-                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
-              >
-                <ZoomIn className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleZoomOut}
-                title="Zoom Out (or Ctrl+Scroll)"
-                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
-              >
-                <ZoomOut className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleResetZoom}
-                title="Reset Chart View"
-                className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800/50 transition"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            {SUPPORTED_TIMEFRAMES.map((tf) => (
-              <button
-                key={tf}
-                type="button"
-                onClick={() => handleSelectTimeframe(tf)}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
-                  timeframe === tf
-                    ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className={`${height || 'h-[270px]'} w-full bg-sentinel-950 relative overflow-hidden`}>
-          <div ref={containerRef} className="absolute inset-0" />
-
-          {isLoading && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sky-400 bg-sentinel-950/90">
-              <RefreshCw className="h-6 w-6 animate-spin" />
-              <span className="text-xs font-mono">Loading {timeframe} candles…</span>
-            </div>
-          )}
-
-          {hasError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-rose-400 bg-sentinel-950/90">
-              <AlertCircle className="h-6 w-6" />
-              <span className="text-xs font-mono">Failed to load chart.</span>
-            </div>
-          )}
-
-          {!isLoading && !hasError && ohlc && (
-            <div className="absolute top-2 left-2 font-mono text-2xs text-slate-400 bg-sentinel-900/90 px-2 py-1 rounded border border-sentinel-750 backdrop-blur-md pointer-events-none flex items-center gap-2">
-              <span>O: <strong className="text-white">{formatPrice(ohlc.open)}</strong></span>
-              <span>H: <strong className="text-emerald-400">{formatPrice(ohlc.high)}</strong></span>
-              <span>L: <strong className="text-rose-400">{formatPrice(ohlc.low)}</strong></span>
-              <span>C: <strong className="text-white">{formatPrice(ohlc.close)}</strong></span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
+  const active = feed.candles.find(c => c.time === hoverTime) ?? feed.candles[feed.candles.length - 1];
+  const empty = !feed.candles.length;
+  const updated = Math.max(feed.observedAt, feed.streamAt);
   return (
-    <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-850 p-4 shadow-card space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 font-mono">
-        <div className="flex items-center gap-2 text-xs">
-          <BarChart2 className="h-4 w-4 text-sky-400" />
-          <span className="font-bold text-slate-200 uppercase tracking-wider">{displaySymbol(symbol)}/USD Price Chart</span>
+    <section aria-label="Token price chart" data-chart-status={feed.status} data-candle-count={feed.candles.length}
+      className="w-full min-w-0 overflow-hidden rounded-md border border-sentinel-800 bg-sentinel-950 font-mono">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-sentinel-800 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="truncate font-semibold text-slate-200">{displaySymbol(tokenSymbol || symbol)}/USD</span>
+          <span role="status" title={updated ? 'Birdeye · observed ' + new Date(updated).toLocaleTimeString() : 'Waiting for provider data'}
+            className={feed.status === 'Live' ? 'text-emerald-400' : feed.status === 'Delayed' ? 'text-amber-400' : 'text-slate-400'}>{feed.status}</span>
         </div>
-
-        <div className="flex flex-wrap items-center gap-1 bg-sentinel-900/80 p-1 rounded-md border border-sentinel-800 text-xs">
-          <div className="flex items-center border-r border-sentinel-750 pr-1 mr-1 gap-0.5">
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              title="Zoom In (or Ctrl+Scroll)"
-              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
-            >
-              <ZoomIn className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              title="Zoom Out (or Ctrl+Scroll)"
-              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
-            >
-              <ZoomOut className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleResetZoom}
-              title="Reset View"
-              className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {SUPPORTED_TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              type="button"
-              onClick={() => handleSelectTimeframe(tf)}
-              className={`px-2.5 py-1 rounded text-center transition font-bold ${
-                timeframe === tf
-                  ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {tf}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-0.5" aria-label="Chart timeframe">
+          {CHART_TIMEFRAMES.map(tf => <button key={tf} type="button" aria-pressed={tf === timeframe}
+            onClick={() => selectTimeframe(tf)} className={control + (tf === timeframe ? ' bg-sky-500/15 text-sky-300' : ' text-slate-400 hover:bg-sentinel-800')}>{tf}</button>)}
         </div>
       </div>
-
-      <div className={`${height || 'h-64 sm:h-72'} w-full bg-sentinel-950/90 relative rounded-xl border border-sentinel-800 overflow-hidden`}>
-        <div ref={containerRef} className="absolute inset-0" />
-
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sky-400 bg-sentinel-950/90">
-            <RefreshCw className="h-8 w-8 animate-spin" />
-            <span className="text-xs font-mono">Fetching {timeframe} historical candles…</span>
-          </div>
-        )}
-
-        {hasError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-rose-400 bg-sentinel-950/90">
-            <AlertCircle className="h-8 w-8" />
-            <span className="text-xs font-mono">Failed to load chart data.</span>
-          </div>
-        )}
-
-        {!isLoading && !hasError && ohlc && (
-          <div className="absolute top-3 left-3 font-mono text-2xs text-slate-400 bg-sentinel-900/90 px-3 py-1.5 rounded-lg border border-sentinel-700 backdrop-blur-md pointer-events-none">
-            TF: <span className="text-sky-300 font-bold">{timeframe}</span> O:{' '}
-            <span className="text-white font-bold">{formatPrice(ohlc.open)}</span> H:{' '}
-            <span className="text-emerald-400 font-bold">{formatPrice(ohlc.high)}</span> L:{' '}
-            <span className="text-rose-400 font-bold">{formatPrice(ohlc.low)}</span> C:{' '}
-            <span className="text-white font-bold">{formatPrice(ohlc.close)}</span>
-          </div>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-1 border-b border-sentinel-800 px-3 text-[11px] text-slate-400">
+        <span>Birdeye · Token aggregate · USD</span>
+        <div className="flex gap-0.5">
+          <button type="button" aria-label="Zoom in" className={control} onClick={() => zoom(0.7)}><ZoomIn className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Zoom out" className={control} onClick={() => zoom(1.4)}><ZoomOut className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Reset chart view" className={control} onClick={() => chart.current?.timeScale().fitContent()}><RotateCcw className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Refresh chart" aria-busy={feed.refreshing} disabled={feed.refreshing} className={control} onClick={feed.refresh}><RefreshCw className={'mx-auto h-4 w-4 ' + (feed.refreshing ? 'motion-safe:animate-spin' : '')} /></button>
+        </div>
       </div>
-    </div>
+      <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 text-[11px] text-slate-400" data-testid="chart-ohlcv">
+        {active ? <>{(['open', 'high', 'low', 'close'] as const).map(field => <span key={field}>{field[0].toUpperCase()}: <span className="text-slate-200">{formatPrice(active[field])}</span></span>)}
+          <span title="Base-token volume; not USD volume">Vol: {active.volume === null ? 'Unavailable' : active.volume.toLocaleString('en-US', { maximumSignificantDigits: 5 })}</span></> : <span>OHLCV awaits provider data</span>}
+      </div>
+      <div className={(height || (compact ? 'h-[270px]' : 'h-64 sm:h-80')) + ' relative w-full'}>
+        <div ref={container} className="absolute inset-0" />
+        {empty && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
+          <p role={feed.error ? 'alert' : 'status'}>{feed.loading ? 'Loading real ' + timeframe + ' candles…' : feed.error || 'No indexed candles yet. Waiting for trades.'}</p>
+          {!feed.loading && <button type="button" className={control + ' border border-sentinel-700 text-sky-300'} disabled={feed.refreshing} aria-busy={feed.refreshing} onClick={feed.refresh}>Retry chart</button>}
+        </div>}
+      </div>
+      {!empty && feed.error && <p role="alert" className="px-3 py-2 text-[11px] text-amber-400">{feed.error} Existing candles are retained.</p>}
+      {!empty && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sentinel-800 px-3 py-1 text-[11px] text-slate-400">
+        <span>Volume in token units · Gaps are not fabricated</span>
+        {feed.hasMore && <button type="button" className={control + ' text-sky-300'} disabled={feed.loadingOlder} aria-busy={feed.loadingOlder} onClick={feed.loadOlder}>Load older candles</button>}
+        {feed.olderError && <span role="alert" className="text-amber-400">{feed.olderError}</span>}
+      </div>}
+    </section>
   );
 }
-
 export default CandlestickChart;

@@ -30,6 +30,11 @@ import { useWatchlist } from '@/lib/store/watchlist-store';
 import { useTokenFilters } from '@/lib/store/token-filters-store';
 import type { LiveTokenUpdate } from '@/lib/hooks/use-live-token-updates';
 import type { DiscoveryToken, TimeWindow, MetricEvidence } from '@/lib/discovery/types';
+import {
+  resolveLaunchpad,
+  LAUNCHPAD_CONFIGS,
+  type LaunchpadConfig,
+} from '@/lib/market/lifecycle/launchpads';
 import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase, formatBoostCountdown } from '@/lib/discovery/format';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
@@ -454,10 +459,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     return `${token.mint.slice(0, 4)}...${token.mint.slice(-4)}`;
   }, [token.mint, token.source]);
 
-  // Platform & Protocol label
-  const protocolLabel = token.protocol || (token.source === 'Pump.fun' ? 'Pump V1' : token.source);
-  const isPumpFun = token.source === 'Pump.fun' || token.mint?.toLowerCase().endsWith('pump');
-
   // Bonding / Lifecycle Status Resolution
   /**
    * Real curve completion, or null.
@@ -477,6 +478,17 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     },
   }) : token;
   const curvePct = lifecycle.bondingCurveProgress ?? lifecycle.migrationProgress ?? null;
+
+  // Launchpad Resolution & Profile
+  const launchpadConfig: LaunchpadConfig = token.launchpadInfo ?? resolveLaunchpad(token);
+  const originLaunchpad = token.originLaunchpad ?? launchpadConfig.name;
+  const destinationDex = lifecycle.migratedDex ?? token.launchpadInfo?.destinationDex ?? launchpadConfig.destinationDex;
+  const lpStatus = token.lpHandling ?? launchpadConfig.lpHandling;
+  const gradTarget = token.graduationTarget ?? launchpadConfig.graduationThreshold;
+
+  // Platform & Protocol label
+  const protocolLabel = token.protocol || (launchpadConfig ? launchpadConfig.name : (token.source === 'Pump.fun' ? 'Pump V1' : token.source));
+  const isPumpFun = launchpadConfig.id === 'pump.fun';
 
   const lifecycleState = lifecycle.lifecycleState;
   const isMigrated = lifecycleState === 'migrated' || token.bondingStatus === 'graduated';
@@ -727,7 +739,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             >
               {copied ? 'copied' : shortMint}
             </button>
-            <span className="discovery-card-protocol text-[9px] text-slate-400 border border-slate-700 bg-slate-850 px-1 rounded-[3px]">
+            <span className={`discovery-card-protocol text-[9px] px-1 rounded-[3px] border ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
               {protocolLabel}
             </span>
           </div>
@@ -755,8 +767,8 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           className="w-full"
           label="Migrated"
           definition={
-            migratedDex
-              ? `Liquidity moved to ${migratedDex}${migratedPool ? ` — pool ${migratedPool.slice(0, 8)}…` : ''}. Confirmed from the on-chain migration transaction.`
+            destinationDex
+              ? `Liquidity migrated from ${originLaunchpad} to ${destinationDex}${migratedPool ? ` — pool ${migratedPool.slice(0, 8)}…` : ''}. ${lpStatus}. Confirmed on-chain.`
               : 'Moved to an AMM pool. Confirmed from the on-chain migration transaction.'
           }
         >
@@ -766,11 +778,14 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           >
             <div className="flex items-center gap-1.5 min-w-0">
               <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-              <span className="text-[10px] font-bold text-emerald-400 truncate">
-                {migratedDex ?? 'AMM'}
+              <span className={`text-[8.5px] font-bold px-1 py-0.5 rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
+                {originLaunchpad}
               </span>
-              <span className="text-[9px] text-emerald-300/90 font-mono bg-emerald-900/60 px-1 rounded">
-                Graduated
+              <span className="text-[10px] font-bold text-emerald-400 truncate">
+                {destinationDex}
+              </span>
+              <span className="text-[8.5px] text-emerald-300/90 font-mono bg-emerald-950/70 border border-emerald-800/60 px-1 py-0.5 rounded shrink-0">
+                {lpStatus}
               </span>
             </div>
             <span className="flex shrink-0 items-center gap-1">
@@ -800,24 +815,58 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             </span>
           </div>
         </LegendTooltip>
+      ) : isMigrating ? (
+        <LegendTooltip
+          className="w-full"
+          label="Migrating"
+          definition={`${originLaunchpad} bonding curve complete. Currently migrating liquidity to ${destinationDex} (${lpStatus}).`}
+        >
+          <div className="w-full flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              <span className={`text-[8.5px] font-bold px-1 py-0.5 rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
+                {originLaunchpad}
+              </span>
+              <span className="text-[9.5px] font-semibold text-amber-300 truncate">
+                Migrating → {destinationDex}
+              </span>
+            </div>
+            <span className="text-[9px] font-mono text-amber-400 font-bold shrink-0">
+              100%
+            </span>
+          </div>
+        </LegendTooltip>
       ) : (
         curvePct !== null && (
           <LegendTooltip
-            label="Bonding curve"
-            definition="Real completion, read from the token's bonding-curve account on chain — not estimated from market cap."
+            label={`${launchpadConfig.name} bonding curve`}
+            definition={`Real completion for ${launchpadConfig.name} (${launchpadConfig.curveType}). Target graduation threshold: ${gradTarget} to migrate LP to ${launchpadConfig.destinationDex} (${launchpadConfig.lpHandling}).`}
             className="w-full"
           >
             <div className="w-full">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-semibold text-amber-400 flex items-center gap-1">
-                  <Flame className="w-2.5 h-2.5 text-amber-400 inline" />
-                  Bonding curve
-                </span>
-                <span className="font-numeric text-[9px] font-bold text-slate-100">{curvePct.toFixed(1)}%</span>
+              <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-center gap-1 min-w-0">
+                  <Flame className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                  <span className={`text-[8px] font-bold px-1 py-px rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
+                    {launchpadConfig.name}
+                  </span>
+                  <span className="text-[8.5px] text-slate-400 truncate">
+                    → {launchpadConfig.destinationDex}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[8.5px] text-slate-400 font-mono" title={`Graduation Target: ${gradTarget}`}>
+                    {gradTarget}
+                  </span>
+                  <span className="font-numeric text-[9px] font-bold text-slate-100">{curvePct.toFixed(1)}%</span>
+                </div>
               </div>
-              <div className="h-0.5 bg-slate-800 overflow-hidden">
+              <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-sm bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 transition-all duration-300"
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 transition-all duration-300"
                   style={{ width: `${Math.min(100, Math.max(1, curvePct))}%` }}
                 />
               </div>
@@ -825,7 +874,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           </LegendTooltip>
         )
       )}
-
       </div>
       {/* 3 — Market figures */}
       <div className="discovery-metrics grid grid-cols-2 gap-x-2">

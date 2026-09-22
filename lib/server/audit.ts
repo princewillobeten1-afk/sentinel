@@ -29,8 +29,9 @@ export interface AuditEventInput {
     | 'CIRCUIT_BREAKER_TRIGGERED'
     | 'CIRCUIT_BREAKER_RESET'
     | 'TRADE_BLOCKED_BY_RISK_ENGINE'
+    | 'TRADE_SUBMITTED'
     | 'WALLET_WITHDRAWAL_RECORDED';
-  entityType: 'user' | 'wallet' | 'challenge' | 'session' | 'mfa' | 'kill_switch' | 'approval_request';
+  entityType: 'user' | 'wallet' | 'challenge' | 'session' | 'mfa' | 'kill_switch' | 'approval_request' | 'transaction';
   entityId?: string | null;
   changes?: Record<string, any>;
   ipAddress?: string | null;

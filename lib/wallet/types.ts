@@ -20,6 +20,7 @@ export interface WalletAdapter {
   connect(customAddress?: string): Promise<string>;
   disconnect(): Promise<void>;
   signMessage(message: Uint8Array): Promise<Uint8Array>;
+  signTransaction?(transaction: any): Promise<any>;
   /** Whether the wallet is actually present in this browser right now. */
   isAvailable?(): boolean;
   /** Official download page, so "not installed" can be made actionable. */

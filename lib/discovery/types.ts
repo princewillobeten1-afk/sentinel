@@ -84,13 +84,20 @@ export interface RugRiskEvidence {
   completeness: 'partial' | 'complete';
 }
 
+import type { LaunchpadConfig } from '@/lib/market/lifecycle/launchpads';
+
 export interface DiscoveryToken {
   id: string;
   name: string;
   symbol: string;
   mint: string;
   chain: string;
-  source: 'Pump.fun' | 'Raydium' | 'Meteora' | 'Orca';
+  source: 'Pump.fun' | 'Raydium' | 'Meteora' | 'Orca' | 'Moonshot' | 'LaunchLab' | 'LetsBonk' | 'Believe' | 'Virtuals' | 'Boop' | (string & {});
+  launchpad?: string;
+  launchpadInfo?: LaunchpadConfig;
+  graduationTarget?: string;
+  originLaunchpad?: string;
+  lpHandling?: string;
   logoURI?: string;
   ageMinutes: number;
   ageFormatted: string;

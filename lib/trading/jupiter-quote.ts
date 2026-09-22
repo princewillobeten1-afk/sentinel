@@ -25,6 +25,7 @@
  */
 
 const JUPITER_QUOTE_URL = 'https://lite-api.jup.ag/swap/v1/quote';
+const JUPITER_SWAP_URL = 'https://lite-api.jup.ag/swap/v1/swap';
 const TOKEN_LOOKUP_URL = 'https://lite-api.jup.ag/tokens/v2/search';
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -63,6 +64,7 @@ export interface SwapQuote {
   /** Implied unit price of the input token in output-token terms. */
   rate: string;
   fetchedAt: string;
+  providerQuote: JupiterQuoteResponse;
 }
 
 /** UI amount -> atomic units, without floating-point drift. */
@@ -118,6 +120,7 @@ export function toSwapQuote(
       .filter((label): label is string => Boolean(label)),
     rate: inNum > 0 && Number.isFinite(outNum) ? String(outNum / inNum) : '0',
     fetchedAt: new Date().toISOString(),
+    providerQuote: raw,
   };
 }
 
@@ -131,6 +134,37 @@ async function getJson(url: string): Promise<unknown> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function getSwapTransaction(params: {
+  quoteResponse: JupiterQuoteResponse;
+  userPublicKey: string;
+}): Promise<{ swapTransaction: string; lastValidBlockHeight: number; prioritizationFeeLamports?: number }> {
+  const response = await fetch(JUPITER_SWAP_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      quoteResponse: params.quoteResponse,
+      userPublicKey: params.userPublicKey,
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 'auto',
+    }),
+  });
+  const body = await response.json().catch(() => null) as {
+    swapTransaction?: string;
+    lastValidBlockHeight?: number;
+    prioritizationFeeLamports?: number;
+    error?: string;
+  } | null;
+  if (!response.ok || !body?.swapTransaction || !Number.isFinite(body.lastValidBlockHeight)) {
+    throw new Error(body?.error || `Jupiter swap preparation failed (${response.status})`);
+  }
+  return {
+    swapTransaction: body.swapTransaction,
+    lastValidBlockHeight: body.lastValidBlockHeight as number,
+    prioritizationFeeLamports: body.prioritizationFeeLamports,
+  };
 }
 
 const decimalsCache = new Map<string, number>();

@@ -42,7 +42,7 @@ export const BIRDEYE_MIN_INTERVAL_MS = 2_400;
 /** After this long in the queue, a background call is treated as urgent. */
 const MAX_BACKGROUND_WAIT_MS = 60_000;
 
-export type BirdeyePriority = 'audit' | 'background';
+export type BirdeyePriority = 'audit' | 'chart' | 'background';
 
 interface Waiter {
   priority: BirdeyePriority;
@@ -73,7 +73,7 @@ function nextWaiter(): Waiter | undefined {
   for (let i = 0; i < waiters.length; i += 1) {
     const waiter = waiters[i];
     const waited = now - waiter.queuedAt;
-    const urgent = waiter.priority === 'audit' || waited >= MAX_BACKGROUND_WAIT_MS;
+    const urgent = waiter.priority !== 'background' || waited >= MAX_BACKGROUND_WAIT_MS;
     // Rank by urgency first, then by how long it has waited (FIFO within a tier).
     const score = (urgent ? 1e12 : 0) + waited;
     if (score > bestScore) {
@@ -106,12 +106,20 @@ async function drain(): Promise<void> {
 /**
  * Waits until it is this caller's turn to make a Birdeye request.
  *
- * Always resolves — there is no rejection path, so a caller cannot bypass the
- * gate by catching.
+ * An aborted caller is removed from the queue and rejected; it must not make
+ * a provider request after cancellation.
  */
-export function acquireBirdeyeSlot(priority: BirdeyePriority = 'background'): Promise<void> {
-  return new Promise<void>((resolve) => {
-    waiters.push({ priority, queuedAt: Date.now(), release: resolve });
+export function acquireBirdeyeSlot(priority: BirdeyePriority = 'background', signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) { reject(new Error('Provider queue request aborted')); return; }
+    const onAbort = () => {
+      const index = waiters.indexOf(waiter);
+      if (index >= 0) waiters.splice(index, 1);
+      reject(new Error('Provider queue request aborted'));
+    };
+    const waiter: Waiter = { priority, queuedAt: Date.now(), release: () => { signal?.removeEventListener('abort', onAbort); resolve(); } };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    waiters.push(waiter);
     void drain();
   });
 }
@@ -120,6 +128,7 @@ export function birdeyeLimiterStats() {
   return {
     queued: waiters.length,
     audit: waiters.filter((w) => w.priority === 'audit').length,
+    chart: waiters.filter((w) => w.priority === 'chart').length,
     background: waiters.filter((w) => w.priority === 'background').length,
     minIntervalMs: BIRDEYE_MIN_INTERVAL_MS,
     msSinceLastCall: lastCall.at === 0 ? null : Date.now() - lastCall.at,

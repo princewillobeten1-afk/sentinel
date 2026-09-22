@@ -3,12 +3,13 @@ import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { validateSchema } from '@/lib/server/validation';
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
-import { generateCandleRange, SUPPORTED_TIMEFRAMES } from '@/lib/market/mock-ohlcv';
+import { CHART_TIMEFRAMES, isSolanaMint } from '@/lib/market/chart-model';
+import { getChartHistory } from '@/lib/market/chart-history';
 
 export const dynamic = 'force-dynamic';
 
 const chartQuerySchema = z.object({
-  timeframe: z.enum(SUPPORTED_TIMEFRAMES).default('15m'),
+  timeframe: z.enum(CHART_TIMEFRAMES).default('15m'),
   limit: z.coerce.number().int().min(1).max(500).default(150),
   // Unix seconds. When present, returns the `limit` candles strictly before
   // this time — the progressive "load older" path.
@@ -16,10 +17,7 @@ const chartQuerySchema = z.object({
 });
 
 /**
- * GET /api/v1/tokens/:chain/:address/chart — real, paginated OHLCV candles
- * (Sprint 31 — Item 12), replacing a hardcoded 5-candle stub. Backed by a
- * deterministic generator (`lib/market/mock-ohlcv.ts`), not a live feed —
- * see docs/performance/README.md for what's real vs simulated here.
+ * Provider-backed, unpadded token-aggregate USD candles. No synthetic fallback.
  */
 export const GET = withApiGateway(
   async (_ctx, request, params) => {
@@ -27,19 +25,11 @@ export const GET = withApiGateway(
       const url = new URL(request.url);
       const query = validateSchema(chartQuerySchema, Object.fromEntries(url.searchParams));
 
-      const { candles, hasMore } = generateCandleRange(params.address, query.timeframe, {
-        count: query.limit,
-        beforeTimeSeconds: query.before,
-      });
-
-      return jsonResponse({
-        chain: params.chain,
-        address: params.address,
-        timeframe: query.timeframe,
-        candles,
-        hasMore,
-        oldestTime: candles[0]?.time ?? null,
-      });
+      if (params.chain.toLowerCase() !== 'solana' || !isSolanaMint(params.address)) {
+        throw new ApiError('A valid Solana mint is required for this chart.', 400);
+      }
+      const snapshot = await getChartHistory(params.address, query.timeframe, query.limit, query.before);
+      return jsonResponse(snapshot, 200, { 'Cache-Control': 'no-store' });
     } catch (error) {
       return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch chart candles', 500));
     }

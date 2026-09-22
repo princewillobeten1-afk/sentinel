@@ -14,24 +14,46 @@
  * and no extra RPC budget to notice a launch or a migration.
  *
  * Resolving the *destination pool* does cost one `getTransaction`, but only on
+ *
+ * ## Why logs, and why not a percentage
+ *
+ * A curve reaching 100% is not a migration. The migration is a distinct
+ * instruction the program executes afterwards: it can lag, fail, or be retried,
+ * and the destination pool only exists once it succeeds. Treating completion as
+ * migration would move tokens into the Migrated column before they had moved,
+ * with no pool to point at.
+ *
+ * `logsSubscribe` on the pump.fun program already runs for trade capture, so
+ * these events arrive on a transport that is open regardless — no extra polling
+ * and no extra RPC budget to notice a launch or a migration.
+ *
+ * Resolving the *destination pool* does cost one `getTransaction`, but only on
  * an actual migration, which is a handful of events an hour rather than per
  * trade.
  */
 
 import { PUMPFUN_PROGRAM_ID } from './bonding-curve';
+import type { Launchpad } from './types';
+import { LAUNCHPAD_CONFIGS } from './launchpads';
 
 /** The same narrow authority watch is used for live events and restart recovery. */
 export const PUMPFUN_MIGRATION_AUTHORITY = '39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg';
 
-export type LifecycleLogEvent =
-  | { kind: 'PAIR_CREATED'; signature: string }
-  | { kind: 'MIGRATION'; signature: string };
+/** Launchpad Program IDs */
+export const MOONSHOT_PROGRAM_ID = 'CURVEmPpijXDTNdqrA9PGP1io2rkgiVXH26xdXVGLLfz';
+export const LAUNCHLAB_PROGRAM_ID = 'LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj';
+export const METEORA_DBC_PROGRAM_ID = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN';
 
-/** pump.fun's own AMM, where completed curves now migrate. */
+export type LifecycleLogEvent =
+  | { kind: 'PAIR_CREATED'; signature: string; launchpad?: Launchpad }
+  | { kind: 'MIGRATION'; signature: string; launchpad?: Launchpad };
+
+/** Destination AMM programs where completed curves migrate */
 export const PUMPSWAP_PROGRAM_ID = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
 export const RAYDIUM_AMM_V4_PROGRAM_ID = '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8';
 export const RAYDIUM_CPMM_PROGRAM_ID = 'CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C';
 export const METEORA_DAMM_PROGRAM_ID = 'Eo7WjKq67rjJQSZxS6z3YkapzY3eMj6Xy8X5EQVn5UaB';
+export const METEORA_DAMM_V2_PROGRAM_ID = 'cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG';
 export const METEORA_DLMM_PROGRAM_ID = 'LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo';
 
 /**
@@ -47,32 +69,17 @@ export const QUOTE_MINTS: ReadonlySet<string> = new Set([
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
 ]);
 
-/**
- * Instruction names that mean a new pair exists.
- *
- * Matched on the human-readable "Program log: Instruction: X" line that Anchor
- * programs emit — the same mechanism `helius-log-matchers.ts` already relies on
- * to classify swaps.
- */
-const CREATE_INSTRUCTIONS = ['create', 'createv2'];
+const CREATE_INSTRUCTIONS = ['create', 'createv2', 'initialize', 'initialize_v2'];
+const MIGRATION_INSTRUCTIONS = ['migrate', 'migratev2', 'withdraw', 'migrate_to_raydium', 'graduate'];
 
-/**
- * Instruction names that mean the curve's liquidity moved to an AMM.
- *
- * `migrate` is the current path to PumpSwap; `withdraw` was the older one that
- * seeded a Raydium pool. Both are listed because mainnet carries tokens from
- * both eras.
- */
-const MIGRATION_INSTRUCTIONS = ['migrate', 'migratev2', 'withdraw'];
-
-function mentionsPumpInstruction(logs: string[], names: string[]): boolean {
+function mentionsProgramInstruction(logs: string[], programId: string, names: string[]): boolean {
   const wanted = new Set(names.map((name) => name.toLowerCase()));
-  const invoke = `program ${PUMPFUN_PROGRAM_ID.toLowerCase()} invoke`;
+  const invoke = `program ${programId.toLowerCase()} invoke`;
   for (let index = 0; index < logs.length; index += 1) {
     if (!logs[index]?.toLowerCase().startsWith(invoke)) continue;
     // Anchor writes its instruction name immediately after the program invoke.
     // Stop if another program is invoked first so an unrelated CPI's
-    // `Withdraw` can never be attributed to pump.fun.
+    // instruction can never be attributed to the target program.
     for (let cursor = index + 1; cursor < Math.min(logs.length, index + 8); cursor += 1) {
       const line = logs[cursor]?.toLowerCase() ?? '';
       const instruction = line.match(/^program log: instruction: ([a-z0-9_]+)/)?.[1];
@@ -87,19 +94,38 @@ function mentionsPumpInstruction(logs: string[], names: string[]): boolean {
 }
 
 /**
- * Classifies one pump.fun log notification.
- *
- * Migration is checked first: a transaction that both creates and migrates is
- * the migration, and mislabelling it would register a brand-new pair for a
- * token that just left the curve.
+ * Classifies log notifications across supported launchpads.
  */
 export function classifyLifecycleLogs(signature: string, logs: string[]): LifecycleLogEvent | null {
-  if (mentionsPumpInstruction(logs, MIGRATION_INSTRUCTIONS)) {
+  // 1. Pump.fun
+  if (mentionsProgramInstruction(logs, PUMPFUN_PROGRAM_ID, ['migrate', 'migratev2', 'withdraw'])) {
     return { kind: 'MIGRATION', signature };
   }
-  if (mentionsPumpInstruction(logs, CREATE_INSTRUCTIONS)) {
+  if (mentionsProgramInstruction(logs, PUMPFUN_PROGRAM_ID, ['create', 'createv2'])) {
     return { kind: 'PAIR_CREATED', signature };
   }
+
+  // 2. Moonshot
+  if (mentionsProgramInstruction(logs, MOONSHOT_PROGRAM_ID, ['migrate_to_raydium', 'migrate'])) {
+    return { kind: 'MIGRATION', signature };
+  }
+  if (mentionsProgramInstruction(logs, MOONSHOT_PROGRAM_ID, ['create', 'initialize'])) {
+    return { kind: 'PAIR_CREATED', signature };
+  }
+
+  // 3. LaunchLab / LetsBonk
+  if (mentionsProgramInstruction(logs, LAUNCHLAB_PROGRAM_ID, ['graduate', 'initialize_cpmm'])) {
+    return { kind: 'MIGRATION', signature };
+  }
+  if (mentionsProgramInstruction(logs, LAUNCHLAB_PROGRAM_ID, ['initialize_v2', 'create'])) {
+    return { kind: 'PAIR_CREATED', signature };
+  }
+
+  // 4. Believe (Meteora DBC)
+  if (mentionsProgramInstruction(logs, METEORA_DBC_PROGRAM_ID, ['initialize_virtual_pool_with_spl_token'])) {
+    return { kind: 'PAIR_CREATED', signature };
+  }
+
   return null;
 }
 
@@ -109,6 +135,8 @@ export interface ResolvedMigration {
   dex: string;
   migratedAt: number;
   signature: string;
+  originLaunchpad?: Launchpad;
+  lpHandling?: string;
 }
 
 interface ParsedTransaction {
@@ -127,11 +155,7 @@ interface ParsedTransaction {
 }
 
 /**
- * Pulls the migrated mint and its destination pool out of a parsed transaction.
- *
- * Returns null when either cannot be identified. A migration recorded without a
- * pool address is not a migration anyone can act on, and guessing the pool would
- * put a wrong address on a row users click through to.
+ * Pulls the migrated mint, origin launchpad, and destination pool out of a parsed transaction.
  */
 export function resolveMigration(
   parsed: ParsedTransaction | null,
@@ -145,33 +169,123 @@ export function resolveMigration(
     ...(parsed.meta?.innerInstructions ?? []).flatMap((i) => i.instructions ?? []),
   ];
 
-  // Official pump-public-docs/idl/pump.json, checked 2026-09-12. Both
-  // instructions have no arguments: these are their complete base58 data.
-  // Decode the mint/pool by the instruction's account contract, never by
-  // guessing from balance order or a normal AMM swap in the same transaction.
-  const migrations = instructions.filter((ix) => ix.programId === PUMPFUN_PROGRAM_ID
+  // 1. Pump.fun migrations
+  const pumpMigrations = instructions.filter((ix) => ix.programId === PUMPFUN_PROGRAM_ID
     && (ix.data === 'T5bZvAk4s5f' || ix.data === 'YQq8B6nbicx'));
-  if (migrations.length !== 1) return null; // Ambiguous multi-mint transaction.
-  const migration = migrations[0];
-  const v2 = migration.data === 'YQq8B6nbicx';
-  const accounts = migration.accounts;
-  if (!accounts || accounts.length < (v2 ? 27 : 25)) return null;
-  const mint = accounts[2];
-  const poolAddress = accounts[v2 ? 10 : 9];
-  if (accounts[v2 ? 9 : 8] !== PUMPSWAP_PROGRAM_ID
-    || !mint || QUOTE_MINTS.has(mint) || !poolAddress || poolAddress === mint || QUOTE_MINTS.has(poolAddress)
-    || !parsed.meta?.postTokenBalances?.some((balance) => balance.mint === mint)) return null;
-  // A successful migration must actually invoke the AMM with this pool.
-  if (!instructions.some((ix) => ix.programId === PUMPSWAP_PROGRAM_ID && ix.accounts?.includes(poolAddress))) return null;
+  if (pumpMigrations.length === 1) {
+    const migration = pumpMigrations[0];
+    const v2 = migration.data === 'YQq8B6nbicx';
+    const accounts = migration.accounts;
+    if (accounts && accounts.length >= (v2 ? 27 : 25)) {
+      const mint = accounts[2];
+      const poolAddress = accounts[v2 ? 10 : 9];
+      if (accounts[v2 ? 9 : 8] === PUMPSWAP_PROGRAM_ID
+        && mint && !QUOTE_MINTS.has(mint) && poolAddress && poolAddress !== mint && !QUOTE_MINTS.has(poolAddress)
+        && parsed.meta?.postTokenBalances?.some((balance) => balance.mint === mint)
+        && instructions.some((ix) => ix.programId === PUMPSWAP_PROGRAM_ID && ix.accounts?.includes(poolAddress))) {
+        return {
+          mint,
+          poolAddress,
+          dex: 'PumpSwap',
+          originLaunchpad: 'pump.fun',
+          lpHandling: LAUNCHPAD_CONFIGS['pump.fun'].lpHandling,
+          migratedAt: parsed.blockTime * 1000,
+          signature,
+        };
+      }
+    }
+  }
 
-  return {
-    mint,
-    poolAddress,
-    dex: 'PumpSwap',
-    // Solana reports block time in seconds.
-    migratedAt: parsed.blockTime * 1000,
-    signature,
-  };
+  // 2. LaunchLab migrations (invoking Raydium CPMM)
+  const launchLabInstructions = instructions.filter((ix) => ix.programId === LAUNCHLAB_PROGRAM_ID);
+  const cpmmInvocations = instructions.filter((ix) => ix.programId === RAYDIUM_CPMM_PROGRAM_ID);
+  if (launchLabInstructions.length > 0 && cpmmInvocations.length > 0) {
+    const nonQuoteTokens = (parsed.meta?.postTokenBalances ?? [])
+      .map((b) => b.mint)
+      .filter((m): m is string => Boolean(m && !QUOTE_MINTS.has(m)));
+    const uniqueTokens = [...new Set(nonQuoteTokens)];
+    if (uniqueTokens.length === 1) {
+      const mint = uniqueTokens[0];
+      for (const cpmmIx of cpmmInvocations) {
+        const poolAccount = cpmmIx.accounts?.find(
+          (acc) => acc && acc !== mint && !QUOTE_MINTS.has(acc) && acc !== RAYDIUM_CPMM_PROGRAM_ID,
+        );
+        if (poolAccount) {
+          return {
+            mint,
+            poolAddress: poolAccount,
+            dex: 'Raydium CPMM',
+            originLaunchpad: 'launchlab',
+            lpHandling: LAUNCHPAD_CONFIGS.launchlab.lpHandling,
+            migratedAt: parsed.blockTime * 1000,
+            signature,
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Moonshot migrations (invoking Raydium AMM)
+  const moonshotInstructions = instructions.filter((ix) => ix.programId === MOONSHOT_PROGRAM_ID);
+  const raydiumInvocations = instructions.filter(
+    (ix) => ix.programId === RAYDIUM_AMM_V4_PROGRAM_ID || ix.programId === RAYDIUM_CPMM_PROGRAM_ID,
+  );
+  if (moonshotInstructions.length > 0 && raydiumInvocations.length > 0) {
+    const nonQuoteTokens = (parsed.meta?.postTokenBalances ?? [])
+      .map((b) => b.mint)
+      .filter((m): m is string => Boolean(m && !QUOTE_MINTS.has(m)));
+    const uniqueTokens = [...new Set(nonQuoteTokens)];
+    if (uniqueTokens.length === 1) {
+      const mint = uniqueTokens[0];
+      for (const rayIx of raydiumInvocations) {
+        const poolAccount = rayIx.accounts?.find(
+          (acc) => acc && acc !== mint && !QUOTE_MINTS.has(acc) && acc !== rayIx.programId,
+        );
+        if (poolAccount) {
+          return {
+            mint,
+            poolAddress: poolAccount,
+            dex: 'Raydium',
+            originLaunchpad: 'moonshot',
+            lpHandling: LAUNCHPAD_CONFIGS.moonshot.lpHandling,
+            migratedAt: parsed.blockTime * 1000,
+            signature,
+          };
+        }
+      }
+    }
+  }
+
+  // 4. Believe / Meteora DBC migrations (invoking Meteora DAMM v2)
+  const dbcInstructions = instructions.filter((ix) => ix.programId === METEORA_DBC_PROGRAM_ID);
+  const dammInvocations = instructions.filter((ix) => ix.programId === METEORA_DAMM_V2_PROGRAM_ID);
+  if (dbcInstructions.length > 0 && dammInvocations.length > 0) {
+    const nonQuoteTokens = (parsed.meta?.postTokenBalances ?? [])
+      .map((b) => b.mint)
+      .filter((m): m is string => Boolean(m && !QUOTE_MINTS.has(m)));
+    const uniqueTokens = [...new Set(nonQuoteTokens)];
+    if (uniqueTokens.length === 1) {
+      const mint = uniqueTokens[0];
+      for (const dammIx of dammInvocations) {
+        const poolAccount = dammIx.accounts?.find(
+          (acc) => acc && acc !== mint && !QUOTE_MINTS.has(acc) && acc !== dammIx.programId,
+        );
+        if (poolAccount) {
+          return {
+            mint,
+            poolAddress: poolAccount,
+            dex: 'Meteora DAMM v2',
+            originLaunchpad: 'believe',
+            lpHandling: LAUNCHPAD_CONFIGS.believe.lpHandling,
+            migratedAt: parsed.blockTime * 1000,
+            signature,
+          };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 /** Fetches and resolves a migration transaction. */

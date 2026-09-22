@@ -18,6 +18,7 @@ import { hydrateTokenCards, startTokenCardFanout, tokenCardCacheStats } from './
 import { dexMarketStats, queueDexMarketReconciliation } from '@/lib/discovery/dexscreener-market';
 import { birdeyeLimiterStats } from '@/lib/market/enrichment/birdeye-limiter';
 import { tokenCardPersistenceHealth } from '@/lib/server/db/token-card-evidence-repository';
+import { getChartDemand, onChartDemand } from './chart-stream';
 
 /**
  * How long watched-mint changes are gathered before Helius is told.
@@ -80,6 +81,7 @@ export interface StreamManagerHealth {
  */
 class StreamManager {
   private birdeye: BirdeyeClient | null = null;
+  private unsubscribeChartDemand: (() => void) | null = null;
   private helius: HeliusClient | null = null;
   private started = false;
   private startedAt: string | null = null;
@@ -163,7 +165,7 @@ class StreamManager {
       const visibleMints = getWatchedMints();
       void hydrateTokenCards(visibleMints);
       this.helius?.setWatchedMints(visibleMints);
-      this.birdeye?.setMints(visibleMints);
+      this.birdeye?.setMints(visibleMints, getChartDemand());
       // The same set the browser has explicitly subscribed to drives the
       // expensive ownership queue. No separate firehose or guessed "popular"
       // list can steal its quota from what the user is looking at.
@@ -172,11 +174,14 @@ class StreamManager {
     };
 
     this.unsubscribeDemand?.();
-    this.unsubscribeDemand = onWatchedMintsChange(() => {
+    const scheduleDemand = () => {
       if (this.demandTimer) return;
       this.demandTimer = setTimeout(apply, DEMAND_DEBOUNCE_MS);
       this.demandTimer.unref?.();
-    });
+    };
+    this.unsubscribeDemand = onWatchedMintsChange(scheduleDemand);
+    this.unsubscribeChartDemand?.();
+    this.unsubscribeChartDemand = onChartDemand(scheduleDemand);
     apply();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     // Refresh eligibility changes with time even when visibility does not.
@@ -192,6 +197,8 @@ class StreamManager {
   }
 
   stop(): void {
+    this.unsubscribeChartDemand?.();
+    this.unsubscribeChartDemand = null;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     this.refreshTimer = null;
     this.unsubscribeDemand?.();

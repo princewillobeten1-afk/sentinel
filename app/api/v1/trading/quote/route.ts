@@ -68,6 +68,9 @@ export async function POST(request: Request) {
     const mapped: Quote = {
       id: `q_${Date.now()}_${quote.inputMint.slice(0, 4)}${quote.outputMint.slice(0, 4)}`,
       chainId: 'solana',
+      inputMint: quote.inputMint,
+      outputMint: quote.outputMint,
+      providerQuote: quote.providerQuote,
       inputToken: data.inputSymbol ?? data.inputMint,
       outputToken: data.outputSymbol ?? data.outputMint,
       inputAmount: quote.inputAmount,

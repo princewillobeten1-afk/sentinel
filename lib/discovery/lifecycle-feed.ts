@@ -30,12 +30,24 @@ async function loadMetadata(mints: string[]): Promise<void> {
   try { await task; } finally { pending.delete(key); }
 }
 
+import { resolveLaunchpad } from '@/lib/market/lifecycle/launchpads';
+
 /** The engine decides membership; metadata can decorate it, never classify it. */
 export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecycle): DiscoveryToken {
+  const padConfig = record.launchpadInfo ?? resolveLaunchpad(record.launchpad);
+
   if (record.state === 'MIGRATED' && record.migration) {
     const proof = record.migration;
+    const originLaunchpad = proof.originLaunchpad ?? record.launchpad;
+    const originConfig = resolveLaunchpad(originLaunchpad);
+
     return {
       ...token,
+      launchpad: originLaunchpad,
+      launchpadInfo: originConfig,
+      originLaunchpad: originConfig.name,
+      lpHandling: proof.lpHandling || originConfig.lpHandling,
+      graduationTarget: originConfig.graduationThreshold,
       bondingStatus: 'graduated', lifecycleState: 'migrated',
       bondingCurveProgress: undefined, migrationProgress: 100,
       migrationSignature: proof.signature, migratedAt: proof.migratedAt,
@@ -50,9 +62,14 @@ export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecy
   const progress = curve.progress * 100;
   return {
     ...token,
+    launchpad: record.launchpad,
+    launchpadInfo: padConfig,
+    originLaunchpad: padConfig.name,
+    graduationTarget: padConfig.graduationThreshold,
     bondingStatus: 'bonding', lifecycleState: 'final_stretch',
     bondingCurveProgress: progress, migrationProgress: progress,
-    migrationSignature: undefined, migratedAt: undefined, migratedPool: undefined, migratedDex: undefined,
+    migrationSignature: undefined, migratedAt: undefined, migratedPool: undefined,
+    migratedDex: padConfig.destinationDex,
     lifecycleEvidence: {
       status: 'measured', source: 'solana-bonding-curve',
       observedAt: new Date(curve.readAt).toISOString(),

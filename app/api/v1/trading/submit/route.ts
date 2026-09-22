@@ -4,13 +4,18 @@ import { parseJsonBody, validateSchema } from '@/lib/server/validation';
 import { requireAuth } from '@/lib/server/auth';
 import { recordAuditEvent } from '@/lib/server/audit';
 import { ApiError } from '@/lib/server/errors';
+import { Connection, VersionedTransaction } from '@solana/web3.js';
+import { env } from '@/lib/server/env';
 
 export const dynamic = 'force-dynamic';
 
 const submitSchema = z.object({
   preparedId: z.string().min(1),
-  signedTransaction: z.string().min(1, 'Signed transaction signature is required'),
+  signedTransaction: z.string().min(1, 'Signed serialized transaction is required'),
+  idempotencyKey: z.string().min(8).max(200),
 });
+
+const submitted = new Map<string, { txSignature: string; explorerUrl: string }>();
 
 export async function POST(request: Request) {
   try {
@@ -18,36 +23,48 @@ export async function POST(request: Request) {
     const payload = await parseJsonBody(request);
     const data = validateSchema(submitSchema, payload);
 
-    // Deliberately refuses rather than fabricating.
-    //
-    // This route accepted a signed transaction, discarded it, and answered:
-    //
-    //     txSignature: `8kL9_${Date.now()}_${Math.random()...}`
-    //     status:      'confirmed'
-    //     explorerUrl: https://solscan.io/tx/<that fabricated signature>
-    //
-    // Nothing was ever broadcast. It has no UI callers today, so the fake
-    // confirmation was a landmine for whoever wired it up next rather than an
-    // active defect — but a route that lies on success is worse than one that
-    // is honestly unfinished.
-    //
-    // Completing it means broadcasting `signedTransaction` via the RPC's
-    // `sendTransaction` and returning the signature the network assigns, then
-    // confirming it. That is real money movement and is left unimplemented
-    // rather than shipped unverified.
+    const previous = submitted.get(data.idempotencyKey);
+    if (previous) return jsonResponse({ status: 'confirmed', ...previous });
+
+    if (!env.HELIUS_RPC_URL) {
+      throw new ApiError('HELIUS_RPC_URL is not configured; transaction was not broadcast.', 503, 'TRADING_NOT_CONFIGURED');
+    }
+
+    let rawTransaction: Buffer;
+    try {
+      rawTransaction = Buffer.from(data.signedTransaction, 'base64');
+      if (!rawTransaction.length) throw new Error('empty transaction');
+      VersionedTransaction.deserialize(rawTransaction);
+    } catch {
+      throw new ApiError('Signed transaction payload is invalid.', 400, 'INVALID_SIGNED_TRANSACTION');
+    }
+
+    const connection = new Connection(env.HELIUS_RPC_URL, 'confirmed');
+    const txSignature = await connection.sendRawTransaction(rawTransaction, {
+      skipPreflight: false,
+      maxRetries: 3,
+    });
+    const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
+    if (confirmation.value.err) {
+      throw new ApiError('The network rejected the transaction.', 422, 'TRANSACTION_FAILED', {
+        txSignature,
+        error: confirmation.value.err,
+      });
+    }
+
+    const receipt = {
+      txSignature,
+      explorerUrl: `https://solscan.io/tx/${txSignature}`,
+    };
+    submitted.set(data.idempotencyKey, receipt);
     recordAuditEvent({
       userId: user.userId,
-      action: 'AUTH_SUCCESS',
-      entityType: 'session',
+      action: 'TRADE_SUBMITTED',
+      entityType: 'transaction',
       entityId: data.preparedId,
-      changes: { action: 'TRADE_SUBMIT_REFUSED_NOT_IMPLEMENTED', preparedId: data.preparedId },
+      changes: { txSignature, preparedId: data.preparedId },
     });
-
-    throw new ApiError(
-      'Transaction submission is not implemented. The signed transaction was not broadcast, ' +
-        'and no signature exists. Sign and send through your wallet instead.',
-      501,
-    );
+    return jsonResponse({ status: 'confirmed', ...receipt });
   } catch (error) {
     return errorResponse(error instanceof Error ? error : new ApiError('Failed to submit signed transaction', 500));
   }

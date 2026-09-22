@@ -7,6 +7,7 @@ import {
   migrating,
   newPairs,
 } from '@/lib/market/lifecycle/lifecycle-engine';
+import { LAUNCHPAD_CONFIGS, resolveLaunchpad } from '@/lib/market/lifecycle/launchpads';
 import { finalStretchThreshold } from '@/lib/market/lifecycle/types';
 
 export const dynamic = 'force-dynamic';
@@ -28,22 +29,37 @@ export async function GET(request: Request) {
       Math.max(1, Number(new URL(request.url).searchParams.get('limit') ?? 10)),
     );
 
-    const summarise = (record: ReturnType<typeof newPairs>[number]) => ({
-      mint: record.mint,
-      state: record.state,
-      launchpad: record.launchpad,
-      // Real completion from the curve account, null when not yet read.
-      curveProgressPct:
-        record.curve === null ? null : Number((record.curve.progress * 100).toFixed(3)),
-      curveComplete: record.curve?.complete ?? null,
-      curveReadAt: record.curve ? new Date(record.curve.readAt).toISOString() : null,
-      stateChangedAt: new Date(record.stateChangedAt).toISOString(),
-      source: record.source,
-      migration: record.migration,
-    });
+    const summarise = (record: ReturnType<typeof newPairs>[number]) => {
+      const padConfig = record.launchpadInfo ?? resolveLaunchpad(record.launchpad);
+      return {
+        mint: record.mint,
+        state: record.state,
+        launchpad: record.launchpad,
+        launchpadName: padConfig.name,
+        graduationTarget: padConfig.graduationThreshold,
+        targetDex: padConfig.destinationDex,
+        launchpadInfo: padConfig,
+        // Real completion from the curve account, null when not yet read.
+        curveProgressPct:
+          record.curve === null ? null : Number((record.curve.progress * 100).toFixed(3)),
+        curveComplete: record.curve?.complete ?? null,
+        curveReadAt: record.curve ? new Date(record.curve.readAt).toISOString() : null,
+        stateChangedAt: new Date(record.stateChangedAt).toISOString(),
+        source: record.source,
+        migration: record.migration,
+      };
+    };
 
     return jsonResponse({
       stats: lifecycleWorker.stats(),
+      supportedLaunchpads: Object.values(LAUNCHPAD_CONFIGS).map((c) => ({
+        id: c.id,
+        name: c.name,
+        targetDex: c.destinationDex,
+        graduationThreshold: c.graduationThreshold,
+        lpHandling: c.lpHandling,
+        quoteToken: c.quoteToken,
+      })),
       // Stated so an empty Final Stretch can be read against it.
       finalStretchThresholdPct: Number((finalStretchThreshold() * 100).toFixed(1)),
       newPair: newPairs().slice(0, limit).map(summarise),

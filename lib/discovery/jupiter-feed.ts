@@ -1,6 +1,7 @@
 import type { DiscoveryToken } from './types';
 import { calculateDiscoveryScore } from './score-engine';
 import { sanitizeTokenName } from './sanitize-name';
+import { isSupportedLaunchpad, resolveLaunchpad } from '@/lib/market/lifecycle/launchpads';
 
 /**
  * Live Solana token feeds from Jupiter's public token API.
@@ -184,10 +185,15 @@ export function formatAge(minutes: number): string {
 function sourceFor(token: JupiterToken): DiscoveryToken['source'] {
   const pad = (token.launchpad ?? '').toLowerCase();
   if (pad.includes('pump')) return 'Pump.fun';
+  if (pad.includes('moonshot')) return 'Moonshot';
+  if (pad.includes('launchlab')) return 'LaunchLab';
+  if (pad.includes('letsbonk')) return 'LetsBonk';
+  if (pad.includes('met-dbc') || pad.includes('believe') || pad.includes('launchcoin')) return 'Believe';
+  if (pad.includes('virtual')) return 'Virtuals';
+  if (pad.includes('boop') || pad.includes('stonkfun')) return 'Boop';
   if (pad.includes('meteora')) return 'Meteora';
   if (pad.includes('orca')) return 'Orca';
   if (pad.includes('raydium')) return 'Raydium';
-  // A pump.fun mint keeps its suffix even when the launchpad field is absent.
   if (token.id.toLowerCase().endsWith('pump')) return 'Pump.fun';
   return 'Raydium';
 }
@@ -269,6 +275,9 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
   const cleanName = sanitizeTokenName(token.name || token.symbol || `Token ${token.id.slice(0, 4)}`);
   const cleanSymbol = sanitizeTokenName(token.symbol || token.id.slice(0, 4).toUpperCase());
 
+  const isPad = isSupportedLaunchpad(token.launchpad) || (!token.launchpad && token.id.toLowerCase().endsWith('pump'));
+  const padConfig = isPad ? resolveLaunchpad(token) : undefined;
+
   const mapped: DiscoveryToken = {
     id: token.id,
     name: cleanName.value,
@@ -276,6 +285,10 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     mint: token.id,
     chain: 'solana',
     source: sourceFor(token),
+    launchpad: padConfig?.id,
+    launchpadInfo: padConfig,
+    originLaunchpad: padConfig?.name,
+    graduationTarget: padConfig?.graduationThreshold,
     liquidityPoolAddress: token.graduatedPool ?? (token.firstPool?.id !== token.id ? token.firstPool?.id : undefined),
     logoURI: token.icon,
     ageMinutes,
@@ -352,7 +365,7 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
       return undefined;
     })(),
     websiteUrl: token.website,
-    protocol: sourceFor(token) === 'Pump.fun' ? 'Pump V1' : sourceFor(token),
+    protocol: padConfig ? padConfig.name : (sourceFor(token) === 'Pump.fun' ? 'Pump V1' : sourceFor(token)),
   };
 
   // Only attach what was actually measured. Absent stays absent so the card

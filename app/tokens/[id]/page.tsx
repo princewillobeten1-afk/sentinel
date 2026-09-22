@@ -169,6 +169,8 @@ export default function TokenTradingTerminalPage() {
               <div className="space-y-4">
                 <MarketChart
                   marketId={primaryMarketId}
+                  tokenMint={tokenId}
+                  chain={tokenData.chainId}
                   symbol={tokenData.symbol}
                   initialInterval="1h"
                 />

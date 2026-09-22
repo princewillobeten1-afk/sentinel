@@ -18,6 +18,7 @@ import {
 } from './lifecycle-engine';
 import { updateTokenCard } from '@/lib/market/live/card-cache';
 import type { TokenLifecycle } from './types';
+import { resolveLaunchpad } from './launchpads';
 
 /**
  * Keeps the lifecycle engine current.
@@ -163,8 +164,9 @@ class LifecycleWorker {
   }
 
   /** A new pair was seen in the program logs. */
-  onPairCreated(mint: string): void {
-    recordPairCreated(mint, 'pump.fun');
+  onPairCreated(mint: string, launchpad?: TokenLifecycle['launchpad']): void {
+    const pad = resolveLaunchpad(launchpad);
+    recordPairCreated(mint, pad.id);
   }
 
   /**
@@ -193,12 +195,15 @@ class LifecycleWorker {
         migratedAt: resolved.migratedAt,
         dex: resolved.dex,
         poolAddress: resolved.poolAddress,
-      });
+        originLaunchpad: resolved.originLaunchpad,
+        lpHandling: resolved.lpHandling,
+      }, resolved.originLaunchpad ?? 'pump.fun');
 
       logger.info('[lifecycle] migration confirmed', {
         mint: resolved.mint,
         dex: resolved.dex,
         pool: resolved.poolAddress,
+        originLaunchpad: resolved.originLaunchpad,
       });
     } finally {
       // Kept briefly so a burst of duplicate notifications collapses, then
@@ -244,7 +249,8 @@ class LifecycleWorker {
           }
 
           // Idempotent — an already-tracked token keeps its state.
-          recordPairCreated(row.id, 'pump.fun');
+          const pad = resolveLaunchpad(row);
+          recordPairCreated(row.id, pad.id);
         }
       }
       const uniqueCandidates = [...new Map(historicalCandidates.map((candidate) => [candidate.mint, candidate])).values()]

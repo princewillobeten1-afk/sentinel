@@ -52,6 +52,10 @@ export interface Quote {
   expiresAt: string; // ISO timestamp
   provider: string; // e.g. "Jupiter Router (Solana)"
   isValid: boolean;
+  inputMint?: string;
+  outputMint?: string;
+  /** Full provider quote retained for a later serialized swap preparation. */
+  providerQuote?: unknown;
 }
 
 export interface QuoteProvider {

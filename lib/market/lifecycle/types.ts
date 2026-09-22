@@ -30,8 +30,10 @@ export const LIFECYCLE_ORDER: Record<LifecycleState, number> = {
   MIGRATED: 3,
 };
 
+import type { LaunchpadId, LaunchpadConfig } from './launchpads';
+
 /** Launchpads whose tokens run a bonding curve this engine can read. */
-export type Launchpad = 'pump.fun';
+export type Launchpad = LaunchpadId;
 
 export interface BondingCurveState {
   /** Raw reserves, as stored on the curve account. */
@@ -73,12 +75,18 @@ export interface MigrationRecord {
   dex: string;
   /** Destination pool address. */
   poolAddress: string;
+  /** Launchpad origin the token migrated from. */
+  originLaunchpad?: Launchpad;
+  /** How LP tokens were handled (e.g. 'Burned', 'Locked', 'Locked 10Y'). */
+  lpHandling?: string;
 }
 
 export interface TokenLifecycle {
   mint: string;
   state: LifecycleState;
   launchpad: Launchpad;
+  /** Detailed configuration and metadata for this launchpad. */
+  launchpadInfo?: LaunchpadConfig;
   /** Last curve reading, when one has been taken. */
   curve: BondingCurveState | null;
   /** Populated only in MIGRATED. */

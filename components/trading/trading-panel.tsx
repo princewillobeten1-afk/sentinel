@@ -11,11 +11,10 @@ import { summarizePosition, TRADE_PRESETS } from '@/lib/trading/sidebar-model';
 import { TradeActivityStrip, TradeSidebarInfo } from './trade-sidebar-info';
 import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState, useWalletActions } from '@/lib/store';
 import type { Quote } from '@/lib/quote/types';
-import { simulateTradeExecution, submitTradeOrder } from '@/lib/trading/service';
 import type { TransactionExecutionState } from '@/lib/trading/types';
-import { signatureToBase58 } from '@/lib/wallet/siws';
 import { Decimal } from '@/lib/math/decimal';
 import { TransactionPreviewModal } from './transaction-preview-modal';
+import { VersionedTransaction } from '@solana/web3.js';
 
 interface TradingPanelProps {
   tokenSymbol: string;
@@ -91,6 +90,12 @@ export function TradingPanel({
   const effectiveSlippage = isCustomSlippage ? Number(customSlippage) : slippage;
   const validSlippage = Number.isFinite(effectiveSlippage) && effectiveSlippage > 0 && effectiveSlippage <= 50;
   const isHighSlippage = effectiveSlippage > 3.0;
+
+  const toBase64 = (bytes: Uint8Array): string => {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  };
 
   useEffect(() => {
     setInputAmount(initialInputAmount);
@@ -194,47 +199,14 @@ export function TradingPanel({
     setSimulationWarnings([]);
     setSimulationTxHash(null);
     setExecutionError(null);
-    setTransactionState('preparing');
-    setIsSimulationLoading(true);
+    setTransactionState('idle');
+    setIsSimulationLoading(false);
     setIsPreviewOpen(true);
-
-    try {
-      const result = await simulateTradeExecution(quote, address || primaryWallet.address, walletBalanceSol ?? 0, 'solana:mainnet');
-      setSimulationErrors(result.errors);
-      setSimulationWarnings(result.warnings);
-      setSimulationTxHash(result.simulatedTxHash || null);
-
-      if (!result.valid) {
-        setTransactionState('failed');
-        setExecutionError(formatPreviewError(result.errors[0] || 'Simulation failed.'));
-        addExecutionLog({
-          text: `[SIMULATION] Trade simulation failed for ${side.toUpperCase()} order on ${quote.provider}.`,
-          level: 'warn',
-        });
-      } else {
-        setTransactionState('idle');
-        addExecutionLog({
-          text: `[SIMULATION] Trade simulation passed. Prepared payload for ${side.toUpperCase()} order.`,
-          level: 'info',
-        });
-      }
-    } catch (err: any) {
-      const technical = err.message || 'Unknown error';
-      setTransactionState('failed');
-      setExecutionError(formatPreviewError(technical));
-      setSimulationErrors([technical]);
-      setSimulationWarnings([]);
-      addExecutionLog({
-        text: `[SIMULATION] Error while simulating trade: ${technical}`,
-        level: 'error',
-      });
-    } finally {
-      setIsSimulationLoading(false);
-    }
+    addExecutionLog({ text: `[TRADE] Quote ready. Transaction will be prepared after confirmation.`, level: 'info' });
   };
 
   const handleConfirmTrade = async () => {
-    if (!quote || !selectedAdapter || simulationErrors.length > 0) return;
+    if (!quote || !selectedAdapter || !selectedAdapter.signTransaction) return;
     const walletAddress = address || primaryWallet?.address;
     if (!walletAddress) {
       addNotification({
@@ -248,7 +220,7 @@ export function TradingPanel({
     }
 
     setExecutionError(null);
-    setTransactionState('awaitingWallet');
+    setTransactionState('preparing');
 
     addExecutionLog({
       text: `[TERMINAL-EXEC] Requesting wallet signature for ${side.toUpperCase()} order...`,
@@ -256,30 +228,47 @@ export function TradingPanel({
     });
 
     try {
-      const payload = new TextEncoder().encode(JSON.stringify({
-        quoteId: quote.id,
-        quote,
-        wallet: walletAddress,
-        network: 'solana:mainnet',
-        simulationTxHash,
-      }));
-
-      const signatureBytes = await selectedAdapter.signMessage(payload);
+      const prepareResponse = await fetch('/api/v1/trading/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          quoteId: quote.id,
+          inputToken: quote.inputMint,
+          outputToken: quote.outputMint,
+          amount: quote.inputAmount,
+          slippage: effectiveSlippage,
+          walletAddress,
+          quoteResponse: quote.providerQuote,
+        }),
+      });
+      const preparedBody = await prepareResponse.json().catch(() => null);
+      if (!prepareResponse.ok || !preparedBody?.data?.preparedTransaction) {
+        throw new Error(preparedBody?.error?.message || `Transaction preparation failed (${prepareResponse.status})`);
+      }
+      const prepared = preparedBody.data.preparedTransaction;
+      const transaction = VersionedTransaction.deserialize(Uint8Array.from(atob(prepared.unsignedTxBase64), (char) => char.charCodeAt(0)));
+      setTransactionState('awaitingWallet');
+      const signedTransaction = await selectedAdapter.signTransaction(transaction);
       setTransactionState('signing');
-
-      const signatureBase58 = signatureToBase58(signatureBytes);
       setTransactionState('submitting');
-
-      const confirmedTrade = await submitTradeOrder(
-        quote,
-        walletAddress,
-        signatureBase58,
-        'solana:mainnet',
-        idempotencyKey ?? `${quote.id}:${walletAddress}`
-      );
+      const submitResponse = await fetch('/api/v1/trading/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          preparedId: prepared.id,
+          signedTransaction: toBase64(signedTransaction.serialize()),
+          idempotencyKey: idempotencyKey ?? `${quote.id}:${walletAddress}`,
+        }),
+      });
+      const submitBody = await submitResponse.json().catch(() => null);
+      if (!submitResponse.ok || submitBody?.data?.status !== 'confirmed') {
+        throw new Error(submitBody?.error?.message || `Transaction submission failed (${submitResponse.status})`);
+      }
       setTransactionState('confirming');
 
-      if (confirmedTrade.status === 'confirmed') {
+      if (submitBody.data.status === 'confirmed') {
         setTransactionState('confirmed');
         setIsPreviewOpen(false);
 
@@ -298,22 +287,19 @@ export function TradingPanel({
           amountSol: solAmount,
           tokenAmount,
           priceUsd: numPriceUsd,
-          txHash: confirmedTrade.txHash,
+          txHash: submitBody.data.txSignature,
         });
 
         addNotification({
           title: `Order Submitted`,
-          message: `Your ${side.toUpperCase()} order was submitted as ${confirmedTrade.txHash}.`,
+          message: `Your ${side.toUpperCase()} order was confirmed as ${submitBody.data.txSignature}.`,
           type: 'execution',
         });
-      } else {
-        setTransactionState('failed');
-        setExecutionError('The swap execution returned a failed status.');
       }
 
       addExecutionLog({
-        text: `[TERMINAL-EXEC] SUBMITTED: Swap Tx ${confirmedTrade.txHash} via ${quote.provider}`,
-        level: confirmedTrade.status === 'confirmed' ? 'success' : 'error',
+        text: `[TERMINAL-EXEC] CONFIRMED: Swap Tx ${submitBody.data.txSignature} via ${quote.provider}`,
+        level: 'success',
       });
     } catch (err: any) {
       const technical = err.message || 'Wallet signing or submission error';

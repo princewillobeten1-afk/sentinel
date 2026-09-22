@@ -115,6 +115,8 @@ export function lifecycleSize(): number {
   return records.size;
 }
 
+import { resolveLaunchpad } from './launchpads';
+
 /**
  * Registers a newly detected pair.
  *
@@ -123,16 +125,18 @@ export function lifecycleSize(): number {
  */
 export function recordPairCreated(
   mint: string,
-  launchpad: TokenLifecycle['launchpad'],
+  launchpad: TokenLifecycle['launchpad'] = 'pump.fun',
   firstSeenAt = Date.now(),
 ): TokenLifecycle {
   const existing = records.get(mint);
   if (existing) return existing;
 
+  const launchpadInfo = resolveLaunchpad(launchpad);
   const record: TokenLifecycle = {
     mint,
     state: 'NEW_PAIR',
     launchpad,
+    launchpadInfo,
     curve: null,
     migration: null,
     firstSeenAt,
@@ -192,8 +196,11 @@ export function applyCurveReading(
   const nextState = canTransition(existing.state, implied) ? implied : existing.state;
   const changed = nextState !== existing.state;
 
+  const launchpadInfo = existing.launchpadInfo ?? resolveLaunchpad(launchpad || existing.launchpad);
   const record: TokenLifecycle = {
     ...existing,
+    launchpad: launchpad || existing.launchpad,
+    launchpadInfo,
     curve: corrected,
     state: nextState,
     stateChangedAt: changed ? corrected.readAt : existing.stateChangedAt,
@@ -224,10 +231,19 @@ export function recordMigration(
 
   if (existing.state === 'MIGRATED' && existing.migration) return existing;
 
+  const resolvedLaunchpad = migration.originLaunchpad || launchpad || existing.launchpad;
+  const launchpadInfo = existing.launchpadInfo ?? resolveLaunchpad(resolvedLaunchpad);
+
   const record: TokenLifecycle = {
     ...existing,
+    launchpad: resolvedLaunchpad,
+    launchpadInfo,
     state: 'MIGRATED',
-    migration,
+    migration: {
+      ...migration,
+      ...(migration.originLaunchpad ? { originLaunchpad: migration.originLaunchpad } : {}),
+      ...(migration.lpHandling ? { lpHandling: migration.lpHandling } : {}),
+    },
     stateChangedAt: migration.migratedAt,
     source: 'migration-event',
   };
