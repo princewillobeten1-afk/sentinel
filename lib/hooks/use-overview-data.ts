@@ -353,6 +353,33 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      stop();
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+      timer = setInterval(() => void refresh(), 15_000);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh();
+        start();
+      } else {
+        stop();
+      }
+    };
+    start();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refresh]);
+
   return {
     market,
     allocation,

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Bookmark, Zap, Trash2, ArrowUpRight, Grid2X2, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,77 @@ import { TokenAvatar } from '@/components/ui/token-avatar';
 import { useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 import type { NormalizedSearchResult } from '@/lib/token/search-service';
+import { useLiveTokenUpdates } from '@/lib/hooks/use-live-token-updates';
+import { apiUrl, endpoints } from '@/lib/api/endpoints';
+import { readApiData, ApiRequestError } from '@/lib/api/response';
+
+interface WatchlistDiscoveryToken {
+  mint: string;
+  name: string;
+  symbol: string;
+  priceUsd?: string;
+  priceChange24h?: number;
+  marketCapUsd?: string;
+  liquidityUsd?: string;
+  rugRisk?: { level?: string };
+}
+
+function toWatchlistResult(token: WatchlistDiscoveryToken): NormalizedSearchResult {
+  return {
+    id: `watchlist_${token.mint}`,
+    mint: token.mint,
+    name: token.name,
+    symbol: token.symbol.replace(/^\$/, ''),
+    chain: 'solana',
+    priceUsd: token.priceUsd ?? '—',
+    priceChange24h: token.priceChange24h ?? 0,
+    marketCapUsd: token.marketCapUsd ?? '—',
+    liquidityUsd: token.liquidityUsd ?? '—',
+    riskRating: token.rugRisk?.level === 'critical' ? 'critical' : token.rugRisk?.level === 'high' ? 'high' : token.rugRisk?.level === 'medium' ? 'med' : token.rugRisk?.level === 'low' ? 'low' : 'unknown',
+  };
+}
 
 export function WatchlistView() {
   const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
   const { getWatchlistTokens, removeFromWatchlist } = useWatchlist();
-  const watchlistTokens = getWatchlistTokens();
+  const cachedTokens = getWatchlistTokens();
+  const [discoveryTokens, setDiscoveryTokens] = useState<NormalizedSearchResult[]>([]);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [view, setView] = React.useState<'table' | 'grid'>('table');
+  const live = useLiveTokenUpdates(discoveryTokens.map((token) => token.mint));
+
+  useEffect(() => {
+    let disposed = false;
+    const load = async () => {
+      try {
+        const response = await fetch(apiUrl('/v1/discovery/watchlist', { limit: 100, timeWindow: '24h' }), { credentials: 'include' });
+        const data = await readApiData<{ tokens: WatchlistDiscoveryToken[] }>(response, 'Failed to load watchlist market data');
+        if (!disposed) {
+          setDiscoveryTokens((data.tokens ?? []).map(toWatchlistResult));
+          setFeedError(null);
+        }
+      } catch (error) {
+        if (!disposed && !(error instanceof ApiRequestError && error.status === 401)) {
+          setFeedError(error instanceof Error ? error.message : 'Watchlist market data unavailable.');
+        }
+      }
+    };
+    void load();
+    return () => { disposed = true; };
+  }, []);
+
+  const watchlistTokens = discoveryTokens.length > 0 ? discoveryTokens : cachedTokens;
+  const liveWatchlistTokens = watchlistTokens.map((item) => {
+    const update = live.updates.get(item.mint);
+    if (!update) return item;
+    return {
+      ...item,
+      priceUsd: update.priceUsd == null ? item.priceUsd : String(update.priceUsd),
+      priceChange24h: update.priceChange24h ?? item.priceChange24h,
+      marketCapUsd: update.marketCapUsd ?? item.marketCapUsd,
+      liquidityUsd: update.liquidityUsd ?? item.liquidityUsd,
+    };
+  });
 
   const columns: Column<NormalizedSearchResult>[] = [
     {
@@ -130,16 +195,17 @@ export function WatchlistView() {
       </div>
 
       <Panel padding="none">
-        {watchlistTokens.length === 0 ? (
+        {feedError && <p role="status" className="border-b border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">{feedError}</p>}
+        {liveWatchlistTokens.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400 space-y-2">
             <p className="font-semibold text-slate-300">Your watchlist is currently empty.</p>
             <p className="text-slate-500">Search for any token or visit a token page to add it to your watchlist.</p>
           </div>
         ) : view === 'table' ? (
-          <DataTable columns={columns} data={watchlistTokens} keyExtractor={(w) => w.id} />
+          <DataTable columns={columns} data={liveWatchlistTokens} keyExtractor={(w) => w.id} />
         ) : (
           <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
-            {watchlistTokens.map((item) => (
+            {liveWatchlistTokens.map((item) => (
               <article key={item.id} className="rounded-md border border-slate-800 bg-slate-950 p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">

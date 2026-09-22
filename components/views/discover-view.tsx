@@ -272,6 +272,7 @@ export function DiscoverView() {
               key={col.id}
               config={col}
               timeWindow={timeWindow}
+              chain={selectedChain}
               globalFilters={activeCombinedGlobalFilters}
               quickBuyPresets={quickBuyPresets}
               quickBuyMode={quickBuyMode}
@@ -291,6 +292,7 @@ export function DiscoverView() {
                 key={col.id}
                 config={col}
                 timeWindow={timeWindow}
+                chain={selectedChain}
                 globalFilters={activeCombinedGlobalFilters}
                 quickBuyPresets={quickBuyPresets}
                 quickBuyMode={quickBuyMode}

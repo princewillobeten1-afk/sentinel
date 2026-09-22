@@ -31,6 +31,7 @@ import type {
 interface TerminalColumnProps {
   config: DiscoveryColumnConfig;
   timeWindow: TimeWindow;
+  chain?: string;
   globalFilters?: Partial<DiscoveryFilter>;
   quickBuyPresets?: number[];
   quickBuyMode?: 'sol' | 'usd';
@@ -75,6 +76,7 @@ const SORT_OPTIONS: { id: ColumnSortOption; label: string }[] = [
 export function TerminalColumn({
   config,
   timeWindow,
+  chain = 'solana',
   globalFilters,
   quickBuyPresets,
   quickBuyMode,
@@ -108,7 +110,7 @@ export function TerminalColumn({
     state: feedState,
     paused,
     lastUpdatedAt,
-  } = useDiscoveryFeed(config.type, timeWindow, combinedFilters);
+  } = useDiscoveryFeed(config.type, timeWindow, combinedFilters, chain);
 
   /**
    * How stale this column's rows are.

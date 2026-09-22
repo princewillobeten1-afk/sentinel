@@ -48,6 +48,9 @@ export const DISCOVERY_SECTIONS: DiscoverySection[] = [
   'revived',
   'legacy',
   'similar',
+  'smart-money',
+  'ai-picks',
+  'watchlist',
 ];
 
 export type SectionState = 'live' | 'stale' | 'loading';
@@ -359,10 +362,12 @@ export function getDiscoverySnapshot(): DiscoverySnapshot {
 
 export function getDiscoveryHealth(section?: DiscoverySection): DiscoveryHealth {
   if (snapshot.paused) return 'stale';
+  if (reconnectState.status === 'connecting' || reconnectState.status === 'reconnecting') return 'reconnecting';
   const sections = section ? [getSection(section)] : Object.values(snapshot.sections);
   if (!snapshot.hasLoaded || sections.some((item) => item.state === 'loading')) return 'reconnecting';
   if (sections.every((item) => item.state === 'stale' || item.at === 0)) return 'unavailable';
   if (sections.some((item) => item.state === 'stale')) return 'degraded';
+  if (!socketWelcomed) return 'degraded';
   return 'live';
 }
 
