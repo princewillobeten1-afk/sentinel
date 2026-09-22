@@ -54,7 +54,10 @@ function parseSizeToBytes(sizeStr) {
  * route path, then two size columns (own JS, First Load JS).
  */
 const ANSI_ESCAPE_REGEX = /\u001B\[[0-?]*[ -/]*[@-~]/g;
-const ROUTE_LINE_REGEX = /[├└]\s+\S+\s+(\/\S*)\s+([\d.]+\s*[A-Za-z]+)\s+([\d.]+\s*[A-Za-z]+)\s*$/;
+// Match from the route path to the two size columns instead of depending on
+// Next's decorative tree glyphs. GitHub runners have emitted both Unicode
+// tree prefixes and plain/ANSI-prefixed rows across Next minor versions.
+const ROUTE_LINE_REGEX = /(\/\S*)\s+([\d.]+\s*[A-Za-z]+)\s+([\d.]+\s*[A-Za-z]+)\s*$/;
 
 export function parseBuildOutput(text) {
   const routes = [];
