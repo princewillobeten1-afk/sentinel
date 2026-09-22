@@ -1,0 +1,34 @@
+{
+  "checkedAt": "2026-09-22T14:11:02.652Z",
+  "mint": "992Zg9itYcyLEz5aApcqQxst7jMqiw1BW4BSALTYscaV",
+  "providers": {
+    "jupiter": {
+      "http": 200,
+      "exactMint": true
+    },
+    "birdeye": {
+      "result": "ok"
+    },
+    "helius": {
+      "http": 200,
+      "mintDecoded": true
+    },
+    "rugcheck": {
+      "http": 200,
+      "lpLockedPct": 100
+    }
+  },
+  "audit": {
+    "top10": 0,
+    "dev": 0,
+    "snipers": 15.97231,
+    "insiders": 0,
+    "bundlers": 37.76719,
+    "holders": 28,
+    "mintRevoked": true,
+    "freezeRevoked": true,
+    "ownership": "measured",
+    "lpBurn": null,
+    "honeypotTax": null
+  }
+}

@@ -2420,9 +2420,9 @@ export function AxiomChartTabs({
           <div className="space-y-4" role="region" aria-label="Token audit">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
               <span role="status">{auditData?.holderAuditPending ? 'Ownership audit queued — updates automatically.' : 'Audit refreshes automatically while this tab is visible.'}</span>
-              <Button variant="ghost" size="sm" onClick={refreshAudit} disabled={auditRefreshing}>
+              <Button variant="ghost" size="sm" onClick={refreshAudit} disabled={auditRefreshing} aria-busy={auditRefreshing}>
                 <RefreshCw className={`mr-1 h-3.5 w-3.5 ${auditRefreshing ? 'motion-safe:animate-spin' : ''}`} />
-                {auditRefreshing ? 'Refreshing audit' : 'Refresh audit'}
+                Refresh audit
               </Button>
             </div>
             {auditError && <p role="alert" className="rounded-md border border-amber-800/60 bg-amber-950/30 p-3 text-xs text-amber-300">

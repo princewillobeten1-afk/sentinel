@@ -21,6 +21,8 @@ describe('audit evidence contract', () => {
     const data = composeTokenAudit('mint', { marketEvidence: evidence }, null, null,
       { ...evidence, status: 'unavailable' }, false, now);
     expect(data.lastAuditedAt).toBeNull();
+    const metadataOnly = composeTokenAudit('mint', undefined, null, { id: 'mint', symbol: 'META' }, evidence, false, now);
+    expect(metadataOnly.lastAuditedAt).toBeNull();
   });
   it('keeps fallback sources per field instead of attributing Jupiter facts to Birdeye', () => {
     const data = composeTokenAudit('mint', { ownershipEvidence: { ...evidence, status: 'unavailable' } }, null,

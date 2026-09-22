@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "width": 1440,
+      "height": 900,
+      "overflow": false
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "overflow": false
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "overflow": false
+    }
+  ],
+  "auditRequests": 5,
+  "errors": [],
+  "mutations": [],
+  "blockedReadRequests": [
+    "/api/v1/market/live/focus",
+    "/api/v1/market/live/focus",
+    "/api/v1/market/live/focus",
+    "/api/v1/trading/quote"
+  ],
+  "output": "C:\\Users\\HomePC\\SCALE TRADER\\artifacts\\audit-freshness"
+}

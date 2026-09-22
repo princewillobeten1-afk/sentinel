@@ -109,8 +109,11 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
   const freezeAuthority = choose(boolean(live?.isFreezeDisabled), boolean(audit?.freezeAuthorityDisabled), securityEvidence);
   const devMints = number(audit?.devMints);
   const devMigrations = number(audit?.devMigrations);
+  const hasJupiterMeasurements = [boolean(audit?.mintAuthorityDisabled), boolean(audit?.freezeAuthorityDisabled),
+    percent(audit?.topHoldersPercentage), percent(audit?.devBalancePercentage), percent(jupiter?.organicScore), devMints, devMigrations]
+    .some(value => value !== null);
   // A price/trade tick is not an audit observation; neither is a failed request.
-  const observed = [ownershipEvidence, securityEvidence, currentEvidence(live?.liquidityEvidence, now), source]
+  const observed = [ownershipEvidence, securityEvidence, currentEvidence(live?.liquidityEvidence, now), ...(hasJupiterMeasurements ? [source] : [])]
     .filter(group => group.status === 'measured' || group.status === 'stale')
     .map(group => Date.parse(group.observedAt)).filter(Number.isFinite);
   return {

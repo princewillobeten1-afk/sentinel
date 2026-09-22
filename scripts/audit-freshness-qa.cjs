@@ -9,10 +9,11 @@ async function main() {
   const output = path.join(process.cwd(), 'artifacts', 'audit-freshness');
   await fs.mkdir(output, { recursive: true });
   const browser = await chromium.launch({ headless: true });
+  let page;
   try {
     const context = await browser.newContext({ reducedMotion: 'reduce' });
     let mode = 'pending', auditRequests = 0;
-    const errors = [], mutations = [], checks = [];
+    const errors = [], mutations = [], blockedReadRequests = [], checks = [];
     const evidence = () => ({ source: 'QA fixture', status: mode === 'stale' ? 'stale' : 'measured',
       observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString() });
     const token = { mint, id: mint, name: 'Audit Verification Token', symbol: 'AUDIT', chain: 'solana', priceUsd: '0.001',
@@ -40,7 +41,8 @@ async function main() {
       const request = route.request(), url = new URL(request.url());
       if (request.method() !== 'GET') {
         // Focus is telemetry, but is still intercepted and never reaches the server.
-        if (!url.pathname.endsWith('/focus')) mutations.push(url.pathname);
+        if (url.pathname.endsWith('/focus') || url.pathname === '/api/v1/trading/quote') blockedReadRequests.push(url.pathname);
+        else mutations.push(url.pathname);
         return route.fulfill({ status: 403, json: { success: false } });
       }
       if (url.pathname.endsWith('/audit')) {
@@ -53,9 +55,11 @@ async function main() {
       return route.fulfill({ status: 503, json: { success: false } });
     });
     await context.routeWebSocket('**/ws*', socket => socket.close());
-    const page = await context.newPage();
+    page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${process.env.UI_PREVIEW_URL || 'http://127.0.0.1:3002'}/trade/solana/${mint}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    // Wait for client-fetched identity; SSR buttons can be visible before hydration.
+    await page.getByText('Audit Verification Token', { exact: true }).first().waitFor({ timeout: 30000 });
     await page.getByRole('button', { name: /Sentinel.*Audit|Token Audit|^Audit$/i }).first().click({ timeout: 120000 });
     const panel = page.getByRole('region', { name: 'Token audit', exact: true });
     await panel.getByText('Ownership audit queued', { exact: false }).waitFor();
@@ -89,9 +93,15 @@ async function main() {
     assert.equal(await page.locator('[data-nextjs-dialog]').count(), 0);
     assert.deepEqual(errors, []);
     assert.deepEqual(mutations, []);
-    const result = { passed: true, checks, auditRequests, errors, mutations, output };
+    const result = { passed: true, checks, auditRequests, errors, mutations, blockedReadRequests, output };
     await fs.writeFile(path.join(output, 'verification.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
+  } catch (error) {
+    if (page) {
+      await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
+      console.error((await page.locator('body').innerText().catch(() => '')).slice(-5000));
+    }
+    throw error;
   } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
