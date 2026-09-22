@@ -152,6 +152,7 @@ export function DashboardView() {
     auditPending: update?.auditPending ?? t.auditPending,
     ownershipEvidence: update?.ownershipEvidence ?? t.ownershipEvidence,
     securityEvidence: update?.securityEvidence ?? t.securityEvidence,
+    liquidityEvidence: update?.liquidityEvidence ?? t.liquidityEvidence,
     isMintRenounced: update?.isMintRenounced ?? t.isMintRenounced,
     isFreezeDisabled: update?.isFreezeDisabled ?? t.isFreezeDisabled,
     isLiquidityLocked: update?.isLiquidityLocked ?? t.isLiquidityLocked,

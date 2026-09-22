@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Bookmark, Zap, Trash2, ArrowUpRight } from 'lucide-react';
+import { Bookmark, Zap, Trash2, ArrowUpRight, Grid2X2, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/panel';
 import { DataTable, Column } from '@/components/ui/data-table';
@@ -16,6 +16,7 @@ export function WatchlistView() {
   const { setQuickBuyOpen, setSelectedToken, setActiveView } = useAppActions();
   const { getWatchlistTokens, removeFromWatchlist } = useWatchlist();
   const watchlistTokens = getWatchlistTokens();
+  const [view, setView] = React.useState<'table' | 'grid'>('table');
 
   const columns: Column<NormalizedSearchResult>[] = [
     {
@@ -122,6 +123,10 @@ export function WatchlistView() {
             Your saved tokens, market activity, and risk signals.
           </p>
         </div>
+        <div className="flex items-center gap-1 rounded-md border border-slate-800 p-1" aria-label="Watchlist view">
+          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')} className={`min-h-8 min-w-8 rounded p-1.5 ${view === 'table' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-slate-100'}`} title="Table view"><List className="h-4 w-4" /></button>
+          <button type="button" aria-pressed={view === 'grid'} onClick={() => setView('grid')} className={`min-h-8 min-w-8 rounded p-1.5 ${view === 'grid' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-slate-100'}`} title="Grid view"><Grid2X2 className="h-4 w-4" /></button>
+        </div>
       </div>
 
       <Panel padding="none">
@@ -130,8 +135,24 @@ export function WatchlistView() {
             <p className="font-semibold text-slate-300">Your watchlist is currently empty.</p>
             <p className="text-slate-500">Search for any token or visit a token page to add it to your watchlist.</p>
           </div>
-        ) : (
+        ) : view === 'table' ? (
           <DataTable columns={columns} data={watchlistTokens} keyExtractor={(w) => w.id} />
+        ) : (
+          <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+            {watchlistTokens.map((item) => (
+              <article key={item.id} className="rounded-md border border-slate-800 bg-slate-950 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
+                    <div className="min-w-0"><p className="truncate font-bold text-slate-100">{item.name}</p><p className="text-2xs text-slate-500">${item.symbol}</p></div>
+                  </div>
+                  <Badge variant={item.riskRating === 'unknown' ? 'neutral' : item.riskRating === 'low' ? 'risk-low' : item.riskRating === 'critical' ? 'risk-critical' : item.riskRating === 'high' ? 'risk-high' : 'risk-med'}>{item.riskRating}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-slate-500">Price <strong className="block text-slate-200">${item.priceUsd}</strong></span><span className="text-slate-500">24h <strong className={`block ${item.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{item.priceChange24h.toFixed(2)}%</strong></span><span className="text-slate-500">Market cap <strong className="block text-slate-200">{item.marketCapUsd}</strong></span><span className="text-slate-500">Liquidity <strong className="block text-slate-200">{item.liquidityUsd}</strong></span></div>
+                <div className="mt-3 flex items-center gap-2"><Button onClick={() => setQuickBuyOpen(true, { name: item.name, symbol: item.symbol, mint: item.mint, price: item.priceUsd, mcap: item.marketCapUsd })} variant="buy" size="xs" leftIcon={<Zap className="h-3 w-3 fill-current" />}>Quick Trade</Button><button onClick={() => removeFromWatchlist(item.mint)} className="p-1 text-slate-500 hover:text-rose-400" title="Remove from Watchlist"><Trash2 className="h-3.5 w-3.5" /></button></div>
+              </article>
+            ))}
+          </div>
         )}
       </Panel>
     </div>

@@ -17,8 +17,11 @@ import {
   GraduationCap,
   Star,
   BarChart2,
+  Pause,
+  Play,
 } from 'lucide-react';
 import type { TimeWindow, DiscoverySection, DiscoveryColumnConfig } from '@/lib/discovery/types';
+import type { DiscoveryHealth } from '@/lib/discovery/discovery-store';
 
 interface TerminalTopBarProps {
   searchQuery: string;
@@ -38,13 +41,24 @@ interface TerminalTopBarProps {
   onToggleZeroLiquidity?: (next: boolean) => void;
   quickBuyMode: 'sol' | 'usd';
   onUpdateQuickBuySettings: (presets: number[], mode: 'sol' | 'usd') => void;
-  liveConnected: boolean;
+  health: DiscoveryHealth;
+  paused: boolean;
+  pendingRefresh: boolean;
+  onTogglePause: () => void;
+  freshnessAt: number;
 }
 
 const AVAILABLE_NEW_COLUMNS: { type: DiscoverySection; title: string; desc: string }[] = [
   { type: 'new', title: 'New Pairs', desc: 'Tokens freshly deployed on bonding curves & DEXs' },
   { type: 'migrating', title: 'Final Stretch', desc: 'Tokens near migration (~100% bonding curve completion)' },
   { type: 'graduated', title: 'Migrated', desc: 'Moved to the AMM/DEX (graduated trading pairs)' },
+  { type: 'trending', title: 'Trending', desc: 'Ranked by recent market attention and activity' },
+  { type: 'top-gainers', title: 'Gainers', desc: 'Largest measured positive price moves' },
+  { type: 'volume', title: 'Volume', desc: 'Highest measured traded volume' },
+  { type: 'liquidity', title: 'Liquidity', desc: 'Deepest measured liquidity pools' },
+  { type: 'revived', title: 'Revived', desc: 'Older tokens showing renewed positive activity' },
+  { type: 'legacy', title: 'Legacy', desc: 'Established tokens ranked by measured market cap' },
+  { type: 'similar', title: 'Similar', desc: 'Tokens comparable to a selected reference mint' },
   { type: 'smart-money', title: 'Smart Money Inflow', desc: 'Tokens accumulated by tracked profitable wallets' },
   { type: 'ai-picks', title: 'AI Alpha Signals', desc: 'Algorithmic signals scored by Sentinel AI' },
   { type: 'watchlist', title: 'My Watchlist', desc: 'Your starred and tracked tokens' },
@@ -65,7 +79,11 @@ export function TerminalTopBar({
   quickBuyPresets,
   quickBuyMode,
   onUpdateQuickBuySettings,
-  liveConnected,
+  health,
+  paused,
+  pendingRefresh,
+  onTogglePause,
+  freshnessAt,
   showZeroLiquidity = false,
   onToggleZeroLiquidity,
 }: TerminalTopBarProps) {
@@ -256,17 +274,33 @@ export function TerminalTopBar({
           )}
         </button>
 
-        {/* Live Stream Heartbeat Indicator */}
+        {/* Shared stream health and inspection pause */}
+        <button
+          onClick={onTogglePause}
+          aria-pressed={paused}
+          className={`h-7 px-2 rounded-lg border flex items-center gap-1.5 text-2xs font-bold transition-colors ${
+            paused ? 'bg-amber-950/50 border-amber-800/60 text-amber-300' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+          }`}
+          title={paused ? 'Resume live updates' : 'Freeze the board for inspection'}
+        >
+          {paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+          <span>{paused ? 'Resume' : 'Freeze'}</span>
+          {paused && pendingRefresh && <span className="text-amber-400">•</span>}
+        </button>
         <div
           className={`flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-bold border ${
-            liveConnected
+            health === 'live'
               ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
-              : 'bg-amber-950/40 border-amber-800/50 text-amber-400'
+              : health === 'degraded'
+                ? 'bg-amber-950/40 border-amber-800/50 text-amber-400'
+                : health === 'stale'
+                  ? 'bg-orange-950/40 border-orange-800/50 text-orange-300'
+                  : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
           }`}
-          title={liveConnected ? 'Connected to Solana LaserStream & Event Bus' : 'Reconnecting to stream'}
+          title={`Discovery feed: ${health}${freshnessAt ? `; last update ${new Date(freshnessAt).toLocaleTimeString()}` : ''}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${liveConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-          <span>{liveConnected ? 'LIVE' : 'STALE'}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${health === 'live' ? 'bg-emerald-400 animate-pulse' : health === 'degraded' ? 'bg-amber-400' : 'bg-rose-400'}`} />
+          <span>{health.toUpperCase()}</span>
         </div>
       </div>
 

@@ -43,6 +43,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AuditPills } from '@/components/ui/audit-pills';
+import { RugRiskPill } from '@/components/ui/rug-risk-pill';
+import { useTokenAudit } from '@/lib/hooks/use-token-audit';
 import { OpenOrdersDashboard } from '@/components/limit-orders/open-orders-dashboard';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
@@ -346,25 +348,7 @@ export function AxiomChartTabs({
    * every token, and the tab never actually called this endpoint. Every field
    * here starts unknown and is filled only by what `/audit` measured.
    */
-  const [auditData, setAuditData] = useState<{
-    mintAuthorityDisabled: boolean | null;
-    freezeAuthorityDisabled: boolean | null;
-    lpTokensBurned: boolean | null;
-    honeypotTaxZero: boolean | null;
-    top10HoldersPct: number | null;
-    devBalancePct: number | null;
-    organicScore: number | null;
-    organicScoreLabel: string | null;
-    devMints: number | null;
-    devMigrations: number | null;
-    migrationRatePct: number | null;
-    snipersPct: number | null;
-    insidersPct: number | null;
-    bundlersPct: number | null;
-    holderTop10Pct: number | null;
-    totalHolders: number | null;
-    holderAuditPending: boolean;
-  } | null>(null);
+  const { data: auditData, error: auditError, refreshing: auditRefreshing, refresh: refreshAudit } = useTokenAudit(safeMint, activeTab === 'audit');
 
   // Selected Map Node for Bubble Map Inspector
   const [selectedMapNode, setSelectedMapNode] = useState<MapClusterNode | null>(null);
@@ -732,33 +716,6 @@ export function AxiomChartTabs({
       })
       .catch(() => {});
 
-    // 2b. Fetch Token Audit
-    fetch(`/api/v1/tokens/solana/${safeMint}/audit`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const payload = data?.data;
-        if (!payload || !isMounted) return;
-        setAuditData({
-          mintAuthorityDisabled: payload.mintAuthorityDisabled ?? null,
-          freezeAuthorityDisabled: payload.freezeAuthorityDisabled ?? null,
-          lpTokensBurned: payload.lpTokensBurned ?? null,
-          honeypotTaxZero: payload.honeypotTaxZero ?? null,
-          top10HoldersPct: typeof payload.top10HoldersPct === 'number' ? payload.top10HoldersPct : null,
-          devBalancePct: typeof payload.devBalancePct === 'number' ? payload.devBalancePct : null,
-          organicScore: typeof payload.organicScore === 'number' ? payload.organicScore : null,
-          organicScoreLabel: payload.organicScoreLabel ?? null,
-          devMints: typeof payload.devMints === 'number' ? payload.devMints : null,
-          devMigrations: typeof payload.devMigrations === 'number' ? payload.devMigrations : null,
-          migrationRatePct: typeof payload.migrationRatePct === 'number' ? payload.migrationRatePct : null,
-          snipersPct: typeof payload.snipersPct === 'number' ? payload.snipersPct : null,
-          insidersPct: typeof payload.insidersPct === 'number' ? payload.insidersPct : null,
-          bundlersPct: typeof payload.bundlersPct === 'number' ? payload.bundlersPct : null,
-          holderTop10Pct: typeof payload.holderTop10Pct === 'number' ? payload.holderTop10Pct : null,
-          totalHolders: typeof payload.totalHolders === 'number' ? payload.totalHolders : null,
-          holderAuditPending: Boolean(payload.holderAuditPending),
-        });
-      })
-      .catch(() => {});
 
     // 3. Fetch Bubble Map
     fetch(`/api/v1/tokens/solana/${safeMint}/bubble-map`)
@@ -2460,10 +2417,20 @@ export function AxiomChartTabs({
         {/* TAB 7: AUDIT (Routed to /api/v1/tokens/.../audit)                          */}
         {/* ========================================================================= */}
         {activeTab === 'audit' && (
-          <div className="space-y-4">
+          <div className="space-y-4" role="region" aria-label="Token audit">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+              <span role="status">{auditData?.holderAuditPending ? 'Ownership audit queued — updates automatically.' : 'Audit refreshes automatically while this tab is visible.'}</span>
+              <Button variant="ghost" size="sm" onClick={refreshAudit} disabled={auditRefreshing}>
+                <RefreshCw className={`mr-1 h-3.5 w-3.5 ${auditRefreshing ? 'motion-safe:animate-spin' : ''}`} />
+                {auditRefreshing ? 'Refreshing audit' : 'Refresh audit'}
+              </Button>
+            </div>
+            {auditError && <p role="alert" className="rounded-md border border-amber-800/60 bg-amber-950/30 p-3 text-xs text-amber-300">
+              {auditError} {auditData ? 'Showing previous evidence as stale.' : 'No audit result is available.'} Use Refresh audit to retry.
+            </p>}
             {!auditData ? (
-              <div className="py-8 text-center text-xs text-slate-400 font-mono animate-pulse">
-                Loading token audit...
+              <div className="py-8 text-center text-xs text-slate-400 font-mono" role="status">
+                {auditError ? 'Audit unavailable' : 'Loading token audit...'}
               </div>
             ) : (
             <>
@@ -2476,35 +2443,38 @@ export function AxiomChartTabs({
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
                   <span>Top 10 Holder Concentration</span>
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
                 </div>
                 {(() => {
                   const pct = auditData.top10HoldersPct ?? auditData.holderTop10Pct;
                   if (pct === null) {
                     return <Badge variant="neutral" size="sm">Not available</Badge>;
                   }
+                  if (auditData.top10Evidence.status !== 'measured') return <Badge variant="neutral" size="sm">{pct.toFixed(1)}% · {auditData.top10Evidence.status}</Badge>;
                   const variant = pct >= 40 ? 'risk-high' : pct >= 20 ? 'risk-med' : 'risk-low';
                   const label = pct >= 40 ? 'HIGH' : pct >= 20 ? 'MODERATE' : 'LOW';
                   return <Badge variant={variant} size="sm">{label} ({pct.toFixed(1)}% Top 10)</Badge>;
                 })()}
                 <p className="text-2xs text-slate-500 font-mono">Share of supply held by the ten largest accounts.</p>
+                <p className="text-2xs text-slate-500 break-words">{auditData.top10Evidence.source} · {auditData.top10Evidence.status}{auditData.top10Evidence.observedAt ? ` · ${new Date(auditData.top10Evidence.observedAt).toLocaleTimeString()}` : ''}</p>
               </div>
 
               {/* Organic Demand */}
               <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between text-slate-400 text-2xs">
                   <span>Organic Demand</span>
-                  <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+                  <Sparkles className="h-3.5 w-3.5 text-slate-400" />
                 </div>
                 {auditData.organicScore === null ? (
                   <div className="text-sm font-bold font-mono text-slate-500">Not available</div>
                 ) : (
                   <div className={`text-base font-bold font-numeric ${
-                    auditData.organicScoreLabel === 'high' ? 'text-emerald-400'
+                    auditData.organicEvidence.status !== 'measured' ? 'text-slate-400'
+                    : auditData.organicScoreLabel === 'high' ? 'text-emerald-400'
                     : auditData.organicScoreLabel === 'medium' ? 'text-amber-400'
                     : 'text-rose-400'
                   }`}>
-                    {auditData.organicScore.toFixed(1)} / 100
+                    {auditData.organicScore.toFixed(1)} / 100{auditData.organicEvidence.status !== 'measured' ? ` · ${auditData.organicEvidence.status}` : ''}
                   </div>
                 )}
                 <p className="text-2xs text-slate-500 font-mono">
@@ -2521,13 +2491,14 @@ export function AxiomChartTabs({
                 <div className="text-sm font-bold font-mono text-slate-200">
                   {auditData.devMints === null
                     ? 'Not available'
-                    : `${auditData.devMigrations ?? 0}/${auditData.devMints} reached a pool`}
+                    : `${auditData.devMigrations ?? '?'}/${auditData.devMints} reached a pool`}
                 </div>
                 <p className="text-2xs text-slate-500 font-mono">
                   {auditData.migrationRatePct === null
                     ? 'Deployer mint history from Jupiter.'
                     : `${auditData.migrationRatePct.toFixed(2)}% of this deployer's launches migrated.`}
                 </p>
+                <p className="text-2xs text-slate-500">History: {auditData.historyEvidence.status}</p>
               </div>
 
               {/* Liquidity -- the same figure the tab badge already shows.
@@ -2554,18 +2525,19 @@ export function AxiomChartTabs({
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-2xs">
                 {([
-                  ['Mint Authority', auditData.mintAuthorityDisabled, 'Revoked', 'ACTIVE'],
-                  ['Freeze Authority', auditData.freezeAuthorityDisabled, 'Revoked', 'ACTIVE'],
-                  ['LP Burn Status', auditData.lpTokensBurned, 'Burnt', 'Not burnt'],
-                  ['Honeypot / Tax', auditData.honeypotTaxZero, 'Clean', 'Tax detected'],
-                ] as const).map(([label, value, passLabel, failLabel]) => (
+                  ['Mint Authority', auditData.mintAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.mintAuthorityEvidence],
+                  ['Freeze Authority', auditData.freezeAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.freezeAuthorityEvidence],
+                  ['LP Burn Status', auditData.lpTokensBurned, 'Burnt', 'Not burnt', undefined],
+                  ['Honeypot / Tax', auditData.honeypotTaxZero, 'Clean', 'Tax detected', undefined],
+                ] as const).map(([label, value, passLabel, failLabel, evidence]) => (
                   <div
                     key={label}
+                    title={evidence ? `${evidence.source} · ${evidence.status} · ${evidence.observedAt || 'No observation'}${evidence.reason ? ` · ${evidence.reason}` : ''}` : 'No verification is performed for this check.'}
                     className={`flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border ${
-                      value === null ? 'border-sentinel-800' : value ? 'border-emerald-900/60' : 'border-rose-900/60'
+                      value === null || evidence?.status !== 'measured' ? 'border-sentinel-800' : value ? 'border-emerald-900/60' : 'border-rose-900/60'
                     }`}
                   >
-                    {value === null ? (
+                    {value === null || evidence?.status !== 'measured' ? (
                       <ShieldAlert className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                     ) : value ? (
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
@@ -2573,7 +2545,7 @@ export function AxiomChartTabs({
                       <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
                     )}
                     <span className={value === null ? 'text-slate-500' : 'text-slate-300'}>
-                      {label}: {value === null ? 'Not verified' : value ? passLabel : failLabel}
+                      {label}: {value === null ? 'Not verified' : `${value ? passLabel : failLabel}${evidence?.status !== 'measured' ? ` · ${evidence?.status ?? 'unavailable'}` : ''}`}
                     </span>
                   </div>
                 ))}
@@ -2597,8 +2569,15 @@ export function AxiomChartTabs({
                 insiderHoldingsPct={auditData.insidersPct ?? undefined}
                 bundlerPercentage={auditData.bundlersPct ?? undefined}
                 pending={auditData.holderAuditPending}
+                evidence={auditData.ownershipEvidence}
+                evidenceByMetric={{ dev: auditData.devBalanceEvidence }}
                 alwaysShow
               />
+              <p className="text-2xs text-slate-400 break-words">{auditData.ownershipEvidence.source} · {auditData.ownershipEvidence.status}
+                {auditData.ownershipEvidence.observedAt ? ` · observed ${new Date(auditData.ownershipEvidence.observedAt).toLocaleTimeString()}` : ''}
+                {auditData.ownershipEvidence.reason ? ` · ${auditData.ownershipEvidence.reason}` : ''}
+              </p>
+              <RugRiskPill risk={auditData.rugRisk} ownershipEvidence={auditData.ownershipEvidence} securityEvidence={auditData.securityEvidence} liquidityEvidence={auditData.liquidityEvidence} />
             </div>
             </>
             )}

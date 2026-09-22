@@ -41,9 +41,17 @@ export const DISCOVERY_SECTIONS: DiscoverySection[] = [
   'new',
   'migrating',
   'graduated',
+  'trending',
+  'top-gainers',
+  'volume',
+  'liquidity',
+  'revived',
+  'legacy',
+  'similar',
 ];
 
 export type SectionState = 'live' | 'stale' | 'loading';
+export type DiscoveryHealth = 'live' | 'degraded' | 'stale' | 'reconnecting' | 'unavailable';
 
 export interface SectionSnapshot {
   state: SectionState;
@@ -61,6 +69,9 @@ export interface DiscoverySnapshot {
   at: number;
   /** True once a cycle has completed, so "empty" can be told from "not yet". */
   hasLoaded: boolean;
+  paused: boolean;
+  pausedAt: number | null;
+  pendingRefresh: boolean;
 }
 
 const POLL_INTERVAL_MS = 4_000;
@@ -73,6 +84,9 @@ function emptySnapshot(): DiscoverySnapshot {
     rttMs: null,
     at: 0,
     hasLoaded: false,
+    paused: false,
+    pausedAt: null,
+    pendingRefresh: false,
   };
 }
 
@@ -103,11 +117,17 @@ let reconnectState: ReconnectState = initialReconnectState();
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 /** Coalesces a burst of events into one early fetch. */
 let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+let paused = false;
+let pendingRefresh = false;
 
 /** Shortest gap between an event arriving and the fetch it triggers. */
 const NUDGE_DEBOUNCE_MS = 400;
 
 const DISCOVERY_TOPICS = DISCOVERY_SECTIONS.map((section) => `feed.discovery:${section}`);
+
+const SECTION_ENDPOINTS: Partial<Record<DiscoverySection, string>> = {
+  'top-gainers': 'movers',
+};
 
 /** Query shape the columns share. Changing it restarts the cycle. */
 let chain = 'solana';
@@ -126,6 +146,13 @@ function tokensFrom(body: FeedResponse): DiscoveryToken[] {
 }
 
 async function tick(): Promise<void> {
+  if (paused) {
+    pendingRefresh = true;
+    snapshot = { ...snapshot, pendingRefresh: true };
+    listeners.forEach((notify) => notify());
+    return;
+  }
+
   // Skipped while hidden: a background tab polling every four seconds is pure
   // cost, and the first tick on focus refreshes everything anyway.
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
@@ -135,7 +162,7 @@ async function tick(): Promise<void> {
   const results = await Promise.allSettled(
     DISCOVERY_SECTIONS.map((section) =>
       fetchOnce<FeedResponse>(
-        `/api/v1/discovery/${section}?chain=${chain}&timeWindow=${timeWindow}&limit=50` +
+        `/api/v1/discovery/${SECTION_ENDPOINTS[section] ?? section}?chain=${chain}&timeWindow=${timeWindow}&limit=50` +
           (includeZeroLiquidity ? '&includeZeroLiquidity=true' : ''),
         { credentials: 'include' },
       ),
@@ -144,6 +171,15 @@ async function tick(): Promise<void> {
 
   const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
   const now = Date.now();
+
+  // Freeze is an inspection boundary. An already-running request may finish
+  // after it, but must not replace the rows the trader is inspecting.
+  if (paused) {
+    pendingRefresh = true;
+    snapshot = { ...snapshot, pendingRefresh: true };
+    listeners.forEach((notify) => notify());
+    return;
+  }
 
   const sections: Record<string, SectionSnapshot> = {};
   DISCOVERY_SECTIONS.forEach((section, index) => {
@@ -165,7 +201,8 @@ async function tick(): Promise<void> {
     };
   });
 
-  snapshot = { sections, rttMs, at: now, hasLoaded: true };
+  pendingRefresh = false;
+  snapshot = { sections, rttMs, at: now, hasLoaded: true, paused, pausedAt: snapshot.pausedAt, pendingRefresh };
   listeners.forEach((notify) => notify());
 }
 
@@ -320,6 +357,35 @@ export function getDiscoverySnapshot(): DiscoverySnapshot {
   return snapshot;
 }
 
+export function getDiscoveryHealth(section?: DiscoverySection): DiscoveryHealth {
+  if (snapshot.paused) return 'stale';
+  const sections = section ? [getSection(section)] : Object.values(snapshot.sections);
+  if (!snapshot.hasLoaded || sections.some((item) => item.state === 'loading')) return 'reconnecting';
+  if (sections.every((item) => item.state === 'stale' || item.at === 0)) return 'unavailable';
+  if (sections.some((item) => item.state === 'stale')) return 'degraded';
+  return 'live';
+}
+
+export function pauseDiscovery(): void {
+  if (paused) return;
+  paused = true;
+  pendingRefresh = false;
+  snapshot = { ...snapshot, paused: true, pausedAt: Date.now(), pendingRefresh: false };
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  nudgeTimer = null;
+  listeners.forEach((notify) => notify());
+}
+
+export function resumeDiscovery(): void {
+  if (!paused) return;
+  paused = false;
+  const shouldRefresh = pendingRefresh || snapshot.hasLoaded;
+  pendingRefresh = false;
+  snapshot = { ...snapshot, paused: false, pausedAt: null, pendingRefresh: false };
+  listeners.forEach((notify) => notify());
+  if (shouldRefresh && timer) void tick();
+}
+
 export function getSection(section: DiscoverySection): SectionSnapshot {
   const known = snapshot.sections[section];
   if (known) return known;
@@ -359,6 +425,12 @@ export function setDiscoveryQuery(next: {
 
 /** Forces a cycle now, for a manual refresh control. */
 export function refreshDiscovery(): void {
+  pendingRefresh = true;
+  if (paused) {
+    snapshot = { ...snapshot, pendingRefresh: true };
+    listeners.forEach((notify) => notify());
+    return;
+  }
   void tick();
 }
 
@@ -371,6 +443,8 @@ export function __resetDiscoveryStore(): void {
   chain = 'solana';
   timeWindow = '15m';
   includeZeroLiquidity = false;
+  paused = false;
+  pendingRefresh = false;
 }
 
 /** Current zero-liquidity setting, for the toggle's checked state. */

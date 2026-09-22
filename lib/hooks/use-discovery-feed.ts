@@ -9,6 +9,9 @@ import {
   getDiscoverySnapshot,
   setDiscoveryQuery,
   refreshDiscovery,
+  pauseDiscovery,
+  resumeDiscovery,
+  getDiscoveryHealth,
 } from '@/lib/discovery/discovery-store';
 
 /**
@@ -77,9 +80,14 @@ export function useDiscoveryFeed(
     liveConnected: slice.state === 'live',
     /** 'live' | 'stale' | 'loading' — drives the column's staleness treatment. */
     state: slice.state,
+    health: getDiscoveryHealth(section),
+    paused: snapshot.paused,
+    pendingRefresh: snapshot.pendingRefresh,
     /** Epoch ms of the last successful fetch, 0 if never. */
     lastUpdatedAt: slice.at,
     /** Measured round-trip of the last cycle, or null before one completed. */
     rttMs: snapshot.rttMs,
+    pause: pauseDiscovery,
+    resume: resumeDiscovery,
   };
 }

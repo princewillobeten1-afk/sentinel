@@ -7,7 +7,8 @@ import { logger } from '@/lib/server/logger';
 import { acquireBirdeyeSlot } from './birdeye-limiter';
 import { getAudit } from './audit-worker';
 import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
-import { updateTokenCard } from '@/lib/market/live/card-cache';
+import { getTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache';
+import { currentEvidence } from '@/lib/discovery/audit-freshness';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
 import { getLiquidityLock } from '@/lib/trading/rugcheck-liquidity';
 
@@ -16,6 +17,7 @@ const CREATOR_TTL_MS = 24 * 60 * 60_000;
 const CIRCUIT_FAILURE_THRESHOLD = 5;
 const CIRCUIT_COOLDOWN_MS = 60_000;
 const MAX_QUEUE = 200;
+/** Next reconciliation time, bounded by the shortest-lived contributing source. */
 const cache = new Map<string, number>();
 const creatorCache = new Map<string, { result: CreatorAgeResult; fetchedAt: number }>();
 const authorityCache = new Map<string, { value: MintAuthorities; fetchedAt: number; permanent: boolean }>();
@@ -150,7 +152,11 @@ async function enrich(mint: string): Promise<void> {
     fetchBirdeyeSecurity(mint).catch(() => null),
     getLiquidityLock(mint),
   ]);
-  const audit = getAudit(mint);
+  const cachedAudit = getAudit(mint);
+  const card = getTokenCardPatch(mint)?.changedFields;
+  const ownershipTtl = card?.lifecycleState === 'migrated' ? 180_000 : 60_000;
+  const audit = cachedAudit && Date.now() - cachedAudit.fetchedAt < ownershipTtl
+    && currentEvidence(card?.ownershipEvidence).status === 'measured' ? cachedAudit : null;
   // Ownership comes from Holder Profile only. Token Security percentage units
   // are not interchangeable with that contract and must not override its tags.
   const devPct = audit?.devPct;
@@ -186,11 +192,9 @@ async function enrich(mint: string): Promise<void> {
     bundlersPct: audit?.bundlersPct,
     mintAuthorityRevoked: authorities.mintRevoked,
     freezeAuthorityRevoked: authorities.freezeRevoked,
-    liquidityLocked,
+    liquidityLocked: currentEvidence(liquidityLock.evidence).status === 'measured' ? liquidityLocked : undefined,
   });
   updateTokenCard(mint, {
-    top10HoldingsPct: top10Pct ?? undefined,
-    devHoldingsPct: devPct ?? undefined,
     devAddress: security?.creatorAddress ?? undefined,
     devWalletAge: creator?.age,
     isMintRenounced: authorities.mintRevoked,
@@ -201,10 +205,11 @@ async function enrich(mint: string): Promise<void> {
     rugRisk: rugRisk ?? undefined,
     auditVersion: RUG_RISK_VERSION,
     securityEvidence: {
-      status: 'measured',
+      status: authorities.mintRevoked !== undefined && authorities.freezeRevoked !== undefined ? 'measured' : 'unavailable',
       source: 'helius-rpc+birdeye-security+rugcheck',
       observedAt,
       expiresAt: new Date(Date.now() + SECURITY_TTL_MS).toISOString(),
+      reason: authorities.mintRevoked !== undefined && authorities.freezeRevoked !== undefined ? undefined : 'Mint authority lookup was incomplete; retained authority values are not current.',
     },
     creatorEvidence: security?.creatorAddress ? {
       status: creator?.age ? 'measured' : 'unavailable',
@@ -232,7 +237,11 @@ async function enrich(mint: string): Promise<void> {
       failureReason: creator?.reason ?? null,
     }, observedAt, RUG_RISK_VERSION);
   }
-  cache.set(mint, Date.now());
+  const liquidityExpiry = Date.parse(liquidityLock.evidence.expiresAt ?? '');
+  cache.set(mint, Math.min(
+    Date.now() + (authorities.mintRevoked !== undefined && authorities.freezeRevoked !== undefined ? SECURITY_TTL_MS : 60_000),
+    Number.isFinite(liquidityExpiry) ? Math.max(Date.now() + 1_000, liquidityExpiry) : Date.now() + 60_000,
+  ));
 }
 
 async function drain(): Promise<void> {
@@ -302,7 +311,7 @@ export function setSecurityTargets(mints: string[]): void {
   queued.clear();
   if (activeMint) queued.add(activeMint);
   for (const mint of targets) {
-    if (!mint || mint === activeMint || now - (cache.get(mint) ?? 0) < SECURITY_TTL_MS) continue;
+    if (!mint || mint === activeMint || (cache.get(mint) ?? 0) > now) continue;
     if (pending.length >= MAX_QUEUE) break;
     queued.add(mint);
     pending.push(mint);
@@ -322,7 +331,7 @@ export function setSecurityTargets(mints: string[]): void {
 /** An on-demand audit must not evict the current visible-card work. */
 export function queueSecurityTarget(mint: string): void {
   if (!mint || queued.has(mint) || Date.now() < circuitOpenUntil
-    || Date.now() - (cache.get(mint) ?? 0) < SECURITY_TTL_MS || pending.length >= MAX_QUEUE) return;
+    || (cache.get(mint) ?? 0) > Date.now() || pending.length >= MAX_QUEUE) return;
   queued.add(mint);
   pending.push(mint);
   if (!draining) void drain();

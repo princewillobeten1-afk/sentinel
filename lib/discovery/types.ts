@@ -16,7 +16,10 @@ export type DiscoverySection =
   | 'ai-picks'
   | 'top-gainers'
   | 'top-losers'
-  | 'personalized';
+  | 'personalized'
+  | 'revived'
+  | 'legacy'
+  | 'similar';
 
 export interface SignalResult {
   signalName: string;
@@ -289,6 +292,7 @@ export interface DiscoveryFilter {
   includeZeroLiquidity?: boolean;
   timeWindow: TimeWindow;
   chain: string;
+  similarTo?: string;
   searchQuery?: string;
   minLiquidityUsd?: number;
   minVolumeUsd?: number;

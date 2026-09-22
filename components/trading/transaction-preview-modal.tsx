@@ -12,7 +12,7 @@ export interface TransactionPreviewModalProps {
   quote?: Quote | null;
   side?: 'BUY' | 'SELL' | 'buy' | 'sell';
   onConfirmExecute?: () => void;
-  executionState?: any;
+  executionState?: string;
   executionError?: string | null;
   isExecuting?: boolean;
   simulationErrors?: string[];
@@ -29,6 +29,8 @@ export function TransactionPreviewModal({
   quote,
   onConfirmExecute,
   isExecuting = false,
+  executionState = 'idle',
+  executionError = null,
   onConfirm,
   onCancel,
   isLoading = false,
@@ -43,6 +45,18 @@ export function TransactionPreviewModal({
   const handleCancel = onCancel || onClose || (() => {});
   const actualLoading = isLoading || isExecuting;
   const isHighImpact = quote.priceImpactRating === 'HIGH' || quote.priceImpactRating === 'EXTREME';
+  const stateLabel: Record<string, string> = {
+    preparing: 'Preparing simulation…',
+    awaitingWallet: 'Waiting for wallet approval…',
+    signing: 'Signing transaction…',
+    submitting: 'Submitting transaction…',
+    confirming: 'Waiting for network confirmation…',
+    confirmed: 'Transaction confirmed',
+    rejected: 'Wallet rejected the request',
+    failed: 'Execution failed',
+    expired: 'Quote expired',
+  };
+  const executionLabel = executionState ? stateLabel[executionState] : null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -159,6 +173,13 @@ export function TransactionPreviewModal({
           </div>
         )}
 
+        {executionLabel && executionState !== 'idle' && (
+          <div role={executionState === 'failed' || executionState === 'rejected' || executionState === 'expired' ? 'alert' : 'status'} className={`rounded-xl border p-3 text-xs ${executionState === 'confirmed' ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300' : executionState === 'failed' || executionState === 'rejected' || executionState === 'expired' ? 'border-rose-800 bg-rose-950/30 text-rose-300' : 'border-sky-800 bg-sky-950/30 text-sky-300'}`}>
+            <p className="font-semibold">{executionLabel}</p>
+            {executionError && <p className="mt-1 text-2xs text-slate-300">{executionError}</p>}
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex items-center gap-3 pt-2">
           <Button
@@ -174,7 +195,7 @@ export function TransactionPreviewModal({
             disabled={!acknowledgedImpact || actualLoading}
             className="flex-1 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-xl h-11 shadow-[0_0_20px_rgba(56,189,248,0.3)] disabled:opacity-50"
           >
-            {actualLoading ? 'Simulating...' : 'Confirm & Sign'}
+            {actualLoading ? (executionLabel || 'Working…') : executionState === 'failed' || executionState === 'rejected' || executionState === 'expired' ? 'Retry' : 'Confirm & Sign'}
           </Button>
         </div>
       </div>

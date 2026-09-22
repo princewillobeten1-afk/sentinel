@@ -163,6 +163,9 @@ export function TradingPanel({
   };
 
   const formatPreviewError = (technical: string): string => {
+    if (technical.toLowerCase().includes('on-chain swap execution is not configured')) {
+      return 'Live swap execution is not configured for this environment. No wallet transaction was signed or broadcast.';
+    }
     if (technical.toLowerCase().includes('price impact') || technical.toLowerCase().includes('slippage')) {
       return 'The trade could not be simulated because the expected price moved beyond your selected slippage. Review the quote and try again.';
     }

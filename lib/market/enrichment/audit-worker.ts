@@ -6,6 +6,7 @@ import { getTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache
 import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
 import { redis } from '@/lib/server/redis';
+import { currentEvidence } from '@/lib/discovery/audit-freshness';
 
 /**
  * Fills the ownership audit behind the feed, off the fast path.
@@ -81,6 +82,8 @@ const queued: Set<string> = (globalForAudit.sentinelAuditQueued ??= new Set());
 const pending: string[] = [];
 /** Mints each rendered section currently wants audited, in display order. */
 const targetsBySection = new Map<string, string[]>();
+/** Short leases renewed by open Audit tabs; don't pin abandoned detail pages. */
+const detailTargets = new Map<string, number>();
 /** Rate-limited attempts per mint, so a requeue cannot loop forever. */
 const attempts = new Map<string, number>();
 let draining = false;
@@ -179,11 +182,13 @@ export function quotaPaused(): boolean {
 function rebuildQueue(): void {
   const wanted: string[] = [];
   const seen = new Set<string>();
+  for (const [mint, until] of detailTargets) if (until <= Date.now()) detailTargets.delete(mint);
   // The actual viewport is the hard priority. REST section fallbacks are kept
   // only for clients that cannot establish a WebSocket connection; they must
   // never spend quota ahead of cards the reader can currently see.
   const sections: Array<{ visible: boolean; mints: string[] }> = [
     { visible: true, mints: targetsBySection.get('visible') ?? [] },
+    { visible: true, mints: [...detailTargets.keys()] },
     ...[...targetsBySection.entries()]
       .filter(([section]) => section !== 'visible')
       .map(([, mints]) => ({ visible: false, mints })),
@@ -227,11 +232,31 @@ function rebuildQueue(): void {
  * For callers that are not a rendered section — a token detail view, say.
  */
 export function queueAudit(mints: string[]): void {
+  for (const [mint, until] of detailTargets) if (until <= Date.now()) detailTargets.delete(mint);
+  if (quotaPaused() || circuitOpen()) {
+    for (const mint of mints.filter(Boolean)) updateTokenCard(mint, {
+      auditPending: false,
+      ownershipEvidence: {
+        status: 'unavailable', source: 'birdeye-holder-profile', observedAt: new Date().toISOString(),
+        reason: quotaPaused() ? 'Provider compute-unit quota is exhausted.' : 'Ownership provider circuit breaker is cooling down after repeated failures.',
+      },
+    }, 'audit-coordinator', 'stale');
+    return;
+  }
   for (const mint of mints) {
-    if (!mint || mint === activeMint || queued.has(mint) || getAudit(mint)) continue;
+    if (!mint) continue;
+    if (detailTargets.has(mint) || detailTargets.size < MAX_QUEUE) detailTargets.set(mint, Date.now() + 45_000);
+    if (mint === activeMint || queued.has(mint)) continue;
+    const hit = getAudit(mint);
+    const ttl = getTokenCardPatch(mint)?.changedFields.lifecycleState === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+    if (hit && Date.now() - hit.fetchedAt < ttl) continue;
     if (pending.length >= MAX_QUEUE) break;
     queued.add(mint);
     pending.push(mint);
+    if (!hit) updateTokenCard(mint, {
+      auditPending: true,
+      ownershipEvidence: { status: 'loading', source: 'birdeye-holder-profile', observedAt: new Date().toISOString() },
+    }, 'audit-coordinator');
   }
   if (!draining) void drain();
 }
@@ -255,11 +280,13 @@ async function drain(): Promise<void> {
       const claimed = await redis.claim(`sentinel:audit-lease:${mint}`, AUDIT_LEASE_SECONDS);
       if (!claimed) {
         const remoteEvidence = getTokenCardPatch(mint)?.changedFields.ownershipEvidence;
-        if (remoteEvidence?.status === 'measured') {
+        if (currentEvidence(remoteEvidence).status === 'measured') {
           queued.delete(mint);
           attempts.delete(mint);
-        } else if ([...targetsBySection.values()].some((mints) => mints.includes(mint))) {
+        } else if ((detailTargets.get(mint) ?? 0) > Date.now() || [...targetsBySection.values()].some((mints) => mints.includes(mint))) {
           pending.push(mint);
+        } else {
+          queued.delete(mint);
         }
         await sleep(REQUEST_GAP_MS);
         continue;
@@ -284,9 +311,9 @@ async function drain(): Promise<void> {
           snipersPct: result.profile.snipersPct,
           insidersPct: result.profile.insidersPct,
           bundlersPct: result.profile.bundlersPct,
-          mintAuthorityRevoked: security?.isMintRenounced,
-          freezeAuthorityRevoked: security?.isFreezeDisabled,
-          liquidityLocked: security?.isLiquidityLocked,
+          mintAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isMintRenounced : undefined,
+          freezeAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isFreezeDisabled : undefined,
+          liquidityLocked: currentEvidence(security?.liquidityEvidence).status === 'measured' ? security?.isLiquidityLocked : undefined,
         });
         updateTokenCard(mint, {
           top10HoldingsPct: result.profile.top10Pct ?? undefined,
@@ -452,6 +479,7 @@ export function __resetAudit(): void {
   rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
   attempts.clear();
   targetsBySection.clear();
+  detailTargets.clear();
   quotaExhaustedAt = 0;
   circuitOpenUntil = 0;
 }

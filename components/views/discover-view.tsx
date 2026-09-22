@@ -19,7 +19,7 @@ import { TerminalTopBar } from '@/components/discovery/terminal-top-bar';
 import { TerminalColumn } from '@/components/discovery/terminal-column';
 import { AdvancedFilterDrawer } from '@/components/discovery/advanced-filter-drawer';
 import { useDebouncedValue } from '@/lib/hooks/use-debounce';
-import { subscribeToDiscovery, getDiscoverySnapshot, setDiscoveryQuery } from '@/lib/discovery/discovery-store';
+import { subscribeToDiscovery, getDiscoverySnapshot, setDiscoveryQuery, getDiscoveryHealth, pauseDiscovery, resumeDiscovery } from '@/lib/discovery/discovery-store';
 import { useAppActions } from '@/lib/store';
 import type {
   DiscoverySection,
@@ -32,6 +32,7 @@ import type {
 // Bumped to _v7: canonical tabs New Pairs (newest), Final Stretch (bonding %), Migrated (recency)
 const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v7';
 const STORAGE_QUICKBUY_KEY = 'sentinel_quickbuy_presets_v2';
+const STORAGE_QUERY_KEY = 'sentinel_discovery_query_v1';
 
 /**
  * The canonical discovery feed columns matching Axiom & Trojan standards:
@@ -87,11 +88,31 @@ export function DiscoverView() {
           if (parsedQB.presets) setQuickBuyPresets(parsedQB.presets);
           if (parsedQB.mode) setQuickBuyMode(parsedQB.mode);
         }
+        const savedQuery = localStorage.getItem(STORAGE_QUERY_KEY);
+        if (savedQuery) {
+          const parsedQuery = JSON.parse(savedQuery);
+          if (typeof parsedQuery.searchQuery === 'string') setSearchQuery(parsedQuery.searchQuery);
+          if (typeof parsedQuery.selectedChain === 'string') setSelectedChain(parsedQuery.selectedChain);
+          if (['5m', '1h', '24h'].includes(parsedQuery.timeWindow)) setTimeWindow(parsedQuery.timeWindow);
+          if (typeof parsedQuery.showZeroLiquidity === 'boolean') setShowZeroLiquidity(parsedQuery.showZeroLiquidity);
+          if (parsedQuery.globalFilters && typeof parsedQuery.globalFilters === 'object') setGlobalFilters(parsedQuery.globalFilters);
+        }
       } catch (e) {
         console.warn('Failed to load discovery layout', e);
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_QUERY_KEY, JSON.stringify({
+      searchQuery,
+      selectedChain,
+      timeWindow,
+      showZeroLiquidity,
+      globalFilters,
+    }));
+  }, [searchQuery, selectedChain, timeWindow, showZeroLiquidity, globalFilters]);
 
   // Save layout changes to localStorage
   const persistColumns = useCallback((newCols: DiscoveryColumnConfig[]) => {
@@ -117,9 +138,8 @@ export function DiscoverView() {
   const [feedVersion, setFeedVersion] = useState(0);
   useEffect(() => subscribeToDiscovery(() => setFeedVersion((v) => v + 1)), []);
   const feedSnapshot = getDiscoverySnapshot();
-  const liveConnected =
-    feedSnapshot.hasLoaded &&
-    Object.values(feedSnapshot.sections).some((section) => section.state === 'live');
+  const feedHealth = getDiscoveryHealth();
+  const freshnessAt = Math.max(...Object.values(feedSnapshot.sections).map((section) => section.at), 0);
 
   // Column Actions
   const handleAddColumn = (type: DiscoverySection, title: string) => {
@@ -211,7 +231,11 @@ export function DiscoverView() {
         quickBuyPresets={quickBuyPresets}
         quickBuyMode={quickBuyMode}
         onUpdateQuickBuySettings={handleUpdateQuickBuySettings}
-        liveConnected={liveConnected}
+        health={feedHealth}
+        paused={feedSnapshot.paused}
+        pendingRefresh={feedSnapshot.pendingRefresh}
+        freshnessAt={freshnessAt}
+        onTogglePause={() => (feedSnapshot.paused ? resumeDiscovery() : pauseDiscovery())}
       />
 
       {/* Mobile Feed Tab Selector (visible only on small screens) */}

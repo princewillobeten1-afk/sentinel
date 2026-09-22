@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ShieldAlert, AlertTriangle, CheckCircle2, Inbox } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, CheckCircle2, Inbox, Bell, Pause, Play, Trash2 } from 'lucide-react';
 import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,17 @@ interface AlertEvent {
   timestamp: string;
 }
 
+interface AlertRule {
+  id: string;
+  name: string;
+  alertType: string;
+  status: 'ACTIVE' | 'PAUSED' | 'TRIGGERED' | 'EXPIRED' | 'DELETED';
+  category: string | null;
+  severity: Severity | null;
+  conditions: Record<string, unknown>;
+  channels: string[];
+}
+
 const SEVERITY_BADGE: Record<string, string> = {
   CRITICAL: 'risk-critical',
   HIGH: 'risk-high',
@@ -58,6 +69,12 @@ export function AlertsView() {
   const [alerts, setAlerts] = useState<AlertEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [ruleName, setRuleName] = useState('');
+  const [ruleType, setRuleType] = useState('RISK');
+  const [ruleSeverity, setRuleSeverity] = useState<Severity>('HIGH');
+  const [ruleError, setRuleError] = useState<string | null>(null);
+  const [isRuleSaving, setIsRuleSaving] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -82,6 +99,73 @@ export function AlertsView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadRules = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl(endpoints.alerts.rules, { limit: 50 }), { credentials: 'include' });
+      const data = await readApiData<{ rules: AlertRule[] }>(response, 'Failed to load alert rules');
+      setRules(data.rules ?? []);
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 401) return;
+      setRuleError(err instanceof Error ? err.message : 'Failed to load alert rules.');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRules();
+  }, [loadRules]);
+
+  const createRule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ruleName.trim()) return;
+    setIsRuleSaving(true);
+    setRuleError(null);
+    try {
+      const response = await fetch(apiUrl(endpoints.alerts.rules), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: ruleName.trim(), alertType: ruleType, severity: ruleSeverity, channels: ['IN_APP'] }),
+      });
+      const data = await readApiData<{ rule: AlertRule }>(response, 'Failed to create alert rule');
+      setRules((previous) => [data.rule, ...previous]);
+      setRuleName('');
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : 'Failed to create alert rule.');
+    } finally {
+      setIsRuleSaving(false);
+    }
+  };
+
+  const updateRule = async (rule: AlertRule, status: 'ACTIVE' | 'PAUSED') => {
+    const previous = rules;
+    setRules((items) => items.map((item) => item.id === rule.id ? { ...item, status } : item));
+    try {
+      const response = await fetch(apiUrl(endpoints.alerts.rule(rule.id)), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status }),
+      });
+      const data = await readApiData<{ rule: AlertRule }>(response, 'Failed to update alert rule');
+      setRules((items) => items.map((item) => item.id === rule.id ? data.rule : item));
+    } catch (err) {
+      setRules(previous);
+      setRuleError(err instanceof Error ? err.message : 'Failed to update alert rule.');
+    }
+  };
+
+  const deleteRule = async (rule: AlertRule) => {
+    const previous = rules;
+    setRules((items) => items.filter((item) => item.id !== rule.id));
+    try {
+      const response = await fetch(apiUrl(endpoints.alerts.rule(rule.id)), { method: 'DELETE', credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to delete alert rule.');
+    } catch (err) {
+      setRules(previous);
+      setRuleError(err instanceof Error ? err.message : 'Failed to delete alert rule.');
+    }
+  };
 
   /**
    * Optimistic, but reverted on failure. The read state is server-authoritative
@@ -136,6 +220,25 @@ export function AlertsView() {
           </div>
         </div>
       )}
+
+      <Panel title={<span className="flex items-center gap-2"><Bell className="h-4 w-4 text-sky-400" /> Alert rules</span>} subtitle="Create, pause, resume, and remove the rules that produce risk events.">
+        <form onSubmit={createRule} className="grid gap-2 md:grid-cols-[1fr_150px_130px_auto]">
+          <input aria-label="Alert rule name" value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="Rule name" className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100" />
+          <select aria-label="Alert type" value={ruleType} onChange={(event) => setRuleType(event.target.value)} className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100"><option value="RISK">Risk</option><option value="PRICE">Price</option><option value="LIQUIDITY">Liquidity</option><option value="WALLET">Wallet</option></select>
+          <select aria-label="Alert severity" value={ruleSeverity} onChange={(event) => setRuleSeverity(event.target.value as Severity)} className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100">{(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as Severity[]).map((severity) => <option key={severity} value={severity}>{severity}</option>)}</select>
+          <Button type="submit" disabled={isRuleSaving || !ruleName.trim()}>{isRuleSaving ? 'Saving…' : 'Create rule'}</Button>
+        </form>
+        {ruleError && <p role="alert" className="mt-2 text-xs text-amber-400">{ruleError}</p>}
+        <div className="mt-4 space-y-2">
+          {rules.filter((rule) => rule.status !== 'DELETED').map((rule) => (
+            <div key={rule.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sentinel-800 bg-sentinel-950 p-2 text-xs">
+              <div className="min-w-0"><p className="truncate font-semibold text-slate-100">{rule.name}</p><p className="text-2xs text-slate-500">{rule.alertType} · {rule.severity ?? 'unspecified'} · {rule.status.toLowerCase()}</p></div>
+              <div className="flex items-center gap-1"><Button variant="ghost" size="xs" onClick={() => void updateRule(rule, rule.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')} leftIcon={rule.status === 'PAUSED' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}>{rule.status === 'PAUSED' ? 'Resume' : 'Pause'}</Button><button type="button" onClick={() => void deleteRule(rule)} aria-label={`Delete ${rule.name}`} className="p-2 text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" /></button></div>
+            </div>
+          ))}
+          {rules.length === 0 && <p className="text-xs text-slate-500">No saved rules yet.</p>}
+        </div>
+      </Panel>
 
       {!isLoading && !error && alerts.length === 0 && (
         <div className="p-12 text-center">

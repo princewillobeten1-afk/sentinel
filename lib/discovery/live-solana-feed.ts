@@ -206,6 +206,32 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       return apply(pool).sort((a, b) => a.priceChange24h - b.priceChange24h);
     }
 
+    case 'revived': {
+      const pool = await rankedPool('toptrending');
+      return apply(pool)
+        .filter((token) => token.ageMinutes >= 60 && token.priceChange24h > 0)
+        .sort((a, b) => b.priceChange24h - a.priceChange24h);
+    }
+
+    case 'legacy': {
+      const pool = await rankedPool('toptrending');
+      return apply(pool)
+        .filter((token) => token.ageMinutes >= 24 * 60)
+        .sort((a, b) => parseFloat(b.marketCapUsd) - parseFloat(a.marketCapUsd));
+    }
+
+    case 'similar': {
+      const referenceMint = filter?.similarTo;
+      if (!referenceMint) return [];
+      const pool = await fetchLiveSolanaTokens();
+      const reference = pool.find((token) => token.mint === referenceMint);
+      if (!reference) return [];
+      const referenceCap = parseFloat(reference.marketCapUsd);
+      return apply(pool)
+        .filter((token) => token.mint !== referenceMint && token.source === reference.source)
+        .sort((a, b) => Math.abs(parseFloat(a.marketCapUsd) - referenceCap) - Math.abs(parseFloat(b.marketCapUsd) - referenceCap));
+    }
+
     default: {
       // smart-money, ai-picks, watchlist, movers, personalized — no live source
       // ranks these today. Return the broad pool unsorted rather than inventing

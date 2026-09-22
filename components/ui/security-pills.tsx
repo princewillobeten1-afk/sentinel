@@ -4,6 +4,8 @@ import React from 'react';
 import { Lock, ShieldCheck, Snowflake } from 'lucide-react';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import type { MetricEvidence } from '@/lib/discovery/types';
+import { currentEvidence } from '@/lib/discovery/audit-freshness';
+import { useEvidenceClock } from '@/lib/hooks/use-evidence-clock';
 
 export interface SecurityPillsProps {
   isMintRenounced?: boolean;
@@ -16,11 +18,6 @@ export interface SecurityPillsProps {
   compact?: boolean;
 }
 
-function currentEvidence(evidence: MetricEvidence | undefined): MetricEvidence | undefined {
-  if (!evidence?.expiresAt || evidence.status !== 'measured') return evidence;
-  return Date.parse(evidence.expiresAt) < Date.now() ? { ...evidence, status: 'stale' } : evidence;
-}
-
 function SecurityPill({ label, value, evidence, icon: Icon, compact = false, displayValue }: {
   label: string;
   value: boolean | undefined;
@@ -29,7 +26,8 @@ function SecurityPill({ label, value, evidence, icon: Icon, compact = false, dis
   compact?: boolean;
   displayValue?: string;
 }) {
-  const resolvedEvidence = currentEvidence(evidence);
+  const now = useEvidenceClock(evidence);
+  const resolvedEvidence = currentEvidence(evidence, now);
   const loading = resolvedEvidence?.status === 'loading';
   const stale = resolvedEvidence?.status === 'stale' || (resolvedEvidence?.status === 'unavailable' && value !== undefined);
   const text = loading ? '…' : displayValue ?? (value === undefined ? 'n/a' : value ? 'yes' : 'no');

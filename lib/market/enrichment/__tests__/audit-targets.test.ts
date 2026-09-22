@@ -5,6 +5,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../holder-profile', () => ({
   fetchHolderProfileResult: vi.fn(() => new Promise(() => {})),
 }));
+vi.mock('@/lib/server/redis', () => ({ redis: { claim: vi.fn().mockResolvedValue(true) } }));
+vi.mock('@/lib/market/live/card-cache', () => ({ getTokenCardPatch: vi.fn(), updateTokenCard: vi.fn() }));
+vi.mock('@/lib/server/db/token-card-evidence-repository', () => ({ saveTokenCardEvidence: vi.fn() }));
 
 const load = async () => {
   vi.resetModules();
@@ -71,5 +74,23 @@ describe('audit targets follow the screen', () => {
 
     expect(isAuditPending('a')).toBe(false);
     expect(isAuditPending('b')).toBe(false);
+  });
+
+  it('refreshes a stale detail audit before the ten-minute retention cache expires', async () => {
+    const { queueAudit, isAuditPending } = await load();
+    const globalCache = (globalThis as unknown as { sentinelAuditCache: Map<string, unknown> }).sentinelAuditCache;
+    globalCache.set('old', { mint: 'old', fetchedAt: Date.now() - 61_000 });
+    globalCache.set('fresh', { mint: 'fresh', fetchedAt: Date.now() });
+    queueAudit(['old', 'fresh']);
+    expect(isAuditPending('old')).toBe(true);
+    expect(isAuditPending('fresh')).toBe(false);
+  });
+
+  it('keeps a waiting detail audit when a Discover section replaces its targets', async () => {
+    const { queueAudit, setAuditTargets, isAuditPending } = await load();
+    queueAudit(['active-detail', 'waiting-detail']);
+    setAuditTargets('visible', ['card']);
+    expect(isAuditPending('waiting-detail')).toBe(true);
+    expect(isAuditPending('card')).toBe(true);
   });
 });

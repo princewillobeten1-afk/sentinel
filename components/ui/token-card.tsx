@@ -9,6 +9,8 @@ import { TokenSocials } from '@/components/ui/token-socials';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { AuditPills } from '@/components/ui/audit-pills';
 import { SecurityPills } from '@/components/ui/security-pills';
+import { RugRiskPill } from '@/components/ui/rug-risk-pill';
+import { currentRiskRating } from '@/lib/discovery/audit-freshness';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { MetricValue } from '@/components/ui/metric-value';
 import { toValueState } from '@/lib/ui/value-state';
@@ -57,6 +59,7 @@ export interface TokenCardData {
   auditPending?: boolean;
   ownershipEvidence?: MetricEvidence;
   securityEvidence?: MetricEvidence;
+  liquidityEvidence?: MetricEvidence;
   isMintRenounced?: boolean;
   isFreezeDisabled?: boolean;
   isLiquidityLocked?: boolean;
@@ -103,9 +106,7 @@ export function TokenCard({ token, onQuickBuy, onClick, className }: TokenCardPr
       priceChange24h,
       marketCapUsd: mcap,
       liquidityUsd: liquidity,
-      riskRating: token.rugRisk?.completeness === 'complete'
-        ? token.rugRisk.level === 'medium' ? 'med' : token.rugRisk.level
-        : 'unknown',
+      riskRating: currentRiskRating(token.rugRisk, [token.ownershipEvidence, token.securityEvidence, token.liquidityEvidence]),
       chain: 'solana',
     });
     addNotification({
@@ -264,25 +265,10 @@ export function TokenCard({ token, onQuickBuy, onClick, className }: TokenCardPr
         isFreezeDisabled={token.isFreezeDisabled}
         isLiquidityLocked={token.isLiquidityLocked}
         evidence={token.securityEvidence}
+        lpEvidence={token.liquidityEvidence}
       />
 
-      {token.rugRisk && (
-        <LegendTooltip
-          label="Rug risk evidence"
-          definition={`${token.rugRisk.completeness === 'partial' ? 'Partial evidence' : 'Measured evidence'} · ${token.rugRisk.factors.length ? token.rugRisk.factors.join('; ') : 'No elevated factors in the measured inputs'}. Model ${token.rugRisk.version}.`}
-        >
-          <span className={clsx(
-            'self-start rounded-full border px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase',
-            token.rugRisk.level === 'high' || token.rugRisk.level === 'critical'
-              ? 'border-rose-800 bg-rose-950/60 text-rose-400'
-              : token.rugRisk.level === 'medium'
-                ? 'border-amber-800 bg-amber-950/50 text-amber-400'
-                : token.rugRisk.completeness === 'complete'
-                  ? 'border-emerald-800 bg-emerald-950/60 text-emerald-400'
-                  : 'border-slate-700 bg-slate-900 text-slate-400',
-          )}>Risk {token.rugRisk.score} · {token.rugRisk.completeness}</span>
-        </LegendTooltip>
-      )}
+      <RugRiskPill risk={token.rugRisk} ownershipEvidence={token.ownershipEvidence} securityEvidence={token.securityEvidence} liquidityEvidence={token.liquidityEvidence} />
 
       {/* Identity line: holders, pro traders, KOLs, dev record.
           Same fields and visual language as the discovery card so a token

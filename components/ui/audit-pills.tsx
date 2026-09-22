@@ -7,6 +7,8 @@ import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { MetricValue } from '@/components/ui/metric-value';
 import { toValueState } from '@/lib/ui/value-state';
 import type { MetricEvidence } from '@/lib/discovery/types';
+import { currentEvidence } from '@/lib/discovery/audit-freshness';
+import { useEvidenceClock } from '@/lib/hooks/use-evidence-clock';
 
 /**
  * The ownership audit row, in one place.
@@ -43,6 +45,7 @@ export interface AuditPillsProps {
   /** True while a lookup is queued, so unknown can be told from unmeasured. */
   pending?: boolean;
   evidence?: MetricEvidence;
+  evidenceByMetric?: Partial<Record<'top10' | 'dev', MetricEvidence>>;
   /** Render even when nothing is known, to hold layout on a feed. */
   alwaysShow?: boolean;
   className?: string;
@@ -74,20 +77,19 @@ export function AuditPills({
   bundlerPercentage,
   pending = false,
   evidence,
+  evidenceByMetric,
   alwaysShow = false,
   className = '',
 }: AuditPillsProps) {
-  const resolvedEvidence = evidence?.status === 'measured' && evidence.expiresAt && Date.parse(evidence.expiresAt) < Date.now()
-    ? { ...evidence, status: 'stale' as const }
-    : evidence;
-  const evidenceAge = (() => {
+  const now = useEvidenceClock(evidence, evidenceByMetric?.top10, evidenceByMetric?.dev);
+  const ageOf = (resolvedEvidence: MetricEvidence) => {
     if (!resolvedEvidence?.observedAt) return null;
     const ageMs = Date.now() - Date.parse(resolvedEvidence.observedAt);
     if (!Number.isFinite(ageMs)) return resolvedEvidence.observedAt;
     if (ageMs < 60_000) return `${Math.max(0, Math.floor(ageMs / 1_000))}s ago`;
     if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
     return `${Math.floor(ageMs / 3_600_000)}h ago`;
-  })();
+  };
   const pills: PillSpec[] = [
     {
       key: 'top10',
@@ -145,9 +147,11 @@ export function AuditPills({
   return (
     <div className={`flex items-center gap-1 flex-wrap text-2xs font-mono ${className}`}>
       {pills.map((pill) => {
+        const resolvedEvidence = currentEvidence(evidenceByMetric?.[pill.key as 'top10' | 'dev'] ?? evidence, now);
+        const evidenceAge = ageOf(resolvedEvidence);
         const state = toValueState(pill.value ?? null, {
-          isPending: pending,
-          isStale: resolvedEvidence?.status === 'stale' || (resolvedEvidence?.status === 'unavailable' && pill.value !== undefined),
+          isPending: pill.value === undefined && (pending || resolvedEvidence.status === 'loading'),
+          isStale: resolvedEvidence.status !== 'measured' && pill.value !== undefined,
           reason: resolvedEvidence?.reason,
         });
         const tone =

@@ -116,7 +116,7 @@ const MAX_RETRY_MS = 30_000;
 /** Server closes with this when the connection is unauthenticated. */
 const CLOSE_UNAUTHORIZED = 4401;
 
-export function useLiveTokenUpdates(mints: string[]): {
+export function useLiveTokenUpdates(mints: string[], paused = false): {
   updates: Map<string, LiveTokenUpdate>;
   status: LiveStatus;
   /** Mints that had no budget left for a subscription. */
@@ -142,6 +142,8 @@ export function useLiveTokenUpdates(mints: string[]): {
   const welcomedRef = useRef(false);
   const sequenceRef = useRef<Map<string, number>>(new Map());
   const mountedRef = useRef(true);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   // Stable key so the effect re-runs on a genuine change of tokens, not on
   // every render that happens to rebuild the array.
@@ -170,6 +172,7 @@ export function useLiveTokenUpdates(mints: string[]): {
   }, []);
 
   const applyEvent = useCallback((topic: string, data: Record<string, unknown>, envelopeSequence?: number) => {
+    if (pausedRef.current) return;
     const parsed = parseTokenTopic(topic);
     if (!parsed) return;
 

@@ -55,6 +55,9 @@ const SECTION_ICONS: Record<DiscoverySection, React.ReactNode> = {
   liquidity: <BarChart2 className="w-3.5 h-3.5 text-cyan-400" />,
   movers: <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />,
   personalized: <Sparkles className="w-3.5 h-3.5 text-sky-400" />,
+  revived: <TrendingUp className="w-3.5 h-3.5 text-amber-400" />,
+  legacy: <GraduationCap className="w-3.5 h-3.5 text-slate-400" />,
+  similar: <Sparkles className="w-3.5 h-3.5 text-cyan-400" />,
 };
 
 const SORT_OPTIONS: { id: ColumnSortOption; label: string }[] = [
@@ -103,6 +106,7 @@ export function TerminalColumn({
     refresh,
     liveConnected,
     state: feedState,
+    paused,
     lastUpdatedAt,
   } = useDiscoveryFeed(config.type, timeWindow, combinedFilters);
 
@@ -288,7 +292,7 @@ export function TerminalColumn({
     // not spend that frame unsubscribed, then follow the real viewport.
     return visible.length > 0 ? visible : sortedTokens.slice(0, 6).map((token) => token.mint);
   }, [sortedTokens, visibleMintSet]);
-  const { updates: liveUpdates, droppedMints } = useLiveTokenUpdates(liveMints);
+  const { updates: liveUpdates, droppedMints } = useLiveTokenUpdates(liveMints, paused);
   const droppedLiveMints = React.useMemo(() => new Set(droppedMints), [droppedMints]);
 
   return (

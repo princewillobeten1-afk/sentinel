@@ -22,6 +22,8 @@ import {
   Users,
   Trophy,
   Award,
+  ShieldCheck,
+  ChevronDown,
 } from 'lucide-react';
 import { useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
@@ -33,6 +35,8 @@ import { TokenAvatar } from '@/components/ui/token-avatar';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { AuditPills } from '@/components/ui/audit-pills';
 import { SecurityPills } from '@/components/ui/security-pills';
+import { RugRiskPill } from '@/components/ui/rug-risk-pill';
+import { currentRiskRating } from '@/lib/discovery/audit-freshness';
 import { MetricValue } from '@/components/ui/metric-value';
 import { toValueState } from '@/lib/ui/value-state';
 import { mergeTokenCardSnapshot } from '@/lib/discovery/card-snapshot';
@@ -137,6 +141,34 @@ function CardMetric({
   );
 }
 
+function SafetyValue({
+  label,
+  value,
+  evidence,
+  suffix = '',
+  format = (input) => String(input),
+}: {
+  label: string;
+  value: number | undefined | null;
+  evidence?: MetricEvidence;
+  suffix?: string;
+  format?: (value: number) => string;
+}) {
+  const state = value == null || !Number.isFinite(value)
+    ? evidence?.status === 'loading' ? 'pending' : evidence?.status === 'stale' ? 'stale' : 'unknown'
+    : evidence?.status === 'stale' ? 'stale' : 'measured';
+  const color = state === 'measured' ? 'text-slate-200' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
+  const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : `${format(value as number)}${suffix}`;
+  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={evidence?.reason || evidence?.source}>{rendered}</span></span>;
+}
+
+function SafetyFlag({ label, value, evidence }: { label: string; value: boolean | undefined; evidence?: MetricEvidence }) {
+  const state = value === undefined ? evidence?.status === 'loading' ? 'pending' : evidence?.status === 'stale' ? 'stale' : 'unknown' : 'measured';
+  const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : value ? 'Yes' : 'No';
+  const color = state === 'measured' ? value ? 'text-emerald-400' : 'text-rose-400' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
+  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={evidence?.reason || evidence?.source}>{rendered}</span></span>;
+}
+
 /** Live-ticking relative time formatter: 7s, 47s, 1m, 2m, 1h, 1d */
 export function formatLiveAge(ageMinutes: number, elapsedSec: number): string {
   const totalSec = Math.max(1, Math.round(ageMinutes * 60 + elapsedSec));
@@ -168,6 +200,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copied = copyState === 'copied';
   const [showActions, setShowActions] = useState(false);
+  const [showSafety, setShowSafety] = useState(false);
   const [flash, setFlash] = useState<'BUY' | 'SELL' | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const liveMarket = evidenceIsCurrent(live?.marketEvidence, token.marketEvidence) ? live : undefined;
@@ -378,9 +411,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       priceChange24h: priceChange ?? undefined,
       marketCapUsd: formatCompactUSD(marketCapUsd),
       liquidityUsd: formatCompactUSD(liquidityUsd),
-      riskRating: rugRisk?.completeness === 'complete'
-        ? rugRisk.level === 'medium' ? 'med' : rugRisk.level
-        : 'unknown',
+      riskRating: currentRiskRating(rugRisk, [ownershipEvidence, securityEvidence, live?.liquidityEvidence ?? token.liquidityEvidence]),
       chain: token.chain || 'solana',
     });
     addNotification({
@@ -842,6 +873,31 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
         className="discovery-card-ownership"
       />
 
+      <button
+        type="button"
+        onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSafety((open) => !open); }}
+        aria-expanded={showSafety}
+        className="flex w-full items-center justify-between border-t border-slate-800/70 pt-1 text-left text-[9px] font-semibold text-slate-400 hover:text-slate-200"
+      >
+        <span className="flex items-center gap-1"><ShieldCheck className="h-2.5 w-2.5 text-sky-400" /> Safety details</span>
+        <ChevronDown className={`h-3 w-3 transition-transform ${showSafety ? 'rotate-180' : ''}`} />
+      </button>
+
+      {showSafety && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-slate-800 bg-slate-900/70 p-2 text-[9px]" onClick={(event) => event.stopPropagation()}>
+          <SafetyValue label="Holders" value={live?.holdersCount ?? token.holdersCount} evidence={ownershipEvidence} format={formatCount} />
+          <SafetyValue label="Top 10" value={top10} evidence={ownershipEvidence} suffix="%" />
+          <SafetyValue label="Developer" value={devHoldings} evidence={ownershipEvidence} suffix="%" />
+          <SafetyValue label="Insiders" value={insidersPct} evidence={ownershipEvidence} suffix="%" />
+          <SafetyValue label="Snipers" value={snipersPct} evidence={ownershipEvidence} suffix="%" />
+          <SafetyValue label="Bundled" value={bundlerPct} evidence={ownershipEvidence} suffix="%" />
+          <SafetyFlag label="LP locked" value={live?.isLiquidityLocked ?? token.isLiquidityLocked} evidence={securityEvidence} />
+          <SafetyFlag label="Mint renounced" value={live?.isMintRenounced ?? token.isMintRenounced} evidence={securityEvidence} />
+          <SafetyFlag label="Freeze disabled" value={live?.isFreezeDisabled ?? token.isFreezeDisabled} evidence={securityEvidence} />
+          <SafetyValue label="Risk score" value={live?.rugRisk?.score ?? token.rugRisk?.score} evidence={securityEvidence} />
+        </div>
+      )}
+
       <div className="discovery-card-evidence">
       <div className="flex flex-wrap items-center gap-1 font-mono text-[9px]">
         <LegendTooltip label="Holders" definition={`Unique holders reported by the ownership provider. ${ownershipEvidence ? `Source: ${ownershipEvidence.source}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}>
@@ -870,26 +926,11 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
         isLiquidityLocked={live?.isLiquidityLocked ?? token.isLiquidityLocked}
         lpLockedPct={live?.lpLockedPct}
         evidence={securityEvidence}
-        lpEvidence={live?.liquidityEvidence}
+        lpEvidence={live?.liquidityEvidence ?? token.liquidityEvidence}
         compact
       />
 
-      {rugRisk && (
-        <LegendTooltip
-          label="Rug risk evidence"
-          definition={`${rugRisk.completeness === 'partial' ? 'Partial evidence' : 'Measured evidence'} · ${rugRisk.factors.length ? rugRisk.factors.join('; ') : 'No elevated factors in the measured inputs'}. Model ${rugRisk.version}.`}
-        >
-          <span className={`self-start whitespace-nowrap rounded-full border px-1 py-0.5 font-sans text-[9px] font-medium ${
-            rugRisk.level === 'critical' || rugRisk.level === 'high'
-              ? 'border-rose-800 bg-rose-950/60 text-rose-400'
-              : rugRisk.level === 'medium'
-                ? 'border-amber-800 bg-amber-950/50 text-amber-400'
-                : rugRisk.completeness === 'complete'
-                  ? 'border-emerald-800 bg-emerald-950/60 text-emerald-400'
-                  : 'border-slate-700 bg-slate-900 text-slate-400'
-          }`}>Risk {rugRisk.score}{rugRisk.completeness === 'partial' ? ' · partial' : ''}</span>
-        </LegendTooltip>
-      )}
+      <RugRiskPill risk={rugRisk} ownershipEvidence={ownershipEvidence} securityEvidence={securityEvidence} liquidityEvidence={live?.liquidityEvidence ?? token.liquidityEvidence} />
 
       </div>
       {/* 5 — Deployer record, promotion, socials, and the trade action */}

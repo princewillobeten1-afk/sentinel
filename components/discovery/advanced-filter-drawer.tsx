@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   SlidersHorizontal,
@@ -30,6 +30,8 @@ interface SavedPreset {
   name: string;
   filters: Partial<DiscoveryFilter>;
 }
+
+const SAVED_PRESETS_KEY = 'sentinel_discovery_filter_presets_v1';
 
 const DEFAULT_PRESETS: SavedPreset[] = [
   {
@@ -74,6 +76,23 @@ export function AdvancedFilterDrawer({
   const [localFilters, setLocalFilters] = useState<Partial<DiscoveryFilter>>(filters);
   const [presetName, setPresetName] = useState('');
   const [savedPresets, setSavedPresets] = useState<SavedPreset[]>(DEFAULT_PRESETS);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(SAVED_PRESETS_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) setSavedPresets(parsed);
+    } catch {
+      // Ignore malformed local preferences and keep the built-in presets.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(SAVED_PRESETS_KEY, JSON.stringify(savedPresets));
+  }, [savedPresets]);
 
   if (!isOpen) return null;
 

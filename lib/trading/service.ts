@@ -1,9 +1,11 @@
-import { MockTradingProvider } from './mock-provider';
+import { UnavailableTradingProvider } from './unavailable-provider';
 import type { TradingProvider } from './provider';
 import type { TradeHistoryRecord, TradeSimulationResult } from './types';
 import type { Quote } from '@/lib/quote/types';
 
-let provider: TradingProvider = new MockTradingProvider();
+// Production must not report a simulated or fabricated confirmation. Inject a
+// real provider during deployment; the default is an explicit unavailable state.
+let provider: TradingProvider = new UnavailableTradingProvider();
 
 export function setTradingProvider(nextProvider: TradingProvider) {
   provider = nextProvider;

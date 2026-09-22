@@ -97,6 +97,7 @@ export interface OverviewToken {
   auditPending?: boolean;
   ownershipEvidence?: MetricEvidence;
   securityEvidence?: MetricEvidence;
+  liquidityEvidence?: MetricEvidence;
   rugRisk?: RugRiskEvidence;
   isMintRenounced?: boolean;
   isFreezeDisabled?: boolean;
@@ -210,6 +211,8 @@ function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
       ? { securityEvidence: raw.securityEvidence as MetricEvidence }
       : {}),
     ...(raw.rugRisk && typeof raw.rugRisk === 'object' ? { rugRisk: raw.rugRisk as RugRiskEvidence } : {}),
+    ...(raw.liquidityEvidence && typeof raw.liquidityEvidence === 'object'
+      ? { liquidityEvidence: raw.liquidityEvidence as MetricEvidence } : {}),
     ...(typeof raw.isMintRenounced === 'boolean' ? { isMintRenounced: raw.isMintRenounced } : {}),
     ...(typeof raw.isFreezeDisabled === 'boolean' ? { isFreezeDisabled: raw.isFreezeDisabled } : {}),
     ...(typeof raw.isLiquidityLocked === 'boolean' ? { isLiquidityLocked: raw.isLiquidityLocked } : {}),
