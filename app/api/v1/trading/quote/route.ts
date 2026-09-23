@@ -71,12 +71,16 @@ export async function POST(request: Request) {
       inputMint: quote.inputMint,
       outputMint: quote.outputMint,
       providerQuote: quote.providerQuote,
+      inputAmountRaw: quote.providerQuote.inAmount,
+      outputAmountRaw: quote.providerQuote.outAmount,
+      minimumReceivedRaw: quote.providerQuote.otherAmountThreshold,
       inputToken: data.inputSymbol ?? data.inputMint,
       outputToken: data.outputSymbol ?? data.outputMint,
       inputAmount: quote.inputAmount,
       outputAmount: quote.outputAmount,
       minimumReceived: quote.minimumReceived,
       priceImpact: quote.priceImpactPct ?? 0,
+      priceImpactMeasured: quote.priceImpactPct !== null,
       priceImpactRating: ratingFor(quote.priceImpactPct),
       // Unit price of the *input* in output terms, which is what the panel
       // labels "Est. Price".

@@ -193,6 +193,7 @@ export class ExecutionService {
     intentId: string;
     signatureHexOrBase58: string;
   }): Promise<{ status: string; txHash: string }> {
+    if (process.env.NODE_ENV !== 'test') throw new Error('Legacy simulated execution is disabled. Use the shared wallet-approved Solana trading flow.');
     const intent = this.intents.get(params.intentId);
     if (!intent) {
       throw new Error(`Transaction intent not found: ${params.intentId}`);

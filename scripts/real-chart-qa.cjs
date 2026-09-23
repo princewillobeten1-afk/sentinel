@@ -41,11 +41,11 @@ async function main() {
       return route.fulfill({ status: 503, json: { success: false } });
     });
     await context.routeWebSocket('**/ws*', socket => {
-      activeSocket = socket;
       socket.onMessage(raw => {
         const message = JSON.parse(String(raw));
         if (message.type === 'subscribe') {
-          topic = message.topics?.find(t => t.startsWith('token.ohlcv:')) || topic;
+          const chartTopic = message.topics?.find(t => t.startsWith('token.ohlcv:'));
+          if (chartTopic) { topic = chartTopic; activeSocket = socket; }
           socket.send(JSON.stringify({ type: 'subscribed', topics: message.topics }));
         }
       });

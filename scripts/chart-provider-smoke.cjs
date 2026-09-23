@@ -9,7 +9,7 @@ async function main() {
   if (!key) throw new Error('Birdeye credential not configured');
   const results = { checkedAt: new Date().toISOString(), mint, rest: [], websocket: { connected: false, frames: [], rejection: null } };
   for (const type of ['1m', '15m']) {
-    const params = new URLSearchParams({ address: mint, type, currency: 'usd', mode: 'count', count_limit: '5', time_to: String(Math.floor(Date.now() / 1000)), padding: 'false' });
+    const params = new URLSearchParams({ address: mint, type, currency: 'usd', mode: 'count', count_limit: '5', time_to: String(Math.floor(Date.now() / 1000)), padding: 'false', ui_amount_mode: 'raw' });
     const response = await fetch(`https://public-api.birdeye.so/defi/v3/ohlcv?${params}`, {
       headers: { 'X-API-KEY': key, 'x-chain': 'solana' }, signal: AbortSignal.timeout(12000),
     });

@@ -4,6 +4,8 @@ import { env } from '@/lib/server/env';
 import { acquireBirdeyeSlot } from '@/lib/market/enrichment/birdeye-limiter';
 import { measuredNumber, type TradeWalletPosition } from './sidebar-model';
 import { evidence, readProvider, failureReason, ProviderReadError } from './provider-read';
+import { fetchTrackerWalletPosition, trackerConfigured } from './solana-tracker';
+import { fetchJupiterTokensByMint } from '@/lib/discovery/jupiter-feed';
 
 const cached = new Map<string, { expires: number; value: TradeWalletPosition }>();
 const inFlight = new Map<string, Promise<TradeWalletPosition>>();
@@ -61,8 +63,45 @@ async function load(wallet: string, mint: string): Promise<TradeWalletPosition> 
         if (!pnl) throw new ProviderReadError('Birdeye returned no matching wallet/token PnL.');
         Object.assign(output, pnl);
         output.pnlEvidence = { ...evidence(pnlSource, 30_000), reason: 'All-time weighted-average-cost estimate. Provider protocol history may be incomplete; not a guaranteed realized return.' };
-      } catch (error) { output.pnlEvidence = evidence(pnlSource, 30_000, failureReason(error)); }
+      } catch (error) {
+        if (trackerConfigured()) {
+          try {
+            const fallback = await fetchTrackerWalletPosition(wallet, mint);
+            if (fallback) {
+              Object.assign(output, fallback);
+              output.pnlEvidence = { ...evidence('solana-tracker-wallet-pnl:strict', 30_000),
+                reason: 'Provider-computed wallet history; coverage and cost basis may differ from other services.' };
+              return;
+            }
+          } catch (fallbackError) {
+            output.pnlEvidence = evidence('solana-tracker-wallet-pnl:strict', 30_000, failureReason(fallbackError));
+            return;
+          }
+        }
+        const reason = error instanceof ProviderReadError && /HTTP 401|HTTP 403/.test(error.reason)
+          ? 'Birdeye wallet PnL is not enabled for this key. Configure SOLANA_TRACKER_API_KEY for the fallback.'
+          : failureReason(error);
+        output.pnlEvidence = evidence(pnlSource, 30_000, reason);
+      }
     })(),
   ]);
+  // A confirmed zero balance has a measured zero value even if neither PnL
+  // provider has indexed this wallet. Nonzero balances require a current price.
+  if (output.holdingUsd === null && output.quantity !== null) {
+    if (output.quantity === 0) {
+      output.holdingUsd = 0;
+      output.holdingEvidence = evidence(balanceSource, 15_000);
+    } else {
+      try {
+        const token = (await fetchJupiterTokensByMint([mint])).find(item => item.id === mint);
+        const price = measuredNumber(token?.usdPrice);
+        if (price === null || price < 0) throw new ProviderReadError('No measured Jupiter USD price for this token.');
+        output.holdingUsd = output.quantity * price;
+        output.holdingEvidence = evidence('helius-confirmed-balance+jupiter-token-price', 15_000);
+      } catch (error) {
+        output.holdingEvidence = evidence('helius-confirmed-balance+jupiter-token-price', 30_000, failureReason(error));
+      }
+    }
+  }
   return output;
 }

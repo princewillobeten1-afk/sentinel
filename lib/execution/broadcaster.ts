@@ -33,6 +33,10 @@ export class Broadcaster {
     executionId: string,
     signedPayload: string
   ): Promise<BroadcastResult> {
+    if (process.env.NODE_ENV !== 'test') {
+      return { success: false, providerUsed: 'UNSUPPORTED_LEGACY_INTENT', attemptNumber: 0,
+        error: 'Legacy simulated intents cannot be broadcast. Use the authenticated Solana prepare/sign/submit flow.' };
+    }
     const existingAttempts = dbRepository.getAttempts(executionId);
     const attemptNumber = existingAttempts.length + 1;
 

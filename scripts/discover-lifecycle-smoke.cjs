@@ -24,14 +24,41 @@ async function main() {
   const rpc = process.env.LIFECYCLE_RPC_URL?.trim() || process.env.HELIUS_RPC_URL?.trim()
     || (process.env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY.trim()}` : 'https://api.mainnet-beta.solana.com');
   const feeds = await Promise.allSettled([
-    fetchJupiterFeed('toptrending', { limit: 50, window: '5m' }),
-    fetchJupiterFeed('toptrending', { limit: 50, window: '1h' }),
-    fetchJupiterFeed('toptraded', { limit: 50, window: '5m' }),
+    fetchJupiterFeed('toptrending', { limit: 100, window: '5m' }),
+    fetchJupiterFeed('toptrending', { limit: 100, window: '1h' }),
+    fetchJupiterFeed('toptrending', { limit: 100, window: '6h' }),
+    fetchJupiterFeed('toptraded', { limit: 100, window: '5m' }),
+    fetchJupiterFeed('toptraded', { limit: 100, window: '1h' }),
+    fetchJupiterFeed('toptraded', { limit: 100, window: '6h' }),
+    fetchJupiterFeed('toporganicscore', { limit: 100, window: '5m' }),
+    fetchJupiterFeed('toporganicscore', { limit: 100, window: '1h' }),
     fetchJupiterFeed('recent', { limit: 100 }),
   ]);
-  const candidates = [...new Map(feeds.flatMap(result => result.status === 'fulfilled' ? result.value : [])
-    .filter(token => hasReadableCurve(token) && !hasGraduated(token)).map(token => [token.id, token])).values()].slice(0, 100);
-  const curves = await fetchBondingCurves(rpc, candidates.map(token => token.id));
+  const jupCandidates = feeds.flatMap(result => result.status === 'fulfilled' ? result.value : [])
+    .filter(token => (hasReadableCurve(token) || (token.id && token.id.endsWith('pump'))) && !hasGraduated(token))
+    .map(token => token.id);
+
+  let dexCandidates = [];
+  try {
+    const dexUrls = [
+      'https://api.dexscreener.com/token-boosts/top/v1',
+      'https://api.dexscreener.com/token-boosts/latest/v1',
+      'https://api.dexscreener.com/token-profiles/latest/v1',
+    ];
+    const dexResults = await Promise.allSettled(
+      dexUrls.map((url) =>
+        fetch(url, { headers: { accept: 'application/json' } })
+          .then((r) => (r.ok ? r.json() : []))
+          .catch(() => []),
+      ),
+    );
+    dexCandidates = dexResults.flatMap(r => r.status === 'fulfilled' && Array.isArray(r.value) ? r.value : [])
+      .filter(item => item?.chainId === 'solana' && item?.tokenAddress && (item.tokenAddress.endsWith('pump') || (typeof item.url === 'string' && item.url.includes('pump'))))
+      .map(item => item.tokenAddress);
+  } catch {}
+
+  const candidates = [...new Set([...jupCandidates, ...dexCandidates])].slice(0, 100);
+  const curves = await fetchBondingCurves(rpc, candidates);
   for (const [mint, curve] of curves) applyCurveReading(mint, curve);
   let migrations = 0;
   await new MigrationHistory().reconcile(rpc, result => {

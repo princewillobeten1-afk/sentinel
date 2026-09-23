@@ -93,7 +93,13 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
     const range = chart.current.timeScale().getVisibleLogicalRange();
     const prepended = prior.length ? rows.filter(c => c.time < prior[0].time).length : 0;
     rendering.current = true;
-    if (rows.length) prices.current.applyOptions({ priceFormat: { type: 'price', ...chartPrecision(Math.min(...rows.map(c => c.low))) } });
+    if (rows.length) {
+      const { precision, minMove } = chartPrecision(Math.min(...rows.map(c => c.low)));
+      // The built-in decimal formatter multiplies minMove by 10^precision.
+      // Floating-point error at tiny ticks can render $0.00000002 as 0.999… .
+      prices.current.applyOptions({ priceFormat: { type: 'custom', minMove, base: 10 ** precision,
+        formatter: (value: number) => value.toLocaleString('en-US', { maximumSignificantDigits: 6 }) } });
+    }
     prices.current.setData(rows.map(c => ({ ...c, time: c.time as UTCTimestamp })));
     volumes.current.setData(rows.filter(c => c.volume !== null).map(c => ({
       time: c.time as UTCTimestamp, value: c.volume!, color: c.close >= c.open ? 'rgba(18,181,116,0.35)' : 'rgba(236,90,95,0.35)',
@@ -143,8 +149,8 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           <span title="Base-token volume; not USD volume">Vol: {active.volume === null ? 'Unavailable' : active.volume.toLocaleString('en-US', { maximumSignificantDigits: 5 })}</span></> : <span>OHLCV awaits provider data</span>}
       </div>
       <div className={(height || (compact ? 'h-[270px]' : 'h-64 sm:h-80')) + ' relative w-full'}>
-        <div ref={container} className="absolute inset-0" />
-        {empty && <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
+        <div ref={container} className="absolute inset-0 z-0" />
+        {empty && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
           <p role={feed.error ? 'alert' : 'status'}>{feed.loading ? 'Loading real ' + timeframe + ' candles…' : feed.error || 'No indexed candles yet. Waiting for trades.'}</p>
           {!feed.loading && <button type="button" className={control + ' border border-sentinel-700 text-sky-300'} disabled={feed.refreshing} aria-busy={feed.refreshing} onClick={feed.refresh}>Retry chart</button>}
         </div>}

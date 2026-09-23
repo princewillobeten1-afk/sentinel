@@ -224,9 +224,14 @@ class LifecycleWorker {
     try {
       const results = await Promise.allSettled([
         fetchJupiterFeed('recent', { limit: 100 }),
-        fetchJupiterFeed('toptrending', { limit: 50, window: '5m' }),
-        fetchJupiterFeed('toptrending', { limit: 50, window: '1h' }),
-        fetchJupiterFeed('toptraded', { limit: 50, window: '5m' }),
+        fetchJupiterFeed('toptrending', { limit: 100, window: '5m' }),
+        fetchJupiterFeed('toptrending', { limit: 100, window: '1h' }),
+        fetchJupiterFeed('toptrending', { limit: 100, window: '6h' }),
+        fetchJupiterFeed('toptraded', { limit: 100, window: '5m' }),
+        fetchJupiterFeed('toptraded', { limit: 100, window: '1h' }),
+        fetchJupiterFeed('toptraded', { limit: 100, window: '6h' }),
+        fetchJupiterFeed('toporganicscore', { limit: 100, window: '5m' }),
+        fetchJupiterFeed('toporganicscore', { limit: 100, window: '1h' }),
       ]);
 
       const historicalCandidates: Array<{ mint: string; pool: string }> = [];
@@ -236,7 +241,8 @@ class LifecycleWorker {
 
         for (const row of rows) {
           if (!row.id) continue;
-          if (!hasReadableCurve(row)) continue;
+          const isPump = hasReadableCurve(row) || row.id.endsWith('pump');
+          if (!isPump) continue;
 
           // Jupiter can indicate that graduation happened, but it does not
           // supply the confirmed transaction signature needed as proof. Keep
@@ -253,6 +259,36 @@ class LifecycleWorker {
           recordPairCreated(row.id, pad.id);
         }
       }
+
+      // Supplementary discovery: DexScreener boosted and trending Solana tokens on Pump.fun
+      try {
+        const dexUrls = [
+          'https://api.dexscreener.com/token-boosts/top/v1',
+          'https://api.dexscreener.com/token-boosts/latest/v1',
+          'https://api.dexscreener.com/token-profiles/latest/v1',
+        ];
+        const dexResults = await Promise.allSettled(
+          dexUrls.map((url) =>
+            fetch(url, { signal: AbortSignal.timeout(4_000), headers: { accept: 'application/json' } })
+              .then((r) => (r.ok ? r.json() : []))
+              .catch(() => []),
+          ),
+        );
+        for (const res of dexResults) {
+          if (res.status !== 'fulfilled' || !Array.isArray(res.value)) continue;
+          for (const item of res.value) {
+            const address = item?.tokenAddress;
+            if (item?.chainId === 'solana' && typeof address === 'string' && (address.endsWith('pump') || (typeof item.url === 'string' && item.url.includes('pump')))) {
+              if (!getLifecycle(address)) {
+                recordPairCreated(address, 'pump.fun');
+              }
+            }
+          }
+        }
+      } catch {
+        // DexScreener supplementary discovery is best effort
+      }
+
       const uniqueCandidates = [...new Map(historicalCandidates.map((candidate) => [candidate.mint, candidate])).values()]
         .filter((candidate) => Date.now() - (this.historicalMigrationCheckedAt.get(candidate.mint) ?? 0) >= HISTORICAL_MIGRATION_RETRY_MS)
         .slice(0, MAX_HISTORICAL_MIGRATIONS_PER_SWEEP);
@@ -293,11 +329,12 @@ class LifecycleWorker {
       if (tracked.length === 0) return;
 
       // Prioritize tokens in FINAL_STRETCH and MIGRATING so near-graduation curves
-      // update with the lowest latency, followed by oldest reading first.
+      // update with lowest latency, followed by unread candidates (curve === null),
+      // followed by oldest reading first.
       const due = tracked
         .sort((a, b) => {
-          const priorityA = a.state === 'FINAL_STRETCH' ? 2 : a.state === 'MIGRATING' ? 3 : 1;
-          const priorityB = b.state === 'FINAL_STRETCH' ? 2 : b.state === 'MIGRATING' ? 3 : 1;
+          const priorityA = a.state === 'FINAL_STRETCH' ? 3 : a.state === 'MIGRATING' ? 4 : a.curve === null ? 2 : 1;
+          const priorityB = b.state === 'FINAL_STRETCH' ? 3 : b.state === 'MIGRATING' ? 4 : b.curve === null ? 2 : 1;
           if (priorityA !== priorityB) return priorityB - priorityA;
           return (a.curve?.readAt ?? 0) - (b.curve?.readAt ?? 0);
         })

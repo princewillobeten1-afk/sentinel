@@ -1,20 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Wallet, Settings2, ChevronDown, Plus, Megaphone, Pencil } from 'lucide-react';
+import { Wallet, Settings2, ChevronDown, Megaphone, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
-import { LimitOrderBuilder } from '@/components/limit-orders/limit-order-builder';
 import { useTradeSidebar } from '@/lib/hooks/use-trade-sidebar';
 import { summarizePosition, TRADE_PRESETS } from '@/lib/trading/sidebar-model';
 import { TradeActivityStrip, TradeSidebarInfo } from './trade-sidebar-info';
-import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState, useWalletActions } from '@/lib/store';
+import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState } from '@/lib/store';
 import type { Quote } from '@/lib/quote/types';
-import type { TransactionExecutionState } from '@/lib/trading/types';
 import { Decimal } from '@/lib/math/decimal';
 import { TransactionPreviewModal } from './transaction-preview-modal';
-import { VersionedTransaction } from '@solana/web3.js';
+import { useSwapExecution } from '@/lib/hooks/use-swap-execution';
 
 interface TradingPanelProps {
   tokenSymbol: string;
@@ -28,16 +26,17 @@ interface TradingPanelProps {
 export function TradingPanel({
   tokenSymbol,
   tokenMint,
-  tokenPriceUsd,
   initialInputAmount = '0.5',
   initialSlippage = 0.5,
   initialSide = 'buy',
 }: TradingPanelProps) {
   const { primaryWallet, address } = usePrimaryWallet();
   const { selectedAdapter } = useWalletState();
-  const { recordTradeExecution } = useWalletActions();
   const { openModal: openWalletModal } = useConnectWallet();
-  const { addNotification, addExecutionLog } = useNotificationsActions();
+  const { addExecutionLog } = useNotificationsActions();
+  const execution = useSwapExecution(address || primaryWallet?.address || null, tokenMint, selectedAdapter);
+  const [reviewQuote, setReviewQuote] = useState<Quote | null>(null);
+  const [reviewSlippage, setReviewSlippage] = useState(initialSlippage);
 
   const [side, setSide] = useState<'buy' | 'sell'>(initialSide);
   const [inputAmount, setInputAmount] = useState(initialInputAmount);
@@ -47,8 +46,6 @@ export function TradingPanel({
   const sidebar = useTradeSidebar(tokenMint, address || primaryWallet?.address || null);
   const position = summarizePosition(sidebar.position);
   const walletBalanceSol = sidebar.position?.balanceSol ?? null;
-  const [orderMode, setOrderMode] = useState<'market' | 'simple' | 'advanced'>('market');
-  const [showStrategy, setShowStrategy] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activePreset, setActivePreset] = useState(0);
   const [presets, setPresets] = useState(TRADE_PRESETS);
@@ -79,23 +76,9 @@ export function TradingPanel({
 
   const [showAdvancedRoute, setShowAdvancedRoute] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [transactionState, setTransactionState] = useState<TransactionExecutionState>('idle');
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [isSimulationLoading, setIsSimulationLoading] = useState(false);
-  const [simulationErrors, setSimulationErrors] = useState<string[]>([]);
-  const [simulationWarnings, setSimulationWarnings] = useState<string[]>([]);
-  const [simulationTxHash, setSimulationTxHash] = useState<string | null>(null);
-  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
-
   const effectiveSlippage = isCustomSlippage ? Number(customSlippage) : slippage;
-  const validSlippage = Number.isFinite(effectiveSlippage) && effectiveSlippage > 0 && effectiveSlippage <= 50;
+  const validSlippage = Number.isFinite(effectiveSlippage) && effectiveSlippage > 0 && effectiveSlippage <= 15;
   const isHighSlippage = effectiveSlippage > 3.0;
-
-  const toBase64 = (bytes: Uint8Array): string => {
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return btoa(binary);
-  };
 
   useEffect(() => {
     setInputAmount(initialInputAmount);
@@ -167,168 +150,15 @@ export function TradingPanel({
     setInputAmount(portion);
   };
 
-  const formatPreviewError = (technical: string): string => {
-    if (technical.toLowerCase().includes('on-chain swap execution is not configured')) {
-      return 'Live swap execution is not configured for this environment. No wallet transaction was signed or broadcast.';
-    }
-    if (technical.toLowerCase().includes('price impact') || technical.toLowerCase().includes('slippage')) {
-      return 'The trade could not be simulated because the expected price moved beyond your selected slippage. Review the quote and try again.';
-    }
-    if (technical.toLowerCase().includes('expired')) {
-      return 'The quote expired before the trade could be simulated. Refresh the quote and confirm again.';
-    }
-    if (technical.toLowerCase().includes('insufficient')) {
-      return 'Your wallet does not hold enough balance to execute this order. Adjust the amount or switch wallets.';
-    }
-    if (technical.toLowerCase().includes('route failure')) {
-      return 'Unable to construct a valid route for this swap. Try a smaller size or different market.';
-    }
-    return 'The trade could not be simulated. Review the quote and try again.';
-  };
-
-  const handleOpenPreview = async () => {
-    if (!primaryWallet) {
-      openWalletModal();
-      return;
-    }
-    if (!quote) return;
-
-    const stableKey = `${quote.id}:${address || primaryWallet.address}`;
-    setIdempotencyKey(stableKey);
-    setSimulationErrors([]);
-    setSimulationWarnings([]);
-    setSimulationTxHash(null);
-    setExecutionError(null);
-    setTransactionState('idle');
-    setIsSimulationLoading(false);
+  const handleOpenPreview = () => {
+    if (!primaryWallet) { openWalletModal(); return; }
+    if (!quote || execution.pending || execution.busy) return;
+    setReviewQuote(quote);
+    setReviewSlippage(effectiveSlippage);
     setIsPreviewOpen(true);
-    addExecutionLog({ text: `[TRADE] Quote ready. Transaction will be prepared after confirmation.`, level: 'info' });
+    addExecutionLog({ text: '[TRADE] Review Solana mainnet swap before wallet approval.', level: 'info' });
   };
-
-  const handleConfirmTrade = async () => {
-    if (!quote || !selectedAdapter || !selectedAdapter.signTransaction) return;
-    const walletAddress = address || primaryWallet?.address;
-    if (!walletAddress) {
-      addNotification({
-        title: 'Execution Failed',
-        message: 'No connected wallet found for transaction signing.',
-        type: 'system',
-      });
-      setTransactionState('failed');
-      setExecutionError('No connected wallet found for transaction signing.');
-      return;
-    }
-
-    setExecutionError(null);
-    setTransactionState('preparing');
-
-    addExecutionLog({
-      text: `[TERMINAL-EXEC] Requesting wallet signature for ${side.toUpperCase()} order...`,
-      level: 'info',
-    });
-
-    try {
-      const prepareResponse = await fetch('/api/v1/trading/prepare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          quoteId: quote.id,
-          inputToken: quote.inputMint,
-          outputToken: quote.outputMint,
-          amount: quote.inputAmount,
-          slippage: effectiveSlippage,
-          walletAddress,
-          quoteResponse: quote.providerQuote,
-        }),
-      });
-      const preparedBody = await prepareResponse.json().catch(() => null);
-      if (!prepareResponse.ok || !preparedBody?.data?.preparedTransaction) {
-        throw new Error(preparedBody?.error?.message || `Transaction preparation failed (${prepareResponse.status})`);
-      }
-      const prepared = preparedBody.data.preparedTransaction;
-      const transaction = VersionedTransaction.deserialize(Uint8Array.from(atob(prepared.unsignedTxBase64), (char) => char.charCodeAt(0)));
-      setTransactionState('awaitingWallet');
-      const signedTransaction = await selectedAdapter.signTransaction(transaction);
-      setTransactionState('signing');
-      setTransactionState('submitting');
-      const submitResponse = await fetch('/api/v1/trading/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          preparedId: prepared.id,
-          signedTransaction: toBase64(signedTransaction.serialize()),
-          idempotencyKey: idempotencyKey ?? `${quote.id}:${walletAddress}`,
-        }),
-      });
-      const submitBody = await submitResponse.json().catch(() => null);
-      if (!submitResponse.ok || submitBody?.data?.status !== 'confirmed') {
-        throw new Error(submitBody?.error?.message || `Transaction submission failed (${submitResponse.status})`);
-      }
-      setTransactionState('confirming');
-
-      if (submitBody.data.status === 'confirmed') {
-        setTransactionState('confirmed');
-        setIsPreviewOpen(false);
-
-        const solAmount = side === 'buy' ? Number(inputAmount) : Number(quote.outputAmount);
-        const tokenAmount = side === 'buy' ? Number(quote.outputAmount) : Number(inputAmount);
-        const numPriceUsd =
-          parseFloat(tokenPriceUsd) ||
-          Number(quote.estimatedPriceUsd) ||
-          (side === 'buy' && tokenAmount > 0 ? (solAmount * 170) / tokenAmount : 0.042);
-
-        recordTradeExecution({
-          side,
-          tokenSymbol,
-          tokenMint,
-          tokenName: tokenSymbol,
-          amountSol: solAmount,
-          tokenAmount,
-          priceUsd: numPriceUsd,
-          txHash: submitBody.data.txSignature,
-        });
-
-        addNotification({
-          title: `Order Submitted`,
-          message: `Your ${side.toUpperCase()} order was confirmed as ${submitBody.data.txSignature}.`,
-          type: 'execution',
-        });
-      }
-
-      addExecutionLog({
-        text: `[TERMINAL-EXEC] CONFIRMED: Swap Tx ${submitBody.data.txSignature} via ${quote.provider}`,
-        level: 'success',
-      });
-    } catch (err: any) {
-      const technical = err.message || 'Wallet signing or submission error';
-      const friendly = technical.toLowerCase().includes('reject')
-        ? 'The wallet signature was rejected. Approve the transaction in your wallet to continue.'
-        : technical.toLowerCase().includes('expire')
-        ? 'The quote expired before submission. Refresh and confirm again.'
-        : 'The trade could not be submitted. Confirm the quote and try again.';
-
-      const nextState = technical.toLowerCase().includes('reject')
-        ? 'rejected'
-        : technical.toLowerCase().includes('expire')
-        ? 'expired'
-        : 'failed';
-
-      setTransactionState(nextState);
-      setExecutionError(friendly);
-
-      addNotification({
-        title: 'Execution Failed',
-        message: friendly,
-        type: 'system',
-      });
-      addExecutionLog({
-        text: `[TERMINAL-EXEC] FAILED: ${technical}`,
-        level: 'error',
-      });
-    }
-  };
+  const handleConfirmTrade = () => { if (reviewQuote) void execution.execute(reviewQuote, reviewSlippage); };
 
   const editPreset = () => {
     setPresetDraft(presets[activePreset].amounts.join(', '));
@@ -362,8 +192,9 @@ export function TradingPanel({
       <div className="flex items-center justify-between gap-1 border-b border-sentinel-800">
         <div className="flex items-center gap-3" aria-label="Order type">
           {([{mode: 'market', label: 'Market'}, {mode: 'simple', label: 'Limit'}, {mode: 'advanced', label: 'Adv.'}] as const).map(item =>
-            <button type="button" key={item.mode} aria-pressed={orderMode === item.mode} onClick={() => setOrderMode(item.mode)}
-              className={`min-h-9 border-b text-[11px] font-semibold ${orderMode === item.mode ? 'border-sky-400 text-slate-100' : 'border-transparent text-slate-500 hover:text-slate-200'}`}>{item.label}</button>)}
+            <button type="button" key={item.mode} aria-pressed={item.mode === 'market'} disabled={item.mode !== 'market'}
+              title={item.mode !== 'market' ? 'Automated orders require a separate wallet-authorized execution path.' : undefined}
+              className={`min-h-9 border-b text-[11px] font-semibold ${item.mode === 'market' ? 'border-sky-400 text-slate-100' : 'border-transparent text-slate-500 opacity-50'}`}>{item.label}</button>)}
         </div>
         <button type="button" onClick={openWalletModal} className="flex min-w-0 items-center gap-1 text-[11px] text-slate-400" aria-label={primaryWallet ? 'Manage trading wallet' : 'Connect trading wallet'}
           title={address || primaryWallet?.address || 'No wallet connected'}><Wallet className="h-3 w-3 shrink-0" /><span className="truncate">{primaryWallet ? walletBalanceSol === null ? 'Balance —' : `${walletBalanceSol.toFixed(3)} SOL` : 'Connect'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
@@ -408,23 +239,24 @@ export function TradingPanel({
         {isCustomSlippage && <Input aria-label="Custom slippage percent" type="number" min="0.01" max="50" step="0.1" value={customSlippage} onChange={e => setCustomSlippage(e.target.value)} placeholder="Slippage %" />}
         <p className="text-[11px] text-slate-500">Priority fees are provider-managed. Custom tips and MEV controls are not connected.</p>
       </div>}
-      {!validSlippage && <p role="alert" className="mt-1 text-[11px] text-amber-400">Enter slippage greater than 0 and at most 50%.</p>}
+      {!validSlippage && <p role="alert" className="mt-1 text-[11px] text-amber-400">Enter slippage greater than 0 and at most 15%.</p>}
       {isHighSlippage && <p role="status" className="mt-1 text-[11px] text-amber-400">High slippage increases execution risk.</p>}
-      <label className="mt-3 flex min-h-7 cursor-pointer items-center gap-2 text-[11px] text-slate-300">
-        <input type="checkbox" checked={showStrategy} onChange={e => setShowStrategy(e.target.checked)} className="accent-sky-500" />
-        Advanced Trading Strategy
-      </label>
-      {showStrategy && <div className="mb-2 space-y-1">
-        <button type="button" onClick={() => setOrderMode('advanced')} className="flex min-h-8 w-full items-center justify-between rounded border border-sentinel-800 px-2 text-[11px] text-sky-400">Add strategy<Plus className="h-3 w-3" /></button>
-        <p className="text-[11px] text-slate-500">Opens a separate conditional order; not attached to this market trade.</p>
-      </div>}
+      <p className="mt-3 text-[11px] text-slate-500">Limit and advanced orders are unavailable until a wallet-authorized trigger path is configured.</p>
       <div className="my-2 break-words text-[11px] text-slate-400" aria-live="polite">
         {isQuoteLoading ? 'Fetching quote…' : quote ? `Est. receive ${new Decimal(quote.outputAmount).formatToken(4)} ${side === 'buy' ? tokenSymbol : 'SOL'}` : 'Est. receive —'}
       </div>
+      <p className="mb-2 text-[11px] text-amber-300">Solana mainnet · real funds · wallet approval required</p>
+      <button type="button" disabled={isQuoteLoading || execution.busy || execution.pending} className="mb-2 min-h-8 text-[11px] text-sky-300 disabled:opacity-50"
+        onClick={() => { const requestId = ++quoteRequest.current; void updateQuote(requestId, new AbortController().signal); }}>Refresh quote</button>
+      {(execution.error || execution.receipt || execution.pending) && <div role="status" className="mb-2 space-y-1 break-words text-[11px] text-slate-300">
+        <p>{execution.state === 'confirmed' ? 'Swap confirmed on-chain.' : execution.error || 'Transaction submitted; awaiting confirmation.'}</p>
+        {execution.receipt?.txSignature && <a className="text-sky-300 underline" href={`https://solscan.io/tx/${execution.receipt.txSignature}`} target="_blank" rel="noreferrer">View transaction</a>}
+        {execution.pending && <button type="button" className="block min-h-8 text-sky-300" onClick={() => void execution.checkStatus()}>Check existing transaction</button>}
+      </div>}
       {quoteError && <p role="alert" className="mb-2 break-words text-[11px] text-amber-400">{quoteError}</p>}
       {!primaryWallet ? <Button variant="buy" className="min-h-10 w-full" onClick={openWalletModal}>Connect Wallet to Trade</Button> :
         <Button variant={side === 'buy' ? 'buy' : 'sell'} className="min-h-10 w-full truncate" title={tokenSymbol} onClick={handleOpenPreview}
-          disabled={!quote || isQuoteLoading || !validSlippage || quote.isValid === false}>
+          disabled={!quote || isQuoteLoading || !validSlippage || quote.isValid === false || execution.pending || execution.busy}>
           Preview {side === 'buy' ? 'Buy' : 'Sell'} {tokenSymbol}
         </Button>}
       {quote && <div className="mt-2 text-[11px]">
@@ -434,7 +266,7 @@ export function TradingPanel({
         {showAdvancedRoute && <dl className="mt-1 grid grid-cols-2 gap-1 text-slate-400">
           <dt>Provider</dt><dd className="text-right">{quote.provider}</dd>
           <dt>Minimum received</dt><dd className="text-right">{new Decimal(quote.minimumReceived).formatToken(4)}</dd>
-          <dt>Price impact</dt><dd className="text-right">{quote.priceImpact}%</dd>
+          <dt>Price impact</dt><dd className="text-right">{quote.priceImpactMeasured === false ? 'Unavailable' : `${quote.priceImpact}%`}</dd>
         </dl>}
       </div>}
       <button type="button" onClick={() => { setCallout(`${tokenSymbol} on Sentinel\n${window.location.origin}/trade/solana/${tokenMint}`); setCopyStatus(''); setCalloutOpen(true); }}
@@ -455,10 +287,6 @@ export function TradingPanel({
         <button type="button" onClick={editPreset} aria-label="Configure selected preset" className="p-1 text-sky-400"><Settings2 className="h-3.5 w-3.5" /></button>
       </div>
       <TradeSidebarInfo data={sidebar.data} loading={sidebar.loading} error={sidebar.error} refresh={sidebar.refresh} />
-      {orderMode !== 'market' && <LimitOrderBuilder initialMode={orderMode} initialSide={side}
-        currentPrice={Number(sidebar.data.priceUsd ?? tokenPriceUsd)} walletBalanceSol={walletBalanceSol ?? 0}
-        walletAddress={address || primaryWallet?.address || null} tokenMint={tokenMint} tokenSymbol={tokenSymbol}
-        onClose={() => setOrderMode('market')} onOrderCreated={() => { setOrderMode('market'); sidebar.refresh(); }} />}
       <Modal isOpen={editingPreset} onClose={() => setEditingPreset(false)} title={`Configure preset ${activePreset + 1}`} size="sm">
         <label className="block space-y-2 text-xs text-slate-300">Four buy amounts (SOL)
           <Input value={presetDraft} onChange={e => setPresetDraft(e.target.value)} placeholder="0.01, 0.1, 1, 10" />
@@ -474,29 +302,24 @@ export function TradingPanel({
         <p role="status" className="mt-2 text-xs text-slate-400">{copyStatus}</p>
       </Modal>
 
-      {/* Transaction Preview Modal */}
-      <TransactionPreviewModal
-        isOpen={isPreviewOpen}
-        onClose={() => {
-          setIsPreviewOpen(false);
-          setTransactionState('idle');
-          setExecutionError(null);
-        }}
-        quote={quote}
+      {/* Frozen review: changing sidebar inputs cannot change an in-progress approval. */}
+      {isPreviewOpen && <TransactionPreviewModal
+        key={reviewQuote?.id}
+        isOpen={true}
+        onClose={() => { if (!['preparing', 'awaitingWallet', 'signing', 'submitting'].includes(execution.state)) setIsPreviewOpen(false); }}
+        quote={reviewQuote}
         side={side}
         onConfirmExecute={handleConfirmTrade}
-        executionState={transactionState}
-        executionError={executionError}
-        isExecuting={
-          transactionState === 'awaitingWallet' ||
-          transactionState === 'signing' ||
-          transactionState === 'submitting' ||
-          transactionState === 'confirming'
-        }
-        simulationErrors={simulationErrors}
-        simulationWarnings={simulationWarnings}
-        isSimulationLoading={isSimulationLoading}
-      />
+        executionState={execution.state}
+        executionError={execution.error}
+        isExecuting={['preparing', 'awaitingWallet', 'signing', 'submitting'].includes(execution.state)}
+        mainnetSwap
+        feeLamports={execution.feeLamports}
+        txSignature={execution.receipt?.txSignature}
+        pending={execution.pending}
+        onCheckStatus={() => void execution.checkStatus()}
+      />}
+
     </section>
   );
 }

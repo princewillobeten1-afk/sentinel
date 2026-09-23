@@ -283,7 +283,7 @@ describe('curve progress is reversible — regression', () => {
 
     applyCurveReading(MINT, curveAt(0.31));
     expect(getLifecycle(MINT)?.state).toBe('NEW_PAIR');
-    expect(finalStretch()).toHaveLength(1);
+    expect(finalStretch()).toHaveLength(0);
   });
 
   it('still refuses to walk a migrated token back to the curve', () => {
@@ -313,30 +313,7 @@ describe('curve progress is reversible — regression', () => {
 describe('column semantics — underway, and recently migrated', () => {
   beforeEach(() => __resetLifecycle());
 
-  it('keeps the newest bonding-curve launches in the rolling Final Stretch window', () => {
-    recordPairCreated(MINT, 'pump.fun', Date.now() - 60_000);
-    recordPairCreated(OTHER, 'pump.fun', Date.now());
-    applyCurveReading(MINT, curveAt(0.02));
-    applyCurveReading(OTHER, curveAt(0.35));
-
-    const rows = finalStretch();
-    expect(rows.map((r) => r.mint)).toEqual([OTHER, MINT]);
-  });
-
-  it('caps Final Stretch at the 20 newest bonding-curve launches', () => {
-    for (let index = 0; index < 21; index += 1) {
-      const mint = `Mint${String(index).padStart(2, '0')}111111111111111111111111111111111111111`;
-      recordPairCreated(mint, 'pump.fun', Date.now() - (20 - index) * 1_000);
-      applyCurveReading(mint, curveAt(0.1 + index / 100));
-    }
-
-    const rows = finalStretch();
-    expect(rows).toHaveLength(20);
-    expect(rows[0].mint).toContain('Mint20');
-    expect(rows.some((row) => row.mint.includes('Mint00'))).toBe(false);
-  });
-
-  it('does not use bonding progress as the Final Stretch order', () => {
+  it('orders Final Stretch by proximity to migration (highest progress first)', () => {
     const a = 'AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA';
     const b = 'BbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbB';
     recordPairCreated(a, 'pump.fun', Date.now() - 60_000);
@@ -344,7 +321,25 @@ describe('column semantics — underway, and recently migrated', () => {
     applyCurveReading(a, curveAt(0.99));
     applyCurveReading(b, curveAt(0.88));
 
-    expect(finalStretch().map((r) => r.mint)).toEqual([b, a]);
+    expect(finalStretch().map((r) => r.mint)).toEqual([a, b]);
+  });
+
+  it('does not admit tokens below the threshold to Final Stretch', () => {
+    recordPairCreated(MINT, 'pump.fun', Date.now() - 60_000);
+    recordPairCreated(OTHER, 'pump.fun', Date.now());
+    applyCurveReading(MINT, curveAt(0.02));
+    applyCurveReading(OTHER, curveAt(0.35));
+
+    expect(finalStretch()).toHaveLength(0);
+  });
+
+  it('orders closest-to-migrating by progress, nearest first', () => {
+    const a = 'AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA';
+    const b = 'BbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbB';
+    applyCurveReading(a, curveAt(0.42));
+    applyCurveReading(b, curveAt(0.88));
+
+    expect(closestToMigrating(0.1).map((r) => r.mint)).toEqual([b, a]);
   });
 
   it('drops migrations older than the window', () => {

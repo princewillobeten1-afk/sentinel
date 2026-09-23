@@ -43,8 +43,8 @@ describe('real Discover endpoint column selection', () => {
     applyCurveReading('stale', curve(0.96, now - 121_000));
     applyCurveReading('complete-unconfirmed', { ...curve(1), complete: true });
     const rows = await getLiveDiscoveryTokens({ section: 'migrating' });
-    expect(rows.map((row) => row.mint)).toEqual(['low-21-percent', 'threshold', 'near']);
-    expect(rows.map((row) => row.bondingCurveProgress)).toEqual([21.9, 80, 97]);
+    expect(rows.map((row) => row.mint)).toEqual(['near', 'threshold']);
+    expect(rows.map((row) => row.bondingCurveProgress)).toEqual([97, 80]);
     expect(rows.every((row) => row.lifecycleEvidence?.source === 'solana-bonding-curve')).toBe(true);
     expect(fetchJupiterFeed).not.toHaveBeenCalled();
   });

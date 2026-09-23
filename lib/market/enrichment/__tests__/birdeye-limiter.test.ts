@@ -69,4 +69,27 @@ describe('birdeye limiter', () => {
     expect(stats.background).toBe(2);
     expect(stats.minIntervalMs).toBe(BIRDEYE_MIN_INTERVAL_MS);
   });
+
+  it('removes cancelled chart work without consuming another provider slot', async () => {
+    await acquireBirdeyeSlot('audit');
+    const controller = new AbortController();
+    const rejected = expect(acquireBirdeyeSlot('chart', controller.signal)).rejects.toThrow('aborted');
+    expect(birdeyeLimiterStats().chart).toBe(1);
+    controller.abort(); await rejected;
+    expect(birdeyeLimiterStats().queued).toBe(0);
+    const served: string[] = [];
+    void acquireBirdeyeSlot('background').then(() => served.push('background'));
+    await vi.advanceTimersByTimeAsync(BIRDEYE_MIN_INTERVAL_MS);
+    expect(served).toEqual(['background']);
+  });
+
+  it('serves waiting charts alongside audits before background top-ups', async () => {
+    await acquireBirdeyeSlot('audit');
+    const served: string[] = [];
+    void acquireBirdeyeSlot('background').then(() => served.push('background'));
+    void acquireBirdeyeSlot('chart').then(() => served.push('chart'));
+    void acquireBirdeyeSlot('audit').then(() => served.push('audit'));
+    await vi.advanceTimersByTimeAsync(BIRDEYE_MIN_INTERVAL_MS * 3);
+    expect(served).toEqual(['chart', 'audit', 'background']);
+  });
 });

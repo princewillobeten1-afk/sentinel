@@ -24,9 +24,13 @@
  * uses BigInt, never floating point, for the integer side.
  */
 
-const JUPITER_QUOTE_URL = 'https://lite-api.jup.ag/swap/v1/quote';
-const JUPITER_SWAP_URL = 'https://lite-api.jup.ag/swap/v1/swap';
-const TOKEN_LOOKUP_URL = 'https://lite-api.jup.ag/tokens/v2/search';
+import 'server-only';
+const JUPITER_ORIGIN = process.env.JUPITER_API_KEY ? 'https://api.jup.ag' : 'https://lite-api.jup.ag';
+const JUPITER_QUOTE_URL = `${JUPITER_ORIGIN}/swap/v1/quote`;
+const JUPITER_SWAP_URL = `${JUPITER_ORIGIN}/swap/v1/swap`;
+const TOKEN_LOOKUP_URL = `${JUPITER_ORIGIN}/tokens/v2/search`;
+const providerHeaders = (): Record<string, string> => ({ accept: 'application/json',
+  ...(process.env.JUPITER_API_KEY ? { 'x-api-key': process.env.JUPITER_API_KEY } : {}) });
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -101,7 +105,7 @@ export function toSwapQuote(
   const inputAmount = fromAtomic(raw.inAmount, inputDecimals);
   const outputAmount = fromAtomic(raw.outAmount, outputDecimals);
 
-  const impact = Number(raw.priceImpactPct);
+  const impact = raw.priceImpactPct == null || raw.priceImpactPct === '' ? NaN : Number(raw.priceImpactPct);
   const inNum = Number(inputAmount);
   const outNum = Number(outputAmount);
 
@@ -128,7 +132,7 @@ async function getJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+    const res = await fetch(url, { signal: controller.signal, headers: providerHeaders(), cache: 'no-store' });
     if (!res.ok) throw new Error(`Jupiter responded ${res.status}`);
     return await res.json();
   } finally {
@@ -142,13 +146,15 @@ export async function getSwapTransaction(params: {
 }): Promise<{ swapTransaction: string; lastValidBlockHeight: number; prioritizationFeeLamports?: number }> {
   const response = await fetch(JUPITER_SWAP_URL, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: { ...providerHeaders(), 'content-type': 'application/json' },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    cache: 'no-store',
     body: JSON.stringify({
       quoteResponse: params.quoteResponse,
       userPublicKey: params.userPublicKey,
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: 'auto',
+      prioritizationFeeLamports: { priorityLevelWithMaxLamports: { priorityLevel: 'medium', maxLamports: 50000, global: false } },
     }),
   });
   const body = await response.json().catch(() => null) as {
@@ -157,8 +163,8 @@ export async function getSwapTransaction(params: {
     prioritizationFeeLamports?: number;
     error?: string;
   } | null;
-  if (!response.ok || !body?.swapTransaction || !Number.isFinite(body.lastValidBlockHeight)) {
-    throw new Error(body?.error || `Jupiter swap preparation failed (${response.status})`);
+  if (!response.ok || !body?.swapTransaction || !Number.isSafeInteger(body.lastValidBlockHeight) || (body.lastValidBlockHeight as number) <= 0) {
+    throw new Error(`Jupiter swap preparation failed (${response.status})`);
   }
   return {
     swapTransaction: body.swapTransaction,
@@ -186,12 +192,12 @@ export async function getMintDecimals(mint: string): Promise<number> {
     | { tokens?: Array<{ id?: string; decimals?: number }> };
 
   const list = Array.isArray(body) ? body : (body?.tokens ?? []);
-  const match = list.find((t) => t.id === mint) ?? list[0];
-  if (!match || typeof match.decimals !== 'number') {
+  const match = list.find((t) => t.id === mint);
+  if (!match || !Number.isInteger(match.decimals) || (match.decimals as number) < 0 || (match.decimals as number) > 18) {
     throw new Error(`Could not resolve decimals for mint ${mint}`);
   }
-  decimalsCache.set(mint, match.decimals);
-  return match.decimals;
+  decimalsCache.set(mint, match.decimals as number);
+  return match.decimals as number;
 }
 
 /**
@@ -226,7 +232,10 @@ export async function getSwapQuote(params: {
     `&amount=${atomic.toString()}&slippageBps=${slippageBps}`;
 
   const raw = (await getJson(url)) as JupiterQuoteResponse;
-  if (!raw?.outAmount) throw new Error('Jupiter returned no route for this pair');
+  if (!raw?.outAmount || raw.inputMint !== inputMint || raw.outputMint !== outputMint || raw.inAmount !== atomic.toString()
+    || raw.swapMode !== 'ExactIn' || raw.slippageBps !== slippageBps || !/^[1-9]\d*$/.test(raw.outAmount)
+    || !/^[1-9]\d*$/.test(raw.otherAmountThreshold) || BigInt(raw.otherAmountThreshold) > BigInt(raw.outAmount))
+    throw new Error('Jupiter returned no valid matching route for this pair');
 
   return toSwapQuote(raw, inputDecimals, outputDecimals);
 }

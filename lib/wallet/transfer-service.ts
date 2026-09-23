@@ -190,6 +190,9 @@ export class TransferService {
    * Executes a cryptocurrency withdrawal from the user's wallet.
    */
   public async executeWithdrawal(userId: string, req: WithdrawalRequest): Promise<WithdrawalResult> {
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error('Withdrawal requires a wallet-signed transaction; simulated signatures are disabled.');
+    }
     // 1. Check emergency kill switch
     const emergencyState = adminEmergencyEngine.getState();
     if (emergencyState.killSwitches.pauseWithdrawals || emergencyState.mode === 'FULL_EMERGENCY') {
@@ -326,6 +329,9 @@ export class TransferService {
    * Simulates an inbound deposit for devnet, test, and interactive user flows.
    */
   public async simulateDeposit(userId: string, req: DepositSimulationRequest): Promise<WalletTransactionItem> {
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error('Simulated deposits are disabled outside tests.');
+    }
     if (req.amount <= 0) {
       throw new Error('Deposit amount must be greater than zero.');
     }

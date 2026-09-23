@@ -25,7 +25,8 @@ describe('Wallet Deposit & Withdraw API Routes', () => {
     expect(json.data.minimumDeposit).toBe(0.01);
   });
 
-  it('POST /api/v1/wallets/deposit credits funds and creates a deposit transaction', async () => {
+  it('POST /api/v1/wallets/deposit cannot credit funds without authentication or an on-chain transfer', async () => {
+    const originalBalance = transferService.getBalance('user_001', walletAddress, 'SOL');
     const req = new Request('http://localhost/api/v1/wallets/deposit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -39,15 +40,11 @@ describe('Wallet Deposit & Withdraw API Routes', () => {
     });
 
     const res = await postDeposit(req);
-    expect(res.status).toBe(200);
-
-    const json = await res.json();
-    expect(json.data.direction).toBe('DEPOSIT');
-    expect(json.data.amount).toBe(10.0);
-    expect(json.data.status).toBe('CONFIRMED');
+    expect(res.status).toBe(401);
+    expect(transferService.getBalance('user_001', walletAddress, 'SOL')).toBe(originalBalance);
   });
 
-  it('POST /api/v1/wallets/withdraw executes withdrawal successfully', async () => {
+  it('POST /api/v1/wallets/withdraw cannot fabricate a confirmed transfer', async () => {
     transferService.setBalance('user_001', walletAddress, 'SOL', 20.0);
 
     const req = new Request('http://localhost/api/v1/wallets/withdraw', {
@@ -65,13 +62,8 @@ describe('Wallet Deposit & Withdraw API Routes', () => {
     });
 
     const res = await postWithdraw(req);
-    expect(res.status).toBe(200);
-
-    const json = await res.json();
-    expect(json.data.success).toBe(true);
-    expect(json.data.grossAmount).toBe(3.5);
-    expect(json.data.fee).toBe(0.00015);
-    expect(json.data.signature).toBeDefined();
+    expect(res.status).toBe(401);
+    expect(transferService.getBalance('user_001', walletAddress, 'SOL')).toBe(20);
   });
 
   it('GET /api/v1/wallets/transactions retrieves the transaction history', async () => {

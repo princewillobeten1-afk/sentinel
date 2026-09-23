@@ -83,6 +83,7 @@ export class ProtectionService {
     executionRecord?: ProtectionExecutionRecord;
     protection?: PositionProtection;
   } {
+    if (process.env.NODE_ENV !== 'test') throw new Error('Automated protection requires a wallet-signed on-chain transaction.');
     const protection = protectionStore.get(positionId);
     if (!protection || !protection.isActive) {
       return { evaluated: false };
@@ -196,6 +197,7 @@ export class ProtectionService {
     executionRecord?: ProtectionExecutionRecord;
     error?: string;
   } {
+    if (process.env.NODE_ENV !== 'test') throw new Error('Emergency exits require a wallet-signed on-chain transaction.');
     const protection = protectionStore.get(positionId);
     if (!protection || protection.positionTokens <= 0) {
       return { success: false, error: 'Position not found or zero balance' };

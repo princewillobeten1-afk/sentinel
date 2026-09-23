@@ -1,149 +1,33 @@
 import { z } from 'zod';
+import { PublicKey } from '@solana/web3.js';
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { parseJsonBody, validateSchema } from '@/lib/server/validation';
-import { getSwapQuote, getSwapTransaction, SOL_MINT } from '@/lib/trading/jupiter-quote';
-import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
-import { PreTradeRiskEngine } from '@/lib/order/risk';
-import { killSwitch } from '@/lib/server/kill-switch';
-import { recordPriceImpactSample } from '@/lib/server/circuit-breaker';
-import { recordAuditEvent } from '@/lib/server/audit';
+import { ApiError } from '@/lib/server/errors';
+import { prepareSolanaSwap } from '@/lib/trading/solana-swap-service';
+import { checkRateLimit } from '@/lib/server/rate-limit';
 
 export const dynamic = 'force-dynamic';
-
-const riskEngine = new PreTradeRiskEngine();
-
-const prepareSchema = z.object({
-  quoteId: z.string().min(1, 'Quote ID is required'),
-  // Mints, not symbols. Symbols collide constantly on Solana, and the router
-  // this replaced ignored them anyway — it applied one hardcoded rate to every
-  // pair it was handed.
-  inputToken: z.string().min(32, 'inputToken must be a mint address'),
-  outputToken: z.string().min(32, 'outputToken must be a mint address'),
-  amount: z.string().min(1),
-  slippage: z.number().min(0.01).max(15.0),
-  walletAddress: z.string().min(20, 'Valid wallet address is required'),
-  quoteResponse: z.record(z.string(), z.unknown()).optional(),
+const address = z.string().refine(value => { try { return new PublicKey(value).toBase58() === value; } catch { return false; } }, 'Invalid Solana address');
+const schema = z.object({
+  quoteId: z.string().min(1).max(200), inputToken: address, outputToken: address,
+  amount: z.string().max(50).regex(/^\d+(\.\d+)?$/), slippage: z.number().min(0.01).max(15),
+  walletAddress: address, minimumOutputRaw: z.string().max(30).regex(/^[1-9]\d*$/),
+  idempotencyKey: z.string().min(8).max(200),
 });
-
-/**
- * Requires `TRADE` — never grantable by default (spec §8, §95) — plus
- * `allowSessionAuth: true` so the web app's own trading panel keeps working
- * on session auth exactly as before. `idempotent: true` so a client retrying
- * after a timeout doesn't prepare two transactions for the same intent
- * (spec §67-68). Underlying execution is still simulated
- * (`lib/quote/router.ts`) — this only makes the gateway around it real.
- *
- * Sprint 30 — Tier 4 adds the same checks as `execution/submit`: kill
- * switch, circuit breaker, slippage enforcement, and the pre-trade risk
- * engine, all before a transaction is prepared.
- */
-export const POST = withApiGateway(
-  async (ctx, request) => {
+export const POST = withApiGateway(async (ctx, request) => {
   try {
-    const user = ctx.user;
-    const payload = await parseJsonBody(request);
-    const data = validateSchema(prepareSchema, payload);
-
-    if (killSwitch.isPaused('TRADING')) {
-      throw new ApiError('Trading is currently paused platform-wide.', 503, 'TRADING_PAUSED');
-    }
-
-    // Re-verify parameters on backend
-    const swap = await getSwapQuote({
-      inputMint: data.inputToken,
-      outputMint: data.outputToken,
-      amount: data.amount,
-      slippageBps: Math.round(data.slippage * 100),
-    });
-
-    // The gateway checks below were always real; only the numbers they guarded
-    // were not. `priceImpact` now comes from the route Jupiter would actually
-    // take, and an unmeasured impact is treated as the cautious end rather than
-    // as zero.
-    const quote = {
-      priceImpact: swap.priceImpactPct ?? 100,
-      outputAmount: swap.outputAmount,
-      minimumReceived: swap.minimumReceived,
-      provider: swap.route.length ? `Jupiter (${swap.route.join(' → ')})` : 'Jupiter',
-    };
-
-    const pairKey = `${data.inputToken}/${data.outputToken}`;
-    const breaker = recordPriceImpactSample(pairKey, quote.priceImpact);
-    if (breaker.tripped) {
-      killSwitch.pause('TRADING', {
-        reason: `Circuit breaker: ${breaker.recentExtremeCount} extreme-impact quotes for ${pairKey} within 60s.`,
-        triggeredBy: 'system',
-        source: 'CIRCUIT_BREAKER',
-      });
-      recordAuditEvent({
-        userId: user.userId,
-        action: 'CIRCUIT_BREAKER_TRIGGERED',
-        entityType: 'kill_switch',
-        entityId: 'TRADING',
-        changes: { pairKey, recentExtremeCount: breaker.recentExtremeCount },
-      });
-      throw new ApiError('Trading paused: repeated extreme price impact detected for this pair.', 503, 'CIRCUIT_BREAKER_TRIPPED');
-    }
-
-    if (quote.priceImpact > data.slippage) {
-      throw new ApiError(
-        `Quote's price impact (${quote.priceImpact}%) exceeds your slippage limit (${data.slippage}%). Request a new quote.`,
-        400,
-        'SLIPPAGE_LIMIT_EXCEEDED',
-      );
-    }
-
-    const side = data.inputToken === SOL_MINT ? 'BUY' : 'SELL';
-
-    const riskResult = await riskEngine.evaluate({
-      walletAddress: data.walletAddress,
-      chain: 'solana',
-      tokenIn: data.inputToken,
-      tokenOut: data.outputToken,
-      amount: data.amount,
-      side,
-      quote,
-    });
-
-    if (riskResult.decision === 'BLOCK') {
-      recordAuditEvent({
-        userId: user.userId,
-        action: 'TRADE_BLOCKED_BY_RISK_ENGINE',
-        entityType: 'user',
-        entityId: user.userId,
-        changes: { reasoning: riskResult.reasoning, factors: riskResult.factors },
-      });
-      throw new ApiError('Trade blocked by pre-trade risk checks.', 403, 'TRADE_BLOCKED_BY_RISK', {
-        reasoning: riskResult.reasoning,
-        factors: riskResult.factors,
-      });
-    }
-
-    const prepared = await getSwapTransaction({
-      // The browser quote is display context only. Always prepare from the
-      // fresh server-side Jupiter quote so a stale client payload cannot be
-      // signed after the route or price has changed.
-      quoteResponse: swap.providerQuote,
-      userPublicKey: data.walletAddress,
-    });
-
-    return jsonResponse({
-      preparedTransaction: {
-        id: `prep_${Date.now()}`,
-        user: user.userId,
-        wallet: data.walletAddress,
-        quote,
-        unsignedTxBase64: prepared.swapTransaction,
-        lastValidBlockHeight: prepared.lastValidBlockHeight,
-        prioritizationFeeLamports: prepared.prioritizationFeeLamports,
-        expiresAt: new Date(Date.now() + 60000).toISOString(),
-      },
-      riskWarnings: riskResult.decision === 'WARN' ? riskResult.reasoning : [],
-    });
+    if (ctx.apiKey?.environment === 'sandbox') throw new ApiError('Sandbox keys cannot prepare mainnet swaps.', 403, 'SANDBOX_TRADING_DISABLED');
+    checkRateLimit(`swap-prepare:${ctx.user.userId}`, 10, 60_000);
+    const input = validateSchema(schema, await parseJsonBody(request));
+    const swap = await prepareSolanaSwap(ctx.user.userId, input);
+    return jsonResponse({ preparedTransaction: {
+      id: swap.id, wallet: swap.wallet, network: swap.network, status: swap.status,
+      unsignedTxBase64: swap.unsigned_tx, lastValidBlockHeight: swap.last_valid_block_height,
+      expiresAt: swap.expires_at, feeLamports: swap.fee_lamports,
+      quote: swap.quote, simulation: { success: true, source: 'solana-rpc' },
+    } });
   } catch (error) {
-    return errorResponse(error instanceof Error ? error : new ApiError('Failed to prepare transaction', 500));
+    return errorResponse(error instanceof ApiError ? error : new ApiError('Swap preparation is unavailable. Check the provider and trading database configuration.', 503, 'PREPARE_UNAVAILABLE'));
   }
-  },
-  { scopes: ['TRADE'], allowSessionAuth: true, idempotent: true },
-);
+}, { scopes: ['TRADE'], allowSessionAuth: true });

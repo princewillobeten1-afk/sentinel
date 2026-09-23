@@ -11,7 +11,8 @@ import { transferService } from '@/lib/wallet/transfer-service';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const walletAddress = searchParams.get('address') || '7xK99zK8mP2xQ5wN3a19';
+    const walletAddress = searchParams.get('address');
+    if (!walletAddress) throw new ApiError('A connected wallet address is required for deposit instructions.', 400, 'WALLET_ADDRESS_REQUIRED');
     const network = (searchParams.get('network') || 'solana') as any;
     const asset = searchParams.get('asset') || 'SOL';
 
@@ -25,46 +26,12 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/v1/wallets/deposit — simulates an inbound deposit in test/demo mode.
+ * POST /api/v1/wallets/deposit — unavailable until on-chain indexing records deposits.
  */
 export async function POST(request: Request) {
   try {
-    let userId = 'user_001';
-    try {
-      const authUser = await requireAuth(request);
-      userId = authUser.userId;
-    } catch {
-      // Demo fallback
-    }
-
-    const body = await request.json();
-    const {
-      walletId = 'w_001',
-      walletAddress,
-      asset = 'SOL',
-      amount,
-      network = 'solana',
-      sourceAddress,
-    } = body;
-
-    if (!walletAddress || typeof amount !== 'number') {
-      throw new ApiError(
-        'Missing required fields: walletAddress and amount are required.',
-        400,
-        'INVALID_DEPOSIT_REQUEST'
-      );
-    }
-
-    const txItem = await transferService.simulateDeposit(userId, {
-      walletId,
-      walletAddress,
-      asset,
-      amount,
-      network,
-      sourceAddress,
-    });
-
-    return jsonResponse(txItem, 200);
+    await requireAuth(request);
+    throw new ApiError('Deposits are recorded from confirmed on-chain transfers, not submitted through this endpoint.', 501, 'ONCHAIN_DEPOSIT_REQUIRED');
   } catch (error) {
     return errorResponse(
       error instanceof Error ? error : new ApiError('Deposit processing failed', 500)

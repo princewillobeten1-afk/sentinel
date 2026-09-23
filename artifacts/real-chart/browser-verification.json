@@ -1,0 +1,92 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "width": 1440,
+      "height": 900,
+      "overflow": false
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "overflow": false
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "overflow": false
+    }
+  ],
+  "requests": [
+    {
+      "tf": "15m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "15m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "15m",
+      "before": 1790085600,
+      "mode": "measured"
+    },
+    {
+      "tf": "15m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "1m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "1m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "5m",
+      "before": 0,
+      "mode": "empty"
+    },
+    {
+      "tf": "5m",
+      "before": 0,
+      "mode": "empty"
+    },
+    {
+      "tf": "5m",
+      "before": 0,
+      "mode": "error"
+    },
+    {
+      "tf": "5m",
+      "before": 0,
+      "mode": "measured"
+    },
+    {
+      "tf": "5m",
+      "before": 0,
+      "mode": "stale"
+    }
+  ],
+  "errors": [],
+  "blockedRequests": [
+    "/api/v1/market/live/focus",
+    "/api/v1/market/live/focus",
+    "/api/v1/market/live/focus",
+    "/api/v1/trading/quote",
+    "/api/v1/trading/quote"
+  ],
+  "fixtureWebsocket": true,
+  "liveProviderProof": "provider-smoke.json"
+}

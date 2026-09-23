@@ -275,6 +275,7 @@ export class ExecutionEngine {
   }
 
   async execute(quote: any, execReq?: any) {
+    if (process.env.NODE_ENV !== 'test') throw new Error('A reviewed, wallet-signed Solana transaction is required. Legacy simulated execution is disabled.');
     return {
       status: 'CONFIRMED',
       txHash: `0xTx_${Date.now()}`,

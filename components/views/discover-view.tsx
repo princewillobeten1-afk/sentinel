@@ -40,7 +40,7 @@ const STORAGE_QUERY_KEY = 'sentinel_discovery_query_v1';
  */
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
   { id: 'col_new', type: 'new', title: 'New Pairs', sortBy: 'newest' },
-  { id: 'col_bonding', type: 'migrating', title: 'Final Stretch', sortBy: 'newest' },
+  { id: 'col_bonding', type: 'migrating', title: 'Final Stretch', sortBy: 'migration-progress' },
   { id: 'col_migrated', type: 'graduated', title: 'Migrated', sortBy: 'newest' },
 ];
 
@@ -80,7 +80,7 @@ export function DiscoverView() {
             // Strip trending and hot columns (now on the Overview page)
             const cleaned = parsed
               .filter((c: any) => c.type !== 'trending' && c.type !== 'hot')
-              .map((c: DiscoveryColumnConfig) => c.type === 'migrating' ? { ...c, sortBy: 'newest' as const } : c);
+              .map((c: DiscoveryColumnConfig) => c.type === 'migrating' ? { ...c, sortBy: 'migration-progress' as const } : c);
             setColumns(cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS);
           }
         }
@@ -149,7 +149,7 @@ export function DiscoverView() {
       id: `col_${type}_${Date.now()}`,
       type,
       title,
-      sortBy: type === 'new' || type === 'migrating' ? 'newest' : 'volume',
+      sortBy: type === 'new' ? 'newest' : type === 'migrating' ? 'migration-progress' : 'volume',
     };
     persistColumns([...columns, newCol]);
   };

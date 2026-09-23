@@ -55,7 +55,7 @@ export const MIGRATED_WINDOW_MS = (() => {
 })();
 
 /** A stalled RPC feed must not keep advertising an old curve as active. */
-export const CURVE_FRESHNESS_MS = 120_000;
+export const CURVE_FRESHNESS_MS = Number(process.env.LIFECYCLE_CURVE_FRESHNESS_MS ?? 120_000);
 export const FINAL_STRETCH_LIMIT = 20;
 
 /**
@@ -279,25 +279,22 @@ export function newPairs(): TokenLifecycle[] {
   return getAllByState('NEW_PAIR').sort((a, b) => b.firstSeenAt - a.firstSeenAt);
 }
 
-/** Final Stretch is a rolling newest-first window of active bonding curves. */
+/**
+ * Final Stretch, ordered by proximity to migration.
+ *
+ * Curve completion is the sort key, not volume or market cap — the column
+ * exists to show what is closest to migrating. Only tokens meeting or exceeding
+ * the configured threshold (default 80%) are admitted.
+ */
 export function finalStretch(now = Date.now()): TokenLifecycle[] {
-  return [...records.values()]
-    .filter(
-      (record) =>
-        (record.state === 'NEW_PAIR' || record.state === 'FINAL_STRETCH') &&
-        record.curve !== null && !record.curve.complete &&
-        Number.isFinite(record.curve.progress) && record.curve.progress >= 0 &&
-        record.curve.progress < 1 &&
-        now >= record.curve.readAt && now - record.curve.readAt <= CURVE_FRESHNESS_MS,
-    )
-    .sort((a, b) => b.firstSeenAt - a.firstSeenAt)
-    .slice(0, FINAL_STRETCH_LIMIT);
+  return closestToMigrating(finalStretchThreshold(), now);
 }
 
 /**
- * Legacy threshold-based selector retained for callers and diagnostics that
- * need the narrower near-migration view. Discover's Final Stretch uses the
- * rolling newest-first `finalStretch` window above.
+ * Fresh, incomplete curves at or above the configured threshold, nearest first.
+ *
+ * Curve progress must meet or exceed minProgress (default 80%). Brand-new tokens
+ * with low progress remain in New Pairs.
  */
 export function closestToMigrating(minProgress = finalStretchThreshold(), now = Date.now()): TokenLifecycle[] {
   return [...records.values()]

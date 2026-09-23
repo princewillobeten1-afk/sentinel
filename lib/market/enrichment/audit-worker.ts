@@ -7,6 +7,7 @@ import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
 import { redis } from '@/lib/server/redis';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
+import { fetchTrackerOwnership, trackerConfigured } from '@/lib/trading/solana-tracker';
 
 /**
  * Fills the ownership audit behind the feed, off the fast path.
@@ -133,7 +134,7 @@ export function isAuditPending(mint: string): boolean {
  */
 export function setAuditTargets(section: string, mints: string[]): void {
   targetsBySection.set(section, mints.filter(Boolean));
-  if (quotaPaused() || circuitOpen()) {
+  if ((quotaPaused() || circuitOpen()) && !trackerConfigured()) {
     const observedAt = new Date().toISOString();
     for (const mint of mints) {
       if (getAudit(mint)) continue;
@@ -233,7 +234,7 @@ function rebuildQueue(): void {
  */
 export function queueAudit(mints: string[]): void {
   for (const [mint, until] of detailTargets) if (until <= Date.now()) detailTargets.delete(mint);
-  if (quotaPaused() || circuitOpen()) {
+  if ((quotaPaused() || circuitOpen()) && !trackerConfigured()) {
     for (const mint of mints.filter(Boolean)) updateTokenCard(mint, {
       auditPending: false,
       ownershipEvidence: {
@@ -292,12 +293,26 @@ async function drain(): Promise<void> {
         continue;
       }
 
-      const result = await fetchHolderProfileResult(mint);
+      const primaryResult = quotaPaused()
+        ? { kind: 'quota-exhausted' as const }
+        : circuitOpen()
+          ? { kind: 'failed' as const }
+          : await fetchHolderProfileResult(mint);
+      const alternate = primaryResult.kind === 'ok' ? null : await fetchTrackerOwnership(mint);
+      if (primaryResult.kind === 'quota-exhausted') quotaExhaustedAt = Date.now();
+      if (alternate && primaryResult.kind === 'rate-limited') {
+        circuitOpenUntil = Date.now() + Math.max(30_000, primaryResult.retryAfterMs ?? 0);
+      }
+      if (alternate && primaryResult.kind === 'failed' && (primaryResult.status === 401 || primaryResult.status === 403)) {
+        circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+      }
+      const result = alternate ? { kind: 'ok' as const, profile: alternate } : primaryResult;
 
       if (result.kind === 'ok') {
         cache.set(mint, result.profile);
         queued.delete(mint);
         const observedAt = new Date(result.profile.fetchedAt).toISOString();
+        const ownershipSource = result.profile.source ?? 'birdeye-holder-profile';
         const security = getTokenCardPatch(mint)?.changedFields;
         const ownershipTtl = security?.lifecycleState === 'migrated'
           ? MIGRATED_OWNERSHIP_TTL_MS
@@ -328,14 +343,15 @@ async function drain(): Promise<void> {
           auditVersion: RUG_RISK_VERSION,
           rugRisk: rugRisk ?? undefined,
           ownershipEvidence: {
-            status: completeProfile ? 'measured' : 'unavailable',
-            source: 'birdeye-holder-profile',
+            status: 'measured',
+            source: ownershipSource,
             observedAt,
             expiresAt: new Date(result.profile.fetchedAt + ownershipTtl).toISOString(),
-            reason: completeProfile ? undefined : 'Provider returned incomplete ownership fields; retained values are not a complete current audit.',
+            reason: completeProfile ? undefined : 'Some ownership classifications were not supplied by this provider; missing values remain unavailable.',
           },
-        }, 'birdeye-holder-profile', 'fresh', observedAt);
+        }, ownershipSource, 'fresh', observedAt);
         void saveTokenCardEvidence(mint, 'ownership', {
+          source: ownershipSource,
           top10HoldingsPct: result.profile.top10Pct,
           holdersCount: result.profile.totalHolders,
           sniperPercentage: result.profile.snipersPct,

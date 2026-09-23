@@ -43,6 +43,7 @@ export interface Quote {
   minimumReceived: string; // Human-readable fixed-point decimal string
   minimumReceivedRaw?: string; // Raw base unit integer string
   priceImpact: number; // Percentage e.g. 0.12%
+  priceImpactMeasured?: boolean; // False when the provider supplied no impact measurement.
   priceImpactRating: PriceImpactRating;
   estimatedPriceUsd: string; // Fixed-point decimal price
   route: QuoteRouteStep[];

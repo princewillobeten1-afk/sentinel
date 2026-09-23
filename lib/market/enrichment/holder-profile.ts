@@ -49,6 +49,8 @@ export interface HolderTagStat {
 
 export interface HolderProfile {
   mint: string;
+  /** Optional alternate provider; omitted for Birdeye profiles. */
+  source?: string;
   /** Combined share of the ten largest holders, 0-100. */
   top10Pct: number | null;
   /** Real total holder count — not the top-20 cap an RPC scan is limited to. */

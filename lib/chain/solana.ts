@@ -76,6 +76,7 @@ export class SolanaChainAdapter implements ChainAdapter {
   }
 
   async broadcastTransaction(signedTransaction: any): Promise<string> {
+    if (process.env.NODE_ENV !== 'test') throw new Error('Legacy automatic execution is disabled. Use the authenticated wallet-approved swap broadcaster.');
     // Simulated broadcast
     const mockHash = '4xx' + Math.random().toString(36).substring(2, 15);
     return mockHash;

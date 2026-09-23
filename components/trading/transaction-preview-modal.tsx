@@ -21,6 +21,11 @@ export interface TransactionPreviewModalProps {
   onConfirm?: () => void;
   onCancel?: () => void;
   isLoading?: boolean;
+  mainnetSwap?: boolean;
+  feeLamports?: number | null;
+  txSignature?: string | null;
+  pending?: boolean;
+  onCheckStatus?: () => void;
 }
 
 export function TransactionPreviewModal({
@@ -34,7 +39,13 @@ export function TransactionPreviewModal({
   onConfirm,
   onCancel,
   isLoading = false,
+  mainnetSwap = false,
+  feeLamports,
+  txSignature,
+  pending = false,
+  onCheckStatus,
 }: TransactionPreviewModalProps) {
+  const [acknowledgedMainnet, setAcknowledgedMainnet] = useState(false);
   const [acknowledgedImpact, setAcknowledgedImpact] = useState(
     quote ? (quote.priceImpactRating !== 'HIGH' && quote.priceImpactRating !== 'EXTREME') : true
   );
@@ -55,6 +66,7 @@ export function TransactionPreviewModal({
     rejected: 'Wallet rejected the request',
     failed: 'Execution failed',
     expired: 'Quote expired',
+    unknown: 'Submission status needs checking',
   };
   const executionLabel = executionState ? stateLabel[executionState] : null;
 
@@ -68,6 +80,8 @@ export function TransactionPreviewModal({
           </div>
           <button
             onClick={handleCancel}
+            disabled={actualLoading}
+            aria-label="Close transaction review"
             className="h-8 w-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition"
           >
             <X className="h-4 w-4" />
@@ -113,7 +127,7 @@ export function TransactionPreviewModal({
             </span>
             <span className="text-slate-500">→</span>
             <span className="px-2 py-0.5 rounded bg-white/5 text-slate-400">
-              {quote.route[0]?.dex || 'Raydium'}
+              {quote.route[0]?.dex || 'Provider route unavailable'}
             </span>
             <span className="text-slate-500">→</span>
             <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
@@ -142,24 +156,29 @@ export function TransactionPreviewModal({
                   : 'text-emerald-400'
               }`}
             >
-              {quote.priceImpact}% ({quote.priceImpactRating})
+              {quote.priceImpactMeasured === false ? 'Unavailable' : `${quote.priceImpact}% (${quote.priceImpactRating})`}
             </span>
           </div>
 
           <div className="flex justify-between">
-            <span className="text-slate-400">Network & DEX Fees:</span>
+            <span className="text-slate-400">Estimated network fee:</span>
             <span className="font-bold text-slate-200">
-              ${quote.fees.totalFeeUsd.toFixed(4)}
+              {mainnetSwap ? feeLamports == null ? 'Available after preflight' : `${feeLamports / 1e9} SOL` : `$${quote.fees.totalFeeUsd.toFixed(4)}`}
             </span>
           </div>
         </div>
 
+        {mainnetSwap && <label className="flex min-h-11 items-center gap-2 rounded-md border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
+          <input type="checkbox" checked={acknowledgedMainnet} disabled={actualLoading || pending} onChange={event => setAcknowledgedMainnet(event.target.checked)} />
+          I understand this is a Solana mainnet swap using real funds. Priority fee is capped at 0.00005 SOL; account rent may apply. No private MEV relay is configured.
+        </label>}
+        {txSignature && <a className="block break-all text-xs text-sky-300 underline" href={`https://solscan.io/tx/${txSignature}`} target="_blank" rel="noreferrer">View transaction on Solscan</a>}
         {/* High Price Impact Acknowledgment Checkbox */}
         {isHighImpact && (
           <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-2">
             <div className="flex items-start gap-2 text-rose-300 text-xs">
               <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>High price impact ({quote.priceImpact}%)! Large orders deplete liquidity and result in significant loss.</span>
+              <span>{quote.priceImpactMeasured === false ? 'Price impact is unavailable. The provider must measure it before this swap can proceed.' : `High price impact (${quote.priceImpact}%)! Large orders deplete liquidity and result in significant loss.`}</span>
             </div>
             <label className="flex items-center gap-2 cursor-pointer pt-1 text-2xs text-white">
               <input
@@ -185,17 +204,18 @@ export function TransactionPreviewModal({
           <Button
             variant="outline"
             onClick={handleCancel}
+            disabled={actualLoading}
             className="flex-1 border-white/10 text-slate-300 hover:bg-white/5 rounded-xl h-11"
           >
             Cancel
           </Button>
 
           <Button
-            onClick={handleConfirm}
-            disabled={!acknowledgedImpact || actualLoading}
+            onClick={pending ? onCheckStatus : handleConfirm}
+            disabled={actualLoading || executionState === 'confirmed' || (!pending && (!acknowledgedImpact || (mainnetSwap && (!acknowledgedMainnet || quote.priceImpactMeasured === false))))}
             className="flex-1 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold rounded-xl h-11 shadow-[0_0_20px_rgba(56,189,248,0.3)] disabled:opacity-50"
           >
-            {actualLoading ? (executionLabel || 'Working…') : executionState === 'failed' || executionState === 'rejected' || executionState === 'expired' ? 'Retry' : 'Confirm & Sign'}
+            {actualLoading ? (executionLabel || 'Working…') : pending ? 'Check status' : executionState === 'confirmed' ? 'Confirmed' : executionState === 'failed' || executionState === 'rejected' || executionState === 'expired' ? 'Retry' : 'Confirm & Sign'}
           </Button>
         </div>
       </div>

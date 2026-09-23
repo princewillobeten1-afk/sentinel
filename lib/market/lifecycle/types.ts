@@ -110,7 +110,7 @@ export interface TokenLifecycle {
 export function finalStretchThreshold(): number {
   const raw = process.env.LIFECYCLE_FINAL_STRETCH_PCT;
   const parsed = raw === undefined ? NaN : Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 100) return 0.8;
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 100) return 0.75;
   return parsed / 100;
 }
 

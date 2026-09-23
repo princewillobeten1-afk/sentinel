@@ -1,71 +1,95 @@
 {
-  "checkedAt": "2026-09-21T02:20:15.229Z",
+  "checkedAt": "2026-09-23T15:32:34.547Z",
   "feeds": [
     {
-      "count": 50
+      "count": 100
     },
     {
-      "count": 50
+      "count": 100
     },
     {
-      "count": 50
+      "count": 100
+    },
+    {
+      "count": 100
+    },
+    {
+      "count": 100
+    },
+    {
+      "count": 100
+    },
+    {
+      "count": 100
+    },
+    {
+      "count": 100
     },
     {
       "count": 30
     }
   ],
-  "curveCandidates": 12,
-  "curvesRead": 12,
-  "migrationsConfirmed": 8,
-  "finalStretch": [],
+  "curveCandidates": 50,
+  "curvesRead": 50,
+  "migrationsConfirmed": 6,
+  "finalStretch": [
+    {
+      "mint": "8HuqgVyrcaBSKb6WNwhcLPqNTuVqYfWQcSPiTVF7pump",
+      "progress": 91.1926330502091,
+      "observedAt": "2026-09-23T15:32:31.169Z"
+    },
+    {
+      "mint": "DJZF7e7MtR5XLFBJy9oaPQqLJwh1MVrVxFfB7hgvpump",
+      "progress": 86.11367620085085,
+      "observedAt": "2026-09-23T15:32:31.169Z"
+    },
+    {
+      "mint": "8MYx2Umiu8vBgkvLCGP5RpqmsHp4kNFXmJE3YpFDpump",
+      "progress": 82.68774114455069,
+      "observedAt": "2026-09-23T15:32:31.170Z"
+    },
+    {
+      "mint": "6Saa3yt4FSQeKsXb3Ed6TYrzdPnT5bmBGmmN1PtG1ive",
+      "progress": 78.92289467656376,
+      "observedAt": "2026-09-23T15:32:31.169Z"
+    }
+  ],
   "migrated": [
     {
-      "mint": "zecYuRMvzRiLktRNQywZbkD3M64rF8Qth8x6pYVyQoV",
-      "migratedAt": 1789957180000,
-      "signature": "2y6jjvvE6HAKYUYoPpcqn62RTtkZJZ5rYQ1Yx4jNf7PnkBRAuTLv7KrcHLACye9ecweo61iifh8N7fAC59vE1ZCV",
-      "pool": "B7DDyHBauUB8gXa9dWascwXiD6JU4ovaVXfn4GgLx8WF"
+      "mint": "8seJEbGihNcgb2uco8tYibfTJFw8WK9586RFF9BFpump",
+      "migratedAt": 1790177542000,
+      "signature": "4LgtUxUikyU6psKLYisCJggDCz17B31jfvgaXkLCnjTcS2L74QhyjvVsBCvs14EAhMSmpnaDiMaLjaRf3gfa9ynf",
+      "pool": "6ebqfek3U52bbgVSX18C8qdwjSywLUD2PZV6Grnd1Sfp"
     },
     {
-      "mint": "XicKu4ZFAyZ5AqesoiUXR5LEaHQFwxpPr3auahxpump",
-      "migratedAt": 1789957145000,
-      "signature": "3ucuBYwUy9LaFocYvyyDn7uhk2hKXwTURYHUJ83LmXTDPSkjq8PNofDE2fog4D9QdKGQxg9Gd1FW1Mgh4oqojh59",
-      "pool": "CoQHD1uxK6L859YfKCK5qauc2chw2x6Ga4rjN23XEjyW"
+      "mint": "J7EvdCzwtFTCw4MhU8KiYZBoVwnnG2ihLCYr5DyCpump",
+      "migratedAt": 1790177401000,
+      "signature": "5KGxDokZBHsyLWrx5Pbjur3F2VaXpmMxRtxAdLZcXA7HCqx3sE3p8mRE9Gy35XxbHsSKiEX24BcasFfA9U42ZePf",
+      "pool": "46qQxBwXLbgNMrU5yiuP7r2ywQQJNSwhgqKrLZA4Rn71"
     },
     {
-      "mint": "HdpDV3V5EwHtBJwJpUf58gNYFQB7hmBJYC5ckSBspump",
-      "migratedAt": 1789957053000,
-      "signature": "2eKytNHuM6HcWKEEKg4rSPZTCwvaBcshpmdjfGkKcvYgUX4GRZR8xStd5wpvcZixqBHc77VvZNaddszv6iYPEN7u",
-      "pool": "FaJuEH473kV1d46YA3FBL6kvemPLLDeQvzE1K5xi6Kt8"
+      "mint": "FB6gcsYM4oK5X8TBi3A8xx9Pd5Y4ndRsW21Rk93Rpump",
+      "migratedAt": 1790177352000,
+      "signature": "2hCnBe3kbPS1hcrnnUY7nm8VqF4AMBX99x8zThjQL7GBbCDBSP9eWueWCZ9Q2ExapSUUXxgUE5SXWHRkP5wD36CC",
+      "pool": "3EuNitsRnCFrRrxY2VFavgkK9AXp45LRUzzizp5f75kD"
     },
     {
-      "mint": "GAcKGVguWJCLY7M8X26HFK2NU8aW4RhPtL1hqiJ1pump",
-      "migratedAt": 1789957009000,
-      "signature": "ei76WcSvyqad1BScxMeu8QWpNYPNkHCHCveV3jBYLTxyfwqAPasev9ocuJqUe27QAUKxwYa2QWjgVZtqMc55Bys",
-      "pool": "8oWN8VtZZ9iVK9a3M1pkyKiG2hC7ayENLjEqjvGEongZ"
+      "mint": "2q33YE2s8e2A7WgD9biXEHYn8jk6ZdDBCq7rQkGvpump",
+      "migratedAt": 1790177254000,
+      "signature": "48iFwhHk3RmycdvfthPb7xqxaoJwYVeTN5wqJUASSN4Jd6NWVvrvfYVhSCznS2cEYacgM18MZrh4mGhTu5cwHQvF",
+      "pool": "EJcP66jP57k862P3gs69TVZRQxCP1v7gzo9B7jqyXv4L"
     },
     {
-      "mint": "XrwLuWhFVCdcksfzZRuBq3As2RXZGyhgGkqB8sbpump",
-      "migratedAt": 1789956994000,
-      "signature": "2eJvPuhAM9ru8C6oWSrTxpL6WJtCWwJKvYeF3udjgZwhqAceChn8nrGUzGnQKr3j6tnzMNv48sScQFDCsie3of5M",
-      "pool": "2r9qnrtkm9ueohGY4TEshpByKoSGHK7rkHTTymjVs9rs"
+      "mint": "AzUXtPJAThjDLoNsJXZY9aiArB9UCU6CmzMP4YNxpump",
+      "migratedAt": 1790177247000,
+      "signature": "31GXCBXYuB5X5WVyGYVLmNpUb748kxNa4QZn2fr91eVeA3sayntJiLw6mMfqTDQm6cmdJjo1DPtYR6arxar4Nfyc",
+      "pool": "AvXBMBtQrRCV2ciXgQbCbmxiEEB5icHWFLbBtUVEd1CM"
     },
     {
-      "mint": "3DdUyZcdCSRZQRUHLPGta61onSzCSe7BQ7NSmf2Tpump",
-      "migratedAt": 1789956962000,
-      "signature": "3L5up8DeEgnBPKToTvzbRSnTNjqu3b1TbaDyaomQRRPtsy1d8VFSUwpx9QWncwPzZnSAtqL9JtH8EuuFVDC594nB",
-      "pool": "137MpNVx7QRpaX7mc5MPvJA3fV566vHTk27GXpAk7Snd"
-    },
-    {
-      "mint": "gjH3fh1SN2a6RQco87yywUUYpSxf3gxMjsuHwL9pump",
-      "migratedAt": 1789956645000,
-      "signature": "2JT6Yh5sETUbsmvK7VWZeZHP9W6bF21ZncJLmg7FJJJXMu6wUZ9UnAXz1TWQ3WVz8Gn5uZaa6voD7TpbGbfaAkSL",
-      "pool": "E7DkcuKyRwUxoqw8hHo7hHjAAJzogsbHZYZUsvoMHJDd"
-    },
-    {
-      "mint": "3CmFrGjirBZoZ8639Zsjpfcgx5ZL59gRN228rKkTpump",
-      "migratedAt": 1789956592000,
-      "signature": "YBpQnEHXQXKVtM4nTzfenu8TSvEA4Cu1scob5RWWvEHDewaoHmqz9pJwd7YcL5reaJZo9d9CcBAGeeHuYsudCoo",
-      "pool": "5tns7KU2jyyNwuM7i8EttG2KZiB3BRzaxKUxUSB5sTJ3"
+      "mint": "CcxugZKPsg28s7xDVR7KrQjmmoKZgitPZBmjBvknpump",
+      "migratedAt": 1790177150000,
+      "signature": "43QzYisoGn14Z17RyabHLZb3NJpN6Rnra5rjYsNsoK8fZsYPrMm6z1KCb2kWa3aGE1XUd7YJvveF3ipZxWx6Xrqg",
+      "pool": "ESmZfuwvUsJR4Jr5rzVhjWARyhemSQz9fzp4VVEps2yr"
     }
   ]
 }

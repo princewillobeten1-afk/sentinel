@@ -204,9 +204,15 @@ export function TerminalColumn({
         return list.sort((a, b) => (b.discoveryScore?.totalScore || 0) - (a.discoveryScore?.totalScore || 0));
       case 'newest':
       default:
-        return list.sort((a, b) => config.type === 'graduated'
-          ? (b.migratedAt ?? 0) - (a.migratedAt ?? 0)
-          : a.ageMinutes - b.ageMinutes);
+        return list.sort((a, b) => {
+          if (config.type === 'graduated') {
+            return (b.migratedAt ?? 0) - (a.migratedAt ?? 0);
+          }
+          if (config.type === 'migrating') {
+            return (b.bondingCurveProgress ?? b.migrationProgress ?? 0) - (a.bondingCurveProgress ?? a.migrationProgress ?? 0);
+          }
+          return a.ageMinutes - b.ageMinutes;
+        });
     }
   }, [tokens, sortBy, timeWindow, config.type]);
 
@@ -275,8 +281,8 @@ export function TerminalColumn({
     }
     if (config.type === 'migrating') {
       return {
-        title: 'No active bonding curves',
-        detail: 'Final Stretch keeps the 20 newest fresh bonding-curve tokens. New launches appear at the top as they enter the window.',
+        title: 'Nothing near migration',
+        detail: 'No token is far enough along its bonding curve yet (≥80%). Curves cross this point quickly, so this fills and empties often.',
       };
     }
     if (config.type === 'graduated') {

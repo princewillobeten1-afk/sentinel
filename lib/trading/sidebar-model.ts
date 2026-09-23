@@ -21,7 +21,7 @@ export interface TradeSidebarSnapshot extends Partial<DiscoveryToken> {
 export interface TradeWalletPosition {
   wallet: string; mint: string; quantity: number | null; balanceSol: number | null;
   boughtUsd: number | null; soldUsd: number | null; holdingUsd: number | null; pnlUsd: number | null;
-  balanceEvidence: MetricEvidence; pnlEvidence: MetricEvidence;
+  balanceEvidence: MetricEvidence; pnlEvidence: MetricEvidence; holdingEvidence?: MetricEvidence;
 }
 
 export function measuredNumber(value: unknown): number | null {
