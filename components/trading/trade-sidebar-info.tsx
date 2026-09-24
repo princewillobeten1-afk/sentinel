@@ -36,7 +36,7 @@ function AuditTile({ label, value, percent = true, icon: Icon, evidence, loading
   const stale = evidence?.status === 'stale' || evidence?.status === 'unavailable'
     || (evidence?.expiresAt ? Date.parse(evidence.expiresAt) < Date.now() : false);
   const state = toValueState(number, { isPending: loading || evidence?.status === 'loading', isStale: stale, reason: evidence?.reason });
-  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${evidence ? `${evidence.source}; ${evidence.status}; observed ${evidence.observedAt}. ${evidence.reason ?? ''}` : 'Unavailable until a provider reports this metric.'}`}>
+  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${label === 'LP Locked' ? 'Measured on Rugcheck’s deepest reported pool only; other pools may differ. ' : ''}${evidence ? `Source: ${evidence.source}; ${evidence.status}; observed ${evidence.observedAt}. ${evidence.reason ?? ''}` : 'Unavailable until a provider reports this metric.'}`}>
     <div className="flex w-full min-w-0 flex-col items-center gap-1 rounded border border-slate-800 px-1 py-2 text-[11px]">
       <span className="flex items-center gap-1 font-numeric text-slate-200"><Icon className="h-3 w-3 shrink-0" />
         <MetricValue label={label} state={state} format={value => percent ? `${value.toFixed(value < 1 ? 2 : 1)}%` : formatCount(value)}
@@ -74,7 +74,9 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
       <AuditTile label="Insiders" value={data.insiderHoldingsPct} icon={Users} evidence={data.ownershipEvidence} loading={loading} />
       <AuditTile label="Bundlers" value={data.bundlerPercentage} icon={Boxes} evidence={data.ownershipEvidence} loading={loading} />
       <AuditTile label="LP Locked" value={data.lpLockedPct} icon={Shield} evidence={data.liquidityEvidence} loading={loading} />
-      <AuditTile label="Holders" value={data.holdersCount} icon={Users} percent={false} evidence={data.ownershipEvidence} loading={loading} />
+      <AuditTile label="Holders" value={data.holdersCount} icon={Users} percent={false}
+        evidence={data.ownershipEvidence?.status === 'measured' || data.ownershipEvidence?.status === 'stale'
+          ? data.ownershipEvidence : data.marketEvidence ?? data.ownershipEvidence} loading={loading} />
       <AuditTile label="Pro Traders" value={data.proTradersCount} icon={Trophy} percent={false} evidence={data.ownershipEvidence} loading={loading} />
       <div className="flex flex-col items-center justify-center gap-1 rounded border border-slate-800 p-1" title="Approved DexScreener profile order; not a boost.">
         <span className={`flex items-center gap-1 ${data.isDexPaid === true ? 'text-emerald-400' : data.isDexPaid === false ? 'text-rose-400' : 'text-slate-500'}`}><BadgeDollarSign className="h-3 w-3" />{typeof data.isDexPaid !== 'boolean' ? '—' : data.isDexPaid ? 'Paid' : 'Unpaid'}</span>

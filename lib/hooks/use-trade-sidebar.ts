@@ -43,11 +43,16 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
       try {
         const response = await fetch(`/api/v1/trading/position/${encodeURIComponent(wallet)}/${encodeURIComponent(mint)}`, { credentials: 'include', signal: controller.signal });
         const body = await response.json();
-        if (!response.ok || body?.data?.position?.wallet !== wallet || body.data.position.mint !== mint) throw new Error('Position unavailable');
+        if (!response.ok) throw new Error(response.status === 401
+          ? 'Sign in to view this wallet position.'
+          : response.status === 403
+            ? 'Link this wallet to your account to view its position.'
+            : 'Wallet position is temporarily unavailable.');
+        if (body?.data?.position?.wallet !== wallet || body.data.position.mint !== mint) throw new Error('Wallet position is temporarily unavailable.');
         const data = body.data.position as TradeWalletPosition;
         if (!controller.signal.aborted) setPosition({ key, data });
-      } catch {
-        if (!controller.signal.aborted) setPosition({ key, data: null, error: 'Wallet position unavailable' });
+      } catch (error) {
+        if (!controller.signal.aborted) setPosition({ key, data: null, error: error instanceof Error ? error.message : 'Wallet position is temporarily unavailable.' });
       } finally { busy = false; }
     };
     void load();
@@ -70,5 +75,6 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
   return { data, loading: snapshot?.mint !== mint, error: snapshot?.mint === mint ? snapshot.error : undefined,
     position: wallet && positionState?.key === key ? positionState.data : null,
     positionError: wallet && positionState?.key === key ? positionState.error : undefined,
+    positionLoading: Boolean(wallet && positionState?.key !== key),
     refresh: useCallback(() => setRevision(value => value + 1), []) };
 }

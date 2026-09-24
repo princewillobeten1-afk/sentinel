@@ -61,6 +61,8 @@ export interface BirdeyeTokenStatsMessage {
     volume_5m_usd?: number;
     buy_volume_5m_usd?: number;
     sell_volume_5m_usd?: number;
+    volume_buy_5m_usd?: number;
+    volume_sell_5m_usd?: number;
     volume_1h_usd?: number;
     volume_24h_usd?: number;
     trade_5m?: number;

@@ -7,7 +7,7 @@ import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
 import { redis } from '@/lib/server/redis';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
-import { fetchTrackerOwnership, trackerConfigured } from '@/lib/trading/solana-tracker';
+import { resolveOwnershipFallback, hasOwnershipFallback } from './ownership-fallback';
 
 /**
  * Fills the ownership audit behind the feed, off the fast path.
@@ -134,7 +134,7 @@ export function isAuditPending(mint: string): boolean {
  */
 export function setAuditTargets(section: string, mints: string[]): void {
   targetsBySection.set(section, mints.filter(Boolean));
-  if ((quotaPaused() || circuitOpen()) && !trackerConfigured()) {
+  if ((quotaPaused() || circuitOpen()) && !hasOwnershipFallback()) {
     const observedAt = new Date().toISOString();
     for (const mint of mints) {
       if (getAudit(mint)) continue;
@@ -234,7 +234,7 @@ function rebuildQueue(): void {
  */
 export function queueAudit(mints: string[]): void {
   for (const [mint, until] of detailTargets) if (until <= Date.now()) detailTargets.delete(mint);
-  if ((quotaPaused() || circuitOpen()) && !trackerConfigured()) {
+  if ((quotaPaused() || circuitOpen()) && !hasOwnershipFallback()) {
     for (const mint of mints.filter(Boolean)) updateTokenCard(mint, {
       auditPending: false,
       ownershipEvidence: {
@@ -298,7 +298,11 @@ async function drain(): Promise<void> {
         : circuitOpen()
           ? { kind: 'failed' as const }
           : await fetchHolderProfileResult(mint);
-      const alternate = primaryResult.kind === 'ok' ? null : await fetchTrackerOwnership(mint);
+      const devAddress = getTokenCardPatch(mint)?.changedFields.devAddress;
+      let alternate: HolderProfile | null = null;
+      if (primaryResult.kind !== 'ok') {
+        alternate = await resolveOwnershipFallback(mint, devAddress);
+      }
       if (primaryResult.kind === 'quota-exhausted') quotaExhaustedAt = Date.now();
       if (alternate && primaryResult.kind === 'rate-limited') {
         circuitOpenUntil = Date.now() + Math.max(30_000, primaryResult.retryAfterMs ?? 0);

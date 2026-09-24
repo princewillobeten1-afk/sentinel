@@ -44,6 +44,14 @@ describe('token stats contract', () => {
     expect(parsed?.fields).toMatchObject({ volume5mUsd: '18', buyVolume5mUsd: 12, sellVolume5mUsd: 6, txCount5m: 4, buysCount5m: 3, sellsCount5m: 1 });
     expect(parsed?.fields.volume1hUsd).toBeUndefined();
   });
+
+  it('accepts the alternate Birdeye token-stats buy/sell volume keys', () => {
+    const parsed = normalizeBirdeyeTokenStats({
+      type: 'TOKEN_STATS_DATA',
+      data: { address: 'MintA', volume_buy_5m_usd: 0, volume_sell_5m_usd: 7 },
+    });
+    expect(parsed?.fields).toMatchObject({ buyVolume5mUsd: 0, sellVolume5mUsd: 7 });
+  });
 });
 
 describe('token card ordering', () => {

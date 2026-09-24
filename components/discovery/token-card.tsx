@@ -625,6 +625,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const hasLiquidity = Number.isFinite(Number(liquidityUsd)) && Number(liquidityUsd) > 0;
   const rugRisk = live?.rugRisk ?? token.rugRisk;
   const ownershipEvidence = effectiveEvidence(live?.ownershipEvidence ?? token.ownershipEvidence);
+  const isAuditLoading = (live?.auditPending ?? token.auditPending) === true || ownershipEvidence?.status === 'loading';
   const securityEvidence = effectiveEvidence(live?.securityEvidence ?? token.securityEvidence);
   const marketEvidence = effectiveEvidence(liveMarket?.marketEvidence ?? token.marketEvidence);
   const activityEvidence = effectiveEvidence(liveMarket?.activityEvidence ?? token.activityEvidence ?? marketEvidence);
@@ -951,19 +952,19 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
         <LegendTooltip label="Holders" definition={`Unique holders reported by the ownership provider. ${ownershipEvidence ? `Source: ${ownershipEvidence.source}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}>
           <span className="flex items-center gap-1 text-slate-300">
             <Users className="h-2.5 w-2.5 text-slate-500" />
-            <MetricValue state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: ownershipEvidence?.status === 'loading', isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Holder count" format={formatCount} />
+            <MetricValue state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Holder count" format={formatCount} />
           </span>
         </LegendTooltip>
         <LegendTooltip label="Pro traders" definition="Wallets classified as smart traders by Birdeye Holder Profile; classification is heuristic and time-stamped.">
           <span className="flex items-center gap-1 text-slate-300">
             <Trophy className="h-2.5 w-2.5 text-amber-400" />
-            <MetricValue state={toValueState(proTraders, { isPending: ownershipEvidence?.status === 'loading', isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Pro traders" format={formatCount} />
+            <MetricValue state={toValueState(proTraders, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Pro traders" format={formatCount} />
           </span>
         </LegendTooltip>
         <LegendTooltip label="KOL wallets" definition="Known influencer wallets classified by Birdeye Holder Profile; classification is heuristic and time-stamped.">
           <span className="flex items-center gap-1 text-slate-300">
             <Award className="h-2.5 w-2.5 text-purple-400" />
-            <MetricValue state={toValueState(kols, { isPending: ownershipEvidence?.status === 'loading', isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="KOL wallets" format={formatCount} />
+            <MetricValue state={toValueState(kols, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="KOL wallets" format={formatCount} />
           </span>
         </LegendTooltip>
       </div>

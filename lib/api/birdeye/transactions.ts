@@ -27,10 +27,11 @@ export async function getTokenTrades(
   offset: number = 0, 
   limit: number = 50,
   txType: 'all' | 'swap' = 'swap'
-): Promise<Trade[]> {
-  const response = await birdeye.fetch<{ items: Trade[] }>(
-    `/defi/v3/token/trade-data/single?address=${address}&offset=${offset}&limit=${limit}&tx_type=${txType}`
-  );
+): Promise<V3TradeItem[]> {
+  // trade-data/single is an aggregate stats endpoint, not a transaction list.
+  const response = await getTokenTxsV3(address, {
+    offset, limit, tx_type: txType, sort_by: 'block_unix_time', sort_type: 'desc',
+  });
   return response.items;
 }
 
@@ -39,10 +40,10 @@ export async function getTokenTradesByVolume(
   minVolumeUsd: number = 10000,
   offset: number = 0,
   limit: number = 50
-): Promise<Trade[]> {
-  const response = await birdeye.fetch<{ items: Trade[] }>(
-    `/defi/v3/token/trade-data/single?address=${address}&volume_usd=${minVolumeUsd}&offset=${offset}&limit=${limit}`
-  );
+): Promise<V3TradeItem[]> {
+  const query = buildQueryString({ token_address: address, volume_type: 'usd', min_volume: minVolumeUsd,
+    sort_type: 'desc', offset, limit });
+  const response = await birdeye.fetch<V3TradeListResponse>(`/defi/v3/token/txs-by-volume?${query}`);
   return response.items;
 }
 

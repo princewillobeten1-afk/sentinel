@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, HistogramSeries, ColorType, CrosshairMode,
-  type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import type { Chart, Crosshair, DataLoaderGetBarsParams, KLineData, Period } from 'klinecharts';
 import { RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useChartData } from '@/lib/hooks/use-chart-data';
 import { CHART_TIMEFRAMES, isChartTimeframe, chartPrecision, type ChartCandle, type ChartTimeframe } from '@/lib/market/chart-model';
@@ -18,9 +17,19 @@ export interface CandlestickChartProps {
   compact?: boolean;
   height?: string;
 }
+
 const control = 'min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8 rounded-md px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50';
 const formatPrice = (value: number) => '$' + value.toLocaleString('en-US', { maximumSignificantDigits: 6 });
 const displaySymbol = (value: string) => value.length > 12 ? value.slice(0, 4) + '…' + value.slice(-4) : value || 'Token';
+const periodFor = (timeframe: ChartTimeframe): Period => timeframe === '1d' ? { type: 'day', span: 1 }
+  : timeframe.endsWith('h') ? { type: 'hour', span: Number(timeframe.slice(0, -1)) }
+    : { type: 'minute', span: Number(timeframe.slice(0, -1)) };
+const toKLine = (candle: ChartCandle): KLineData => ({
+  timestamp: candle.time * 1000, open: candle.open, high: candle.high, low: candle.low, close: candle.close,
+  ...(candle.volume === null ? {} : { volume: candle.volume }),
+});
+const sameBar = (a: KLineData, b: KLineData) => a.timestamp === b.timestamp && a.open === b.open
+  && a.high === b.high && a.low === b.low && a.close === b.close && a.volume === b.volume;
 
 export function CandlestickChart(props: CandlestickChartProps) {
   const [selected, setSelected] = useState(props.initialTimeframe || '15m');
@@ -37,98 +46,131 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
   }) {
   const feed = useChartData(symbol, chain, timeframe);
   const container = useRef<HTMLDivElement>(null);
-  const chart = useRef<IChartApi | null>(null);
-  const prices = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumes = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const previous = useRef<ChartCandle[]>([]);
-  const rendering = useRef(false);
-  const loadOlder = useRef(feed.loadOlder);
-  loadOlder.current = feed.loadOlder;
+  const chart = useRef<Chart | null>(null);
+  const feedRef = useRef(feed);
+  feedRef.current = feed;
+  const pendingInit = useRef<DataLoaderGetBarsParams['callback'] | null>(null);
+  const pendingOlder = useRef<{ timestamp: number; callback: DataLoaderGetBarsParams['callback'] } | null>(null);
+  const onBar = useRef<((bar: KLineData) => void) | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!container.current) return;
-    const api = createChart(container.current, {
-      autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: '#080d14' }, textColor: '#98A3B3',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11 },
-      grid: { vertLines: { color: 'rgba(148,163,184,0.07)' }, horzLines: { color: 'rgba(148,163,184,0.07)' } },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)', scaleMargins: { top: 0.08, bottom: 0.22 } },
-      timeScale: { borderColor: 'rgba(148,163,184,0.2)', timeVisible: true, secondsVisible: false },
-      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
-    });
-    const priceSeries = api.addSeries(CandlestickSeries, {
-      upColor: '#12B574', downColor: '#EC5A5F', borderVisible: false, wickUpColor: '#12B574', wickDownColor: '#EC5A5F',
-    });
-    const volumeSeries = api.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-    chart.current = api; prices.current = priceSeries; volumes.current = volumeSeries;
-    api.subscribeCrosshairMove(event => setHoverTime(typeof event.time === 'number' ? event.time : null));
-    let dragging = false;
-    api.timeScale().subscribeVisibleLogicalRangeChange(range => {
-      // Resizes/data insertion must not silently download the whole market.
-      if (dragging && !rendering.current && range && range.from < -20) loadOlder.current();
-    });
     const element = container.current;
-    const wheel = (event: WheelEvent) => api.applyOptions({ handleScale: { mouseWheel: event.ctrlKey || event.metaKey } });
-    const startDrag = () => { dragging = true; };
-    const endDrag = () => { dragging = false; };
-    element.addEventListener('wheel', wheel, { passive: true });
-    element.addEventListener('pointerdown', startDrag);
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
+    if (!element) return;
+    let disposed = false;
+    let disposeChart: (() => void) | undefined;
+    // KLineChart requires a mounted DOM container. Keep the rendering package out of server evaluation.
+    void import('klinecharts').then(({ init, dispose }) => {
+      if (disposed) return;
+      const api = init(element, {
+        timezone: 'Etc/UTC',
+        styles: {
+          grid: { horizontal: { color: 'rgba(148,163,184,0.08)' }, vertical: { color: 'rgba(148,163,184,0.08)' } },
+          candle: {
+            bar: { upColor: '#12B574', downColor: '#EC5A5F', noChangeColor: '#98A3B3',
+              upBorderColor: '#12B574', downBorderColor: '#EC5A5F', upWickColor: '#12B574', downWickColor: '#EC5A5F' },
+            tooltip: { showRule: 'none' },
+          },
+          indicator: { tooltip: { showRule: 'none' }, bars: [{ upColor: 'rgba(18,181,116,0.35)', downColor: 'rgba(236,90,95,0.35)' }] },
+          xAxis: { axisLine: { color: 'rgba(148,163,184,0.2)' }, tickText: { color: '#98A3B3', size: 11 } },
+          yAxis: { axisLine: { color: 'rgba(148,163,184,0.2)' }, tickText: { color: '#98A3B3', size: 11 } },
+          crosshair: { horizontal: { line: { color: '#64748b' } }, vertical: { line: { color: '#64748b' } } },
+          separator: { color: 'rgba(148,163,184,0.2)' },
+        },
+      });
+      if (!api) { setChartError('The chart could not initialize.'); return; }
+      chart.current = api;
+      disposeChart = () => dispose(api);
+      api.setBarSpace(7);
+      const volumePane = api.createIndicator('VOL', false);
+      if (volumePane) api.setPaneOptions({ id: volumePane, height: 68, minHeight: 48 });
+      api.subscribeAction('onCrosshairChange', value => {
+        const crosshair = value as Crosshair | undefined;
+        setHoverTime(typeof crosshair?.timestamp === 'number' ? crosshair.timestamp / 1000 : null);
+      });
+      api.setDataLoader({
+        getBars: ({ type, timestamp, callback }) => {
+          const current = feedRef.current;
+          if (type === 'forward' && timestamp !== null) {
+            if (!current.hasMore || current.loadingOlder) { queueMicrotask(() => callback([], false)); return; }
+            pendingOlder.current = { timestamp, callback };
+            current.loadOlder();
+            return;
+          }
+          if (type === 'backward') { queueMicrotask(() => callback([], false)); return; }
+          if (current.loading) { pendingInit.current = callback; return; }
+          queueMicrotask(() => {
+            if (!disposed) callback(feedRef.current.candles.map(toKLine), { forward: feedRef.current.hasMore, backward: false });
+          });
+        },
+        subscribeBar: ({ callback }) => { onBar.current = callback; },
+        unsubscribeBar: () => { onBar.current = null; },
+      });
+      const existing = feedRef.current.candles;
+      const precision = existing.length ? chartPrecision(Math.min(...existing.map(c => c.low))).precision : 12;
+      api.setSymbol({ ticker: symbol, pricePrecision: precision, volumePrecision: 4 });
+      api.setPeriod(periodFor(timeframe));
+    }).catch(() => { if (!disposed) setChartError('The chart library could not load.'); });
     return () => {
-      element.removeEventListener('wheel', wheel); element.removeEventListener('pointerdown', startDrag);
-      window.removeEventListener('pointerup', endDrag); window.removeEventListener('pointercancel', endDrag);
-      api.remove(); chart.current = null; prices.current = null; volumes.current = null;
+      disposed = true;
+      pendingInit.current = null; pendingOlder.current = null; onBar.current = null;
+      disposeChart?.(); chart.current = null;
     };
-  }, []);
+  }, [symbol, timeframe]);
 
   useEffect(() => {
-    if (!prices.current || !volumes.current || !chart.current) return;
-    const rows = feed.candles;
-    const prior = previous.current;
-    const range = chart.current.timeScale().getVisibleLogicalRange();
-    const prepended = prior.length ? rows.filter(c => c.time < prior[0].time).length : 0;
-    rendering.current = true;
-    if (rows.length) {
-      const { precision, minMove } = chartPrecision(Math.min(...rows.map(c => c.low)));
-      // The built-in decimal formatter multiplies minMove by 10^precision.
-      // Floating-point error at tiny ticks can render $0.00000002 as 0.999… .
-      prices.current.applyOptions({ priceFormat: { type: 'custom', minMove, base: 10 ** precision,
-        formatter: (value: number) => value.toLocaleString('en-US', { maximumSignificantDigits: 6 }) } });
+    const api = chart.current;
+    if (!api) return;
+    if (pendingInit.current && !feed.loading) {
+      const precision = feed.candles.length ? chartPrecision(Math.min(...feed.candles.map(c => c.low))).precision : 12;
+      if (api.getSymbol()?.pricePrecision !== precision) {
+        pendingInit.current = null;
+        api.setSymbol({ ticker: symbol, pricePrecision: precision, volumePrecision: 4 });
+        return;
+      }
+      const callback = pendingInit.current;
+      pendingInit.current = null;
+      queueMicrotask(() => callback(feedRef.current.candles.map(toKLine),
+        { forward: feedRef.current.hasMore, backward: false }));
+      return;
     }
-    prices.current.setData(rows.map(c => ({ ...c, time: c.time as UTCTimestamp })));
-    volumes.current.setData(rows.filter(c => c.volume !== null).map(c => ({
-      time: c.time as UTCTimestamp, value: c.volume!, color: c.close >= c.open ? 'rgba(18,181,116,0.35)' : 'rgba(236,90,95,0.35)',
-    })));
-    if (!prior.length && rows.length) chart.current.timeScale().fitContent();
-    else if (range && prepended) chart.current.timeScale().setVisibleLogicalRange({ from: range.from + prepended, to: range.to + prepended });
-    previous.current = rows;
-    rendering.current = false;
-  }, [feed.candles]);
+    if (pendingOlder.current) {
+      if (feed.loadingOlder) return;
+      const { timestamp, callback } = pendingOlder.current;
+      pendingOlder.current = null;
+      const older = feed.candles.filter(c => c.time * 1000 < timestamp).map(toKLine);
+      queueMicrotask(() => callback(older, { forward: older.length > 0 && feedRef.current.hasMore && !feedRef.current.olderError,
+        backward: false }));
+      return;
+    }
+    const current = api.getDataList();
+    const next = feed.candles.map(toKLine);
+    if (!next.length) return;
+    if (!current.length) { api.resetData(); return; }
+    const first = current[0].timestamp;
+    const last = current[current.length - 1].timestamp;
+    // v10 accepts only the latest/new bar in subscribeBar. Reconcile older corrections through its loader.
+    const historicalCorrection = next.some(row => row.timestamp >= first && row.timestamp < last
+      && !sameBar(row, current.find(old => old.timestamp === row.timestamp) ?? { ...row, close: NaN }));
+    if (historicalCorrection || next[0].timestamp < first) { api.resetData(); return; }
+    if (!onBar.current) return;
+    for (const row of next) {
+      if (row.timestamp > last || (row.timestamp === last && !sameBar(row, current[current.length - 1]))) onBar.current(row);
+    }
+  }, [feed.candles, feed.loading, feed.loadingOlder, feed.hasMore, feed.olderError, symbol]);
 
-  const zoom = (factor: number) => {
-    const scale = chart.current?.timeScale();
-    const range = scale?.getVisibleLogicalRange();
-    if (!scale || !range) return;
-    const center = (range.from + range.to) / 2;
-    const span = Math.max(10, (range.to - range.from) * factor);
-    scale.setVisibleLogicalRange({ from: center - span / 2, to: center + span / 2 });
-  };
   const active = feed.candles.find(c => c.time === hoverTime) ?? feed.candles[feed.candles.length - 1];
   const empty = !feed.candles.length;
   const updated = Math.max(feed.observedAt, feed.streamAt);
   return (
-    <section aria-label="Token price chart" data-chart-status={feed.status} data-candle-count={feed.candles.length}
+    <section aria-label="Token price chart" data-chart-status={chartError ? 'Unavailable' : feed.status} data-candle-count={feed.candles.length}
       className="w-full min-w-0 overflow-hidden rounded-md border border-sentinel-800 bg-sentinel-950 font-mono">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-sentinel-800 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2 text-xs">
           <span className="truncate font-semibold text-slate-200">{displaySymbol(tokenSymbol || symbol)}/USD</span>
           <span role="status" title={updated ? 'Birdeye · observed ' + new Date(updated).toLocaleTimeString() : 'Waiting for provider data'}
-            className={feed.status === 'Live' ? 'text-emerald-400' : feed.status === 'Delayed' ? 'text-amber-400' : 'text-slate-400'}>{feed.status}</span>
+            className={feed.status === 'Live' ? 'text-emerald-400' : feed.status === 'Delayed' ? 'text-amber-400' : 'text-slate-400'}>{chartError ? 'Unavailable' : feed.status}</span>
         </div>
         <div className="flex flex-wrap items-center gap-0.5" aria-label="Chart timeframe">
           {CHART_TIMEFRAMES.map(tf => <button key={tf} type="button" aria-pressed={tf === timeframe}
@@ -138,9 +180,9 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
       <div className="flex flex-wrap items-center justify-between gap-1 border-b border-sentinel-800 px-3 text-[11px] text-slate-400">
         <span>Birdeye · Token aggregate · USD</span>
         <div className="flex gap-0.5">
-          <button type="button" aria-label="Zoom in" className={control} onClick={() => zoom(0.7)}><ZoomIn className="mx-auto h-4 w-4" /></button>
-          <button type="button" aria-label="Zoom out" className={control} onClick={() => zoom(1.4)}><ZoomOut className="mx-auto h-4 w-4" /></button>
-          <button type="button" aria-label="Reset chart view" className={control} onClick={() => chart.current?.timeScale().fitContent()}><RotateCcw className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Zoom in" className={control} onClick={() => chart.current?.zoomAtCoordinate(1)}><ZoomIn className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Zoom out" className={control} onClick={() => chart.current?.zoomAtCoordinate(-1)}><ZoomOut className="mx-auto h-4 w-4" /></button>
+          <button type="button" aria-label="Reset chart view" className={control} onClick={() => { chart.current?.setBarSpace(7); chart.current?.scrollToRealTime(0); }}><RotateCcw className="mx-auto h-4 w-4" /></button>
           <button type="button" aria-label="Refresh chart" aria-busy={feed.refreshing} disabled={feed.refreshing} className={control} onClick={feed.refresh}><RefreshCw className={'mx-auto h-4 w-4 ' + (feed.refreshing ? 'motion-safe:animate-spin' : '')} /></button>
         </div>
       </div>
@@ -149,16 +191,17 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           <span title="Base-token volume; not USD volume">Vol: {active.volume === null ? 'Unavailable' : active.volume.toLocaleString('en-US', { maximumSignificantDigits: 5 })}</span></> : <span>OHLCV awaits provider data</span>}
       </div>
       <div className={(height || (compact ? 'h-[270px]' : 'h-64 sm:h-80')) + ' relative w-full'}>
-        <div ref={container} className="absolute inset-0 z-0" />
-        {empty && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
-          <p role={feed.error ? 'alert' : 'status'}>{feed.loading ? 'Loading real ' + timeframe + ' candles…' : feed.error || 'No indexed candles yet. Waiting for trades.'}</p>
-          {!feed.loading && <button type="button" className={control + ' border border-sentinel-700 text-sky-300'} disabled={feed.refreshing} aria-busy={feed.refreshing} onClick={feed.refresh}>Retry chart</button>}
+        <div ref={container} className="absolute inset-0 z-0 bg-[#080d14]" />
+        {(empty || chartError) && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
+          <p role={feed.error || chartError ? 'alert' : 'status'}>{chartError || (feed.loading ? 'Loading real ' + timeframe + ' candles…' : feed.error || 'No indexed candles yet. Waiting for trades.')}</p>
+          {!feed.loading && !chartError && <button type="button" className={control + ' border border-sentinel-700 text-sky-300'} disabled={feed.refreshing} aria-busy={feed.refreshing} onClick={feed.refresh}>Retry chart</button>}
         </div>}
       </div>
       {!empty && feed.error && <p role="alert" className="px-3 py-2 text-[11px] text-amber-400">{feed.error} Existing candles are retained.</p>}
       {!empty && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-sentinel-800 px-3 py-1 text-[11px] text-slate-400">
         <span>Volume in token units · Gaps are not fabricated</span>
-        {feed.hasMore && <button type="button" className={control + ' text-sky-300'} disabled={feed.loadingOlder} aria-busy={feed.loadingOlder} onClick={feed.loadOlder}>Load older candles</button>}
+        {feed.hasMore && <button type="button" className={control + ' text-sky-300'} disabled={feed.loadingOlder} aria-busy={feed.loadingOlder}
+          onClick={feed.loadOlder}>Load older candles</button>}
         {feed.olderError && <span role="alert" className="text-amber-400">{feed.olderError}</span>}
       </div>}
     </section>

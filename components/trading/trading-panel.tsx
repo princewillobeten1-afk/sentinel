@@ -275,11 +275,14 @@ export function TradingPanel({
       </button>
       <div className="grid grid-cols-4 divide-x divide-sentinel-800 border-y border-sentinel-800 py-2 text-[11px]" aria-label="Wallet position">
         {[['Bought', position.boughtUsd], ['Sold', position.soldUsd], ['Holding', position.holdingUsd], ['PnL', position.pnlUsd]].map(([label, value]) =>
-          <div key={String(label)} className="min-w-0 px-1" title={`${label}: wallet position in USD. ${sidebar.positionError || sidebar.position?.pnlEvidence?.reason || 'Birdeye all-time weighted-average-cost estimate.'}`}>
+          <div key={String(label)} className="min-w-0 px-1" title={`${label}: wallet position in USD. ${label === 'Holding' && sidebar.position?.holdingEvidence ? `${sidebar.position.holdingEvidence.source}; ${sidebar.position.holdingEvidence.status}. ${sidebar.position.holdingEvidence.reason ?? ''}` : sidebar.position?.pnlEvidence ? `${sidebar.position.pnlEvidence.source}; ${sidebar.position.pnlEvidence.status}. ${sidebar.position.pnlEvidence.reason ?? ''}` : sidebar.positionError || 'Connect a linked wallet to load its position.'}`}>
             <span className="text-slate-500">{label}</span><span className={`block truncate font-numeric ${label === 'PnL' && typeof value === 'number' ? value < 0 ? 'text-rose-400' : 'text-emerald-400' : 'text-slate-300'}`}>{usd(value as number | null)}</span>
           </div>)}
       </div>
-      {sidebar.positionError && <p className="mt-1 text-[11px] text-slate-500" role="status">{sidebar.positionError}</p>}
+      {!address && !primaryWallet?.address ? <p className="mt-1 text-[11px] text-slate-500" role="status">Connect a wallet to see its position.</p>
+        : sidebar.positionLoading ? <p className="mt-1 text-[11px] text-slate-500" role="status">Loading wallet position…</p>
+          : sidebar.positionError ? <p className="mt-1 text-[11px] text-amber-400" role="status">{sidebar.positionError}</p>
+            : sidebar.position?.pnlEvidence?.status === 'unavailable' ? <p className="mt-1 text-[11px] text-amber-400" role="status">{sidebar.position.pnlEvidence.reason ?? 'Bought, sold and PnL are unavailable from the configured provider.'}</p> : null}
       <div className="my-2 flex items-center gap-1" aria-label="Trading presets">
         {presets.map((preset, index) => <button type="button" key={index} aria-pressed={activePreset === index}
           onClick={() => { setActivePreset(index); setSlippage(preset.slippage); setIsCustomSlippage(false); if (side === 'buy') setInputAmount(String(preset.amounts[0])); }}

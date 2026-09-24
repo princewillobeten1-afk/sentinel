@@ -1,6 +1,6 @@
 {
-  "checkedAt": "2026-09-22T14:11:02.652Z",
-  "mint": "992Zg9itYcyLEz5aApcqQxst7jMqiw1BW4BSALTYscaV",
+  "checkedAt": "2026-09-24T05:25:53.384Z",
+  "mint": "29YCMgC8HShpJiS1ab7MPxF6Q6i1hb5AizCtBxAfCKxm",
   "providers": {
     "jupiter": {
       "http": 200,
@@ -21,10 +21,10 @@
   "audit": {
     "top10": 0,
     "dev": 0,
-    "snipers": 15.97231,
+    "snipers": 0,
     "insiders": 0,
-    "bundlers": 37.76719,
-    "holders": 28,
+    "bundlers": 0,
+    "holders": 2,
     "mintRevoked": true,
     "freezeRevoked": true,
     "ownership": "measured",

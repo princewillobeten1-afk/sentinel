@@ -10,6 +10,10 @@ import {
   type JupiterToken,
 } from './jupiter-feed';
 import { getLifecycleDiscoveryTokens } from './lifecycle-feed';
+import { hydrateTokenCards, getTokenCardPatch } from '@/lib/market/live/card-cache';
+import { mergeTokenCardSnapshot } from './card-snapshot';
+import { getAudit, isAuditPending, queueAudit } from '@/lib/market/enrichment/audit-worker';
+import { calculateRugRisk } from '@/lib/market/enrichment/rug-risk';
 
 /**
  * The live token source behind every Discover column.
@@ -136,6 +140,104 @@ export async function fetchLiveSolanaTokens(): Promise<DiscoveryToken[]> {
 }
 
 /**
+ * Enriches discovery tokens with cached ownership audits, live card patches,
+ * and queues un-audited tokens in the background.
+ */
+export async function enrichTokensWithAudits(tokens: DiscoveryToken[]): Promise<DiscoveryToken[]> {
+  if (!tokens || tokens.length === 0) return tokens;
+  const mints = tokens.map((t) => t.mint).filter(Boolean);
+  if (mints.length === 0) return tokens;
+
+  try {
+    await hydrateTokenCards(mints);
+  } catch {
+    // Hydration is best-effort
+  }
+
+  const unAuditedMints: string[] = [];
+
+  const enriched = tokens.map((token) => {
+    let t = token;
+    const patch = getTokenCardPatch(token.mint);
+    if (patch) {
+      t = mergeTokenCardSnapshot(t, patch);
+    }
+
+    const audit = getAudit(token.mint);
+    if (audit) {
+      const observedAt = new Date(audit.fetchedAt).toISOString();
+      const ownershipSource = audit.source ?? 'birdeye-holder-profile';
+      const completeProfile = [
+        audit.top10Pct, audit.totalHolders, audit.snipersPct,
+        audit.insidersPct, audit.bundlersPct, audit.devPct,
+        audit.proTraders, audit.kols,
+      ].every((v) => v !== null);
+
+      t = {
+        ...t,
+        top10HoldingsPct: t.top10HoldingsPct ?? audit.top10Pct ?? undefined,
+        holdersCount: t.holdersCount ?? audit.totalHolders ?? undefined,
+        sniperPercentage: t.sniperPercentage ?? audit.snipersPct ?? undefined,
+        insiderHoldingsPct: t.insiderHoldingsPct ?? audit.insidersPct ?? undefined,
+        bundlerPercentage: t.bundlerPercentage ?? audit.bundlersPct ?? undefined,
+        devHoldingsPct: t.devHoldingsPct ?? audit.devPct ?? undefined,
+        proTradersCount: t.proTradersCount ?? audit.proTraders ?? undefined,
+        kolsCount: t.kolsCount ?? audit.kols ?? undefined,
+        auditPending: false,
+        ownershipEvidence: t.ownershipEvidence ?? {
+          status: 'measured',
+          source: ownershipSource,
+          observedAt,
+          reason: completeProfile ? undefined : 'Some ownership classifications were not supplied by this provider; missing values remain unavailable.',
+        },
+      };
+
+      if (!t.rugRisk || t.rugRisk.score === 0) {
+        const rugRisk = calculateRugRisk({
+          top10Pct: t.top10HoldingsPct,
+          devPct: t.devHoldingsPct,
+          snipersPct: t.sniperPercentage,
+          insidersPct: t.insiderHoldingsPct,
+          bundlersPct: t.bundlerPercentage,
+          mintAuthorityRevoked: t.isMintRenounced,
+          freezeAuthorityRevoked: t.isFreezeDisabled,
+          liquidityLocked: t.isLiquidityLocked,
+        });
+        if (rugRisk) {
+          t.rugRisk = rugRisk;
+        }
+      }
+    } else {
+      if (isAuditPending(token.mint)) {
+        t = {
+          ...t,
+          auditPending: true,
+          ownershipEvidence: t.ownershipEvidence ?? {
+            status: 'loading',
+            source: 'birdeye-holder-profile',
+            observedAt: new Date().toISOString(),
+          },
+        };
+      } else {
+        unAuditedMints.push(token.mint);
+      }
+    }
+
+    return t;
+  });
+
+  if (unAuditedMints.length > 0) {
+    try {
+      queueAudit(unAuditedMints.slice(0, 10));
+    } catch {
+      // Best-effort audit queuing
+    }
+  }
+
+  return enriched;
+}
+
+/**
  * Resolves one Discover section to real tokens.
  *
  * New Pairs uses /recent; Final Stretch and Migrated use the on-chain lifecycle
@@ -147,6 +249,8 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
 
   const apply = (tokens: DiscoveryToken[]) => filterDiscoveryTokens(tokens, filter);
 
+  let tokens: DiscoveryToken[];
+
   switch (section) {
     case 'new': {
       // Collapsed before sorting: an unfiltered response is routinely two
@@ -156,68 +260,79 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       const collapsed = collapseDuplicateLaunches(rows.map((r) => r.token), {
         includeZeroLiquidity: filter?.includeZeroLiquidity,
       });
-      return apply(collapsed).sort((a, b) => a.ageMinutes - b.ageMinutes);
+      tokens = apply(collapsed).sort((a, b) => a.ageMinutes - b.ageMinutes);
+      break;
     }
 
     case 'migrating':
     case 'graduated':
       // Not partitions of /recent: old launches can migrate just now, while
       // a brand-new Raydium pool may never have had a bonding curve at all.
-      return apply(await getLifecycleDiscoveryTokens(section));
+      tokens = apply(await getLifecycleDiscoveryTokens(section));
+      break;
 
     case 'hot': {
       // Jupiter's own organic-score label, which is a published measurement of
       // genuine versus wash activity — the platform's whole premise.
       const pool = await rankedPool('toporganicscore');
-      return apply(pool);
+      tokens = apply(pool);
+      break;
     }
 
     case 'trending': {
       const pool = await rankedPool('toptrending');
-      return apply(pool).sort((a, b) => {
+      tokens = apply(pool).sort((a, b) => {
         const scoreA = calculateTrendingScore(a, window).trendingRankScore;
         const scoreB = calculateTrendingScore(b, window).trendingRankScore;
         return scoreB - scoreA;
       });
+      break;
     }
 
     case 'volume': {
       const pool = await rankedPool('toptraded');
-      return apply(pool).sort((a, b) => parseFloat(b.volume24hUsd) - parseFloat(a.volume24hUsd));
+      tokens = apply(pool).sort((a, b) => parseFloat(b.volume24hUsd) - parseFloat(a.volume24hUsd));
+      break;
     }
 
     case 'liquidity': {
       const pool = await rankedPool('toptraded');
-      return apply(pool).sort((a, b) => parseFloat(b.liquidityUsd) - parseFloat(a.liquidityUsd));
+      tokens = apply(pool).sort((a, b) => parseFloat(b.liquidityUsd) - parseFloat(a.liquidityUsd));
+      break;
     }
 
     case 'momentum': {
       const pool = await rankedPool('toptrending');
-      return apply(pool).sort((a, b) => b.priceChange1h - a.priceChange1h);
+      tokens = apply(pool).sort((a, b) => b.priceChange1h - a.priceChange1h);
+      break;
     }
 
     case 'top-gainers': {
       const pool = await rankedPool('toptraded');
-      return apply(pool).sort((a, b) => b.priceChange24h - a.priceChange24h);
+      tokens = apply(pool).sort((a, b) => b.priceChange24h - a.priceChange24h);
+      break;
     }
 
     case 'top-losers': {
       const pool = await rankedPool('toptraded');
-      return apply(pool).sort((a, b) => a.priceChange24h - b.priceChange24h);
+      tokens = apply(pool).sort((a, b) => a.priceChange24h - b.priceChange24h);
+      break;
     }
 
     case 'revived': {
       const pool = await rankedPool('toptrending');
-      return apply(pool)
+      tokens = apply(pool)
         .filter((token) => token.ageMinutes >= 60 && token.priceChange24h > 0)
         .sort((a, b) => b.priceChange24h - a.priceChange24h);
+      break;
     }
 
     case 'legacy': {
       const pool = await rankedPool('toptrending');
-      return apply(pool)
+      tokens = apply(pool)
         .filter((token) => token.ageMinutes >= 24 * 60)
         .sort((a, b) => parseFloat(b.marketCapUsd) - parseFloat(a.marketCapUsd));
+      break;
     }
 
     case 'similar': {
@@ -227,9 +342,10 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       const reference = pool.find((token) => token.mint === referenceMint);
       if (!reference) return [];
       const referenceCap = parseFloat(reference.marketCapUsd);
-      return apply(pool)
+      tokens = apply(pool)
         .filter((token) => token.mint !== referenceMint && token.source === reference.source)
         .sort((a, b) => Math.abs(parseFloat(a.marketCapUsd) - referenceCap) - Math.abs(parseFloat(b.marketCapUsd) - referenceCap));
+      break;
     }
 
     default: {
@@ -237,9 +353,12 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       // ranks these today. Return the broad pool unsorted rather than inventing
       // a score to sort by; the column shows real tokens and an honest order.
       const pool = await fetchLiveSolanaTokens();
-      return apply(pool);
+      tokens = apply(pool);
+      break;
     }
   }
+
+  return enrichTokensWithAudits(tokens);
 }
 
 /** Diagnostics for the feed's freshness, surfaced by the discovery routes. */

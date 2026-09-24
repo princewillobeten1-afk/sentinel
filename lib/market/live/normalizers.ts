@@ -117,8 +117,10 @@ export function normalizeBirdeyeTokenStats(message: BirdeyeMessage): NormalizedT
   putString('marketCapUsd', data.marketcap);
   putString('liquidityUsd', data.liquidity);
   putString('volume5mUsd', data.volume_5m_usd);
-  putNumber('buyVolume5mUsd', data.buy_volume_5m_usd);
-  putNumber('sellVolume5mUsd', data.sell_volume_5m_usd);
+  // Birdeye has emitted both orderings across token-stats payload versions.
+  // Only use a field that is actually present; never infer a missing side.
+  putNumber('buyVolume5mUsd', data.volume_buy_5m_usd ?? data.buy_volume_5m_usd);
+  putNumber('sellVolume5mUsd', data.volume_sell_5m_usd ?? data.sell_volume_5m_usd);
   putString('volume1hUsd', data.volume_1h_usd);
   putString('volume24hUsd', data.volume_24h_usd);
   putNumber('txCount5m', data.trade_5m);
