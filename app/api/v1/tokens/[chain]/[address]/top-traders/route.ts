@@ -1,7 +1,8 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
 import { realtimeRepository } from '@/lib/server/db/realtime-repository';
-import { getTradeHistory, type HistoricalTrade } from '@/lib/market/trade-history';
+import { getTradeHistory } from '@/lib/market/trade-history';
+import { measuredTradeUsd, mergeTradeTape, type TapeTrade } from '@/lib/market/trade-tape';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,22 +61,15 @@ export async function GET(
 
     const history = await getTradeHistory(address, HISTORY_PAGES);
 
-    // One trade per signature, indexer and stream merged.
-    const bySignature = new Map<string, Pick<HistoricalTrade, 'signature' | 'side' | 'wallet' | 'amountUsd' | 'amountTokens' | 'timestamp'>>();
-    for (const t of history.trades) bySignature.set(t.signature, t);
-    for (const t of realtimeRepository.getInMemoryTradesForMint(address)) {
-      if (!SIGNATURE_RE.test(t.signature) || bySignature.has(t.signature)) continue;
-      bySignature.set(t.signature, {
-        signature: t.signature,
-        side: t.side,
-        wallet: t.wallet ?? null,
-        amountUsd: typeof t.amount === 'number' ? t.amount : null,
-        amountTokens: null,
-        timestamp: t.timestamp ?? new Date().toISOString(),
-      });
-    }
-
-    const trades = [...bySignature.values()];
+    const captured: TapeTrade[] = realtimeRepository.getInMemoryTradesForMint(address)
+      .filter(t => SIGNATURE_RE.test(t.signature))
+      .map(t => ({ eventId: t.eventId, signature: t.signature, mint: address,
+        side: t.side, wallet: t.wallet ?? null,
+        amountUsd: measuredTradeUsd(t.amount, t.priceUsd),
+        amountSol: t.amountSol ?? null, amountTokens: t.amount ?? null,
+        priceUsd: t.priceUsd ?? null, timestamp: t.timestamp ?? new Date().toISOString(),
+        isMev: false, source: 'stream' }));
+    const trades = mergeTradeTape(history.trades.map(t => ({ ...t, mint: address })), captured);
     const byWallet = new Map<string, Aggregate>();
     for (const t of trades) {
       if (!t.wallet) continue;

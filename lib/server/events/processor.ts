@@ -35,11 +35,12 @@ export class RealtimeEventProcessor {
    */
   public async processDecodedEvent(
     decoded: DecodedBlockchainEvent,
-    source: 'helius_laserstream' | 'helius_ws' | 'mock' = 'helius_laserstream',
-    receivedTimestamp: number = Date.now()
+    source: 'helius_laserstream' | 'helius_ws' | 'quicknode' | 'birdeye' | 'mock' = 'helius_laserstream',
+    receivedTimestamp: number = Date.now(),
+    commitment?: 'processed' | 'confirmed' | 'finalized',
   ): Promise<void> {
     // 1. Normalize
-    const event = EventNormalizer.normalize(decoded, source, receivedTimestamp);
+    const event = EventNormalizer.normalize(decoded, source, receivedTimestamp, commitment);
 
     // 2. Deduplication check — shared across instances, so two servers
     // receiving the same Helius message emit it to clients exactly once.
@@ -82,8 +83,13 @@ export class RealtimeEventProcessor {
       });
     } else if ((event.type === EVENT_TYPES.BUY || event.type === EVENT_TYPES.SELL) && event.mint && event.signature) {
       void realtimeRepository.saveTrade({
+        eventId: event.id,
         signature: event.signature,
         mint: event.mint,
+        instructionIndex: event.instructionIndex,
+        innerInstructionIndex: event.innerInstructionIndex,
+        source: event.source,
+        commitment: event.commitment,
         wallet: event.wallet,
         side: event.type === EVENT_TYPES.BUY ? 'BUY' : 'SELL',
         amount: event.amount,

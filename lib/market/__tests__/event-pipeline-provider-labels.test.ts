@@ -4,10 +4,8 @@ import { MarketEventPipeline, type RawMarketEvent } from '../event-pipeline';
 /**
  * Guards against accidentally reverting event-pipeline.ts's provider labels
  * back to the meaningless placeholders ('primary_rpc_node'/'backup_helius_rpc').
- * processEvent() derives NormalizedMarketEvent.provider from these internal
- * constants (never from raw.providerId), so real, correctly-labeled output
- * depends on them matching the actual upstream providers wired in
- * lib/market/live/.
+ * Provenance comes from the transport that actually delivered an event.
+ * A degraded provider must not relabel a different provider's valid data.
  */
 describe('MarketEventPipeline provider labels', () => {
   let pipeline: MarketEventPipeline;
@@ -34,9 +32,13 @@ describe('MarketEventPipeline provider labels', () => {
     expect(normalized?.provider).toBe('birdeye_ws');
   });
 
-  it('labels a failed-over event with the real secondary provider', () => {
-    pipeline.triggerFailover('test-induced failure');
-    const normalized = pipeline.processEvent(rawEvent());
-    expect(normalized?.provider).toBe('helius_logs_ws');
+  it('does not relabel Birdeye data when Helius degrades', () => {
+    pipeline.triggerFailover('test-induced failure', 'helius_logs_ws');
+    expect(pipeline.processEvent(rawEvent())?.provider).toBe('birdeye_ws');
+  });
+
+  it('labels Helius and QuickNode logs by their actual transport', () => {
+    expect(pipeline.processEvent(rawEvent({ providerId: 'helius_logs_scoped' }))?.provider).toBe('helius_logs_ws');
+    expect(pipeline.processEvent(rawEvent({ providerId: 'quicknode_logs_scoped' }))?.provider).toBe('quicknode_logs_ws');
   });
 });

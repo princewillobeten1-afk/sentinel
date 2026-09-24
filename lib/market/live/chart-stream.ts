@@ -1,4 +1,5 @@
-import { parseChartTarget, parseProviderCandle, isChartTimeframe, type ChartFrame, type ChartTimeframe } from '@/lib/market/chart-model';
+import { parseChartTarget, parseChartSnapshot, parseProviderCandle, isChartTimeframe,
+  type ChartFrame, type ChartSnapshot, type ChartTimeframe } from '@/lib/market/chart-model';
 
 export interface ChartDemand { mint: string; timeframe: ChartTimeframe }
 interface State {
@@ -28,6 +29,31 @@ export function onChartDemand(listener: () => void) { state.demandListeners.add(
 export function onChartFrame(listener: (frame: ChartFrame) => void) { state.listeners.add(listener); return () => { state.listeners.delete(listener); }; }
 export function getChartFrame(target: string) { return state.frames.get(target); }
 
+/** Fan out a measured REST candle when Birdeye's WebSocket is unavailable. */
+export function publishPolledCandle(snapshot: ChartSnapshot): ChartFrame | null {
+  const target = `${snapshot.address}:${snapshot.timeframe}`;
+  // Do not splice a different currency/market or a stale provider response
+  // into the Birdeye aggregate series used by KLineChart.
+  const measured = parseChartSnapshot(snapshot, snapshot.address, snapshot.timeframe);
+  if (!state.refs.has(target) || !measured || measured.status !== 'measured') return null;
+  const candle = measured.candles[measured.candles.length - 1];
+  if (!candle) return null;
+  const previous = state.frames.get(target);
+  if (previous && (previous.candle.time > candle.time || previous.observedAt >= measured.observedAt
+    || (previous.source === 'birdeye-price-ws' && Date.now() - previous.observedAt < 15_000))) return null;
+  const frame: ChartFrame = { address: measured.address, timeframe: measured.timeframe,
+    candle, observedAt: measured.observedAt, source: 'birdeye-ohlcv-rest' };
+  saveFrame(target, frame);
+  return frame;
+}
+
+function saveFrame(target: string, frame: ChartFrame): void {
+  state.frames.delete(target);
+  state.frames.set(target, frame);
+  if (state.frames.size > 500) state.frames.delete(state.frames.keys().next().value!);
+  for (const listener of state.listeners) listener(frame);
+}
+
 /** Preserve complete provider OHLCV; the price normalizer intentionally only keeps close. */
 export function publishBirdeyeCandle(message: any, mint: string): ChartFrame | null {
   if (message?.type !== 'PRICE_DATA') return null;
@@ -41,10 +67,7 @@ export function publishBirdeyeCandle(message: any, mint: string): ChartFrame | n
   const previous = state.frames.get(target);
   if (previous && previous.candle.time > candle.time) return null;
   const frame: ChartFrame = { address: mint, timeframe: row.type, candle, observedAt: Date.now(), source: 'birdeye-price-ws' };
-  state.frames.delete(target);
-  state.frames.set(target, frame);
-  if (state.frames.size > 500) state.frames.delete(state.frames.keys().next().value!);
-  for (const listener of state.listeners) listener(frame);
+  saveFrame(target, frame);
   return frame;
 }
 export function resetChartStreamForTests() { state.refs.clear(); state.frames.clear(); state.listeners.clear(); state.demandListeners.clear(); }

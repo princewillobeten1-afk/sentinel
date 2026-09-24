@@ -38,7 +38,7 @@ describe('fetchOnChainOwnership', () => {
     const profile = await fetchOnChainOwnership('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
     expect(profile).not.toBeNull();
     expect(profile?.top10Pct).toBe(50);
-    expect(profile?.source).toBe('solana-rpc-largest-token-accounts');
+    expect(profile?.source).toMatch(/^(helius|solana)-rpc-largest-token-accounts$/);
   });
 
   it('returns null for empty mint', async () => {

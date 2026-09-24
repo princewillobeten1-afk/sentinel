@@ -1,14 +1,17 @@
 import { NormalizedRealtimeEvent, type EventLatencyMetrics, type RealtimeEventType } from './event-types';
 import type { DecodedBlockchainEvent } from '../helius/decoder';
+import { chainEventId } from '@/lib/market/event-identity';
 
 export class EventNormalizer {
   private static sequenceCounter = 0;
 
   /**
-   * Generates a deterministic deduplication ID: `${signature}:${type}:${mint}`
+   * Generates a provider-independent ID at the most precise observed granularity.
    */
-  public static createEventId(signature: string, type: string, mint?: string): string {
-    return `${signature}:${type}:${mint || 'unknown'}`;
+  public static createEventId(signature: string, type: string, mint?: string,
+    instructionIndex?: number, innerInstructionIndex?: number): string {
+    return chainEventId({ signature, mint: mint || 'unknown', kind: type,
+      instructionIndex, innerInstructionIndex }) ?? `${signature}:${type}:${mint || 'unknown'}`;
   }
 
   /**
@@ -16,11 +19,13 @@ export class EventNormalizer {
    */
   public static normalize(
     raw: DecodedBlockchainEvent,
-    source: 'helius_laserstream' | 'helius_ws' | 'birdeye' | 'mock' = 'helius_laserstream',
-    receivedTimestamp: number = Date.now()
+    source: 'helius_laserstream' | 'helius_ws' | 'quicknode' | 'birdeye' | 'mock' = 'helius_laserstream',
+    receivedTimestamp: number = Date.now(),
+    commitment: 'processed' | 'confirmed' | 'finalized' | undefined = source === 'helius_laserstream' ? 'processed' : undefined,
   ): NormalizedRealtimeEvent {
     const parsedTimestamp = Date.now();
-    const id = this.createEventId(raw.signature, raw.type, raw.mint);
+    const id = this.createEventId(raw.signature, raw.type, raw.mint,
+      raw.instructionIndex, raw.innerInstructionIndex);
     this.sequenceCounter += 1;
 
     const latency: EventLatencyMetrics = {
@@ -37,6 +42,8 @@ export class EventNormalizer {
       timestamp: parsedTimestamp,
       slot: raw.slot,
       signature: raw.signature,
+      instructionIndex: raw.instructionIndex,
+      innerInstructionIndex: raw.innerInstructionIndex,
       mint: raw.mint,
       name: raw.name,
       symbol: raw.symbol,
@@ -51,7 +58,7 @@ export class EventNormalizer {
       priceUsd: raw.price,
       liquidityUsd: raw.liquidityUsd,
       source,
-      commitment: 'processed',
+      commitment,
       latency,
     };
   }

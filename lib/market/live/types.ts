@@ -21,6 +21,8 @@ export interface BirdeyePriceDataMessage {
     l: number;
     c: number;
     v: number;
+    v_usd?: number;
+    vUsd?: number;
   };
 }
 

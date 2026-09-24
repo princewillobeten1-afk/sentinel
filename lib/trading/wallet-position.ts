@@ -1,6 +1,7 @@
 import 'server-only';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { env } from '@/lib/server/env';
+import { quickNodeService } from '@/lib/server/quicknode';
 import { acquireBirdeyeSlot } from '@/lib/market/enrichment/birdeye-limiter';
 import { measuredNumber, type TradeWalletPosition } from './sidebar-model';
 import { evidence, readProvider, failureReason, ProviderReadError } from './provider-read';
@@ -37,20 +38,29 @@ export async function getTradeWalletPosition(wallet: string, mint: string): Prom
 }
 async function load(wallet: string, mint: string): Promise<TradeWalletPosition> {
   const balanceSource = 'helius-confirmed-token-accounts';
+  let measuredBalanceSource = balanceSource;
   const pnlSource = 'birdeye-wallet-pnl:all-time-wac';
   const output: TradeWalletPosition = { wallet, mint, quantity: null, balanceSol: null, boughtUsd: null, soldUsd: null, holdingUsd: null, pnlUsd: null,
     balanceEvidence: evidence(balanceSource, 15_000, 'Balance unavailable.'), pnlEvidence: evidence(pnlSource, 30_000, 'PnL unavailable.') };
   await Promise.all([
     (async () => {
       try {
-        const rpc = marketRpc(); if (!rpc) throw new ProviderReadError('Helius mainnet RPC is not configured.');
         const owner = new PublicKey(wallet);
-        const [accounts, balance] = await Promise.all([rpc.getParsedTokenAccountsByOwner(owner, { mint: new PublicKey(mint) }, 'confirmed'), rpc.getBalance(owner, 'confirmed')]);
+        const endpoint = env.HELIUS_RPC_URL || (env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}` : '');
+        const { value: chain, source } = await quickNodeService.read(endpoint, async rpc => {
+          const [accounts, balance] = await Promise.all([
+            rpc.getParsedTokenAccountsByOwner(owner, { mint: new PublicKey(mint) }, 'confirmed'),
+            rpc.getBalance(owner, 'confirmed'),
+          ]);
+          return { accounts, balance };
+        });
+        const { accounts, balance } = chain;
         const amounts = accounts.value.map(account => measuredNumber(account.account.data.parsed?.info?.tokenAmount?.uiAmountString));
         if (amounts.some(amount => amount === null)) throw new ProviderReadError('Token account balance could not be decoded.');
         output.quantity = amounts.reduce<number>((sum, amount) => sum + amount!, 0);
         output.balanceSol = balance / 1e9;
-        output.balanceEvidence = evidence(balanceSource, 15_000);
+        measuredBalanceSource = `${source}-confirmed-token-accounts`;
+        output.balanceEvidence = evidence(measuredBalanceSource, 15_000);
       } catch (error) { output.balanceEvidence = evidence(balanceSource, 30_000, failureReason(error)); }
     })(),
     (async () => {
@@ -90,16 +100,16 @@ async function load(wallet: string, mint: string): Promise<TradeWalletPosition> 
   if (output.holdingUsd === null && output.quantity !== null) {
     if (output.quantity === 0) {
       output.holdingUsd = 0;
-      output.holdingEvidence = evidence(balanceSource, 15_000);
+      output.holdingEvidence = evidence(measuredBalanceSource, 15_000);
     } else {
       try {
         const token = (await fetchJupiterTokensByMint([mint])).find(item => item.id === mint);
         const price = measuredNumber(token?.usdPrice);
         if (price === null || price < 0) throw new ProviderReadError('No measured Jupiter USD price for this token.');
         output.holdingUsd = output.quantity * price;
-        output.holdingEvidence = evidence('helius-confirmed-balance+jupiter-token-price', 15_000);
+        output.holdingEvidence = evidence(`${measuredBalanceSource}+jupiter-token-price`, 15_000);
       } catch (error) {
-        output.holdingEvidence = evidence('helius-confirmed-balance+jupiter-token-price', 30_000, failureReason(error));
+        output.holdingEvidence = evidence(`${measuredBalanceSource}+jupiter-token-price`, 30_000, failureReason(error));
       }
     }
   }

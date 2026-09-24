@@ -27,7 +27,7 @@ export interface ChartFrame {
   timeframe: ChartTimeframe;
   candle: ChartCandle;
   observedAt: number;
-  source: 'birdeye-price-ws';
+  source: 'birdeye-price-ws' | 'birdeye-ohlcv-rest';
 }
 export const isChartTimeframe = (value: unknown): value is ChartTimeframe => CHART_TIMEFRAMES.includes(value as ChartTimeframe);
 export const isSolanaMint = (value: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
@@ -58,7 +58,8 @@ export function mergeChartCandles(current: ChartCandle[], incoming: ChartCandle[
 export function parseChartFrame(value: unknown): ChartFrame | null {
   const frame = value as ChartFrame | null;
   if (!frame || typeof frame.address !== 'string' || !isSolanaMint(frame.address) || !isChartTimeframe(frame.timeframe)
-    || frame.source !== 'birdeye-price-ws' || !Number.isFinite(frame.observedAt) || frame.observedAt <= 0) return null;
+    || (frame.source !== 'birdeye-price-ws' && frame.source !== 'birdeye-ohlcv-rest')
+    || !Number.isFinite(frame.observedAt) || frame.observedAt <= 0) return null;
   const c = frame.candle;
   if (!c) return null;
   const candle = parseProviderCandle({ unixTime: c.time, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume, vUsd: c.volumeUsd }, frame.timeframe);

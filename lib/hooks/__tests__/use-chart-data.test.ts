@@ -21,6 +21,27 @@ it('labels real REST fallback Polling, never Live just because the socket connec
   await act(async () => {}); expect(result.current.status).toBe('Polling');
   await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
   expect(fetcher).toHaveBeenCalledTimes(2); expect(result.current.candles[0].close).toBe(3);
+  expect(String(fetcher.mock.calls[0][0])).toContain('limit=150');
+  expect(String(fetcher.mock.calls[1][0])).toContain('limit=2');
+});
+it('uses measured server-poll frames without labeling them provider WebSocket Live', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  await act(async () => { ws.handler({ ...frame(4), source: 'birdeye-ohlcv-rest' }, { sequence: 1 }); });
+  expect(result.current.candles[0].close).toBe(4);
+  expect(result.current.status).toBe('Polling');
+  expect(result.current.streamAt).toBe(0);
+});
+it('recovers from a failed history request when a measured server-poll candle arrives', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('History temporarily unavailable')));
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.status).toBe('Delayed');
+  await act(async () => { ws.handler({ ...frame(4), source: 'birdeye-ohlcv-rest' }, { sequence: 1 }); });
+  expect(result.current.status).toBe('Polling');
+  expect(result.current.error).toBeNull();
+  expect(result.current.candles[0].close).toBe(4);
 });
 it('uses full WS candles, rejects out-of-order revisions and delayed REST overwrites', async () => {
   let finish: any;

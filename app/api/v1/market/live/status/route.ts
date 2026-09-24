@@ -1,6 +1,7 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
 import { marketStreamManager } from '@/lib/market/live/stream-manager';
+import { quickNodeService } from '@/lib/server/quicknode';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,27 +28,16 @@ async function getCurrentSlot(): Promise<number | null> {
   const now = Date.now();
   if (slotCache && now - slotCache.at < SLOT_TTL_MS) return slotCache.slot;
 
-  const url = process.env.HELIUS_RPC_URL?.trim();
-  if (!url) return slotCache?.slot ?? null;
+  const url = process.env.HELIUS_RPC_URL?.trim() || '';
+  if (!url && !quickNodeService.getHealth().configured) return slotCache?.slot ?? null;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5_000);
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getSlot' }),
-    });
-    if (!res.ok) return slotCache?.slot ?? null;
-    const body = (await res.json()) as { result?: number };
-    if (typeof body.result !== 'number') return slotCache?.slot ?? null;
-    slotCache = { slot: body.result, at: now };
-    return body.result;
+    const { value } = await quickNodeService.read(url, rpc => rpc.getSlot('confirmed'));
+    if (!Number.isSafeInteger(value) || value < 0) return slotCache?.slot ?? null;
+    slotCache = { slot: value, at: now };
+    return value;
   } catch {
     return slotCache?.slot ?? null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

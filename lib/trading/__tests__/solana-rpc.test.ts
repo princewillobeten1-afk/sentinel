@@ -5,6 +5,7 @@ const saved = {
   enabled: process.env.SOLANA_TRADING_ENABLED,
   primary: process.env.SOLANA_TRADING_RPC_URL,
   fallback: process.env.SOLANA_TRADING_FALLBACK_RPC_URL,
+  quickNode: process.env.QUICKNODE_SOLANA_RPC_URL,
 };
 function reply(result: unknown) { return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), { status: 200 }); }
 
@@ -12,12 +13,14 @@ beforeEach(() => {
   process.env.SOLANA_TRADING_ENABLED = 'true';
   process.env.SOLANA_TRADING_RPC_URL = 'https://rpc-primary.example';
   delete process.env.SOLANA_TRADING_FALLBACK_RPC_URL;
+  delete process.env.QUICKNODE_SOLANA_RPC_URL;
   resetTradingRpcForTests();
 });
 afterEach(() => {
   if (saved.enabled === undefined) delete process.env.SOLANA_TRADING_ENABLED; else process.env.SOLANA_TRADING_ENABLED = saved.enabled;
   if (saved.primary === undefined) delete process.env.SOLANA_TRADING_RPC_URL; else process.env.SOLANA_TRADING_RPC_URL = saved.primary;
   if (saved.fallback === undefined) delete process.env.SOLANA_TRADING_FALLBACK_RPC_URL; else process.env.SOLANA_TRADING_FALLBACK_RPC_URL = saved.fallback;
+  if (saved.quickNode === undefined) delete process.env.QUICKNODE_SOLANA_RPC_URL; else process.env.QUICKNODE_SOLANA_RPC_URL = saved.quickNode;
   vi.unstubAllGlobals(); resetTradingRpcForTests();
 });
 
@@ -48,6 +51,20 @@ describe('Solana mainnet broadcaster', () => {
       { url: 'https://rpc-primary.example', transaction: 'signed-bytes' },
       { url: 'https://rpc-fallback.example', transaction: 'signed-bytes' },
     ]);
+  });
+
+  it('uses configured QuickNode as the optional fallback without enabling trading itself', async () => {
+    process.env.QUICKNODE_SOLANA_RPC_URL = 'https://quicknode.example/secret';
+    const sends: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (body.method === 'getGenesisHash') return reply(MAINNET_GENESIS);
+      sends.push(url);
+      if (url.includes('primary')) throw new Error('timeout');
+      return reply('expected-signature');
+    }));
+    await expect(broadcastSignedTransaction('signed-bytes', 'expected-signature')).resolves.toEqual({ accepted: true });
+    expect(sends).toEqual(['https://rpc-primary.example', 'https://quicknode.example/secret']);
   });
 
   it('never treats a different returned signature as success', async () => {

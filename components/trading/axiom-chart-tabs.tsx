@@ -223,6 +223,7 @@ function tapeSol(n: number): string {
  * nothing was known, `'1,000'` tokens, and a maker named `'anon...4kL2'`.
  */
 function tapeRow(t: {
+  eventId?: string;
   signature: string;
   side?: string;
   wallet?: string | null;
@@ -247,7 +248,7 @@ function tapeRow(t: {
       ? usd / tokens
       : null;
   return {
-    id: t.signature,
+    id: t.eventId ?? `${t.signature}:${side}`,
     type: side === 'SELL' ? 'sell' : 'buy',
     amountSol: sol === null ? '—' : tapeSol(sol),
     tokens: tokens === null ? '—' : tapeCompact(tokens),

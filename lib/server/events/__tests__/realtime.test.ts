@@ -10,7 +10,7 @@ describe('Real-Time Solana Token Feed — Core Pipeline', () => {
     it('creates deterministic event IDs', () => {
       const id1 = EventNormalizer.createEventId('sig123', 'BUY', 'So11111111111111111111111111111111111111112');
       const id2 = EventNormalizer.createEventId('sig123', 'BUY', 'So11111111111111111111111111111111111111112');
-      expect(id1).toBe('sig123:BUY:So11111111111111111111111111111111111111112');
+      expect(id1).toBe('solana:sig123:So11111111111111111111111111111111111111112:BUY:aggregate');
       expect(id1).toBe(id2);
     });
 
@@ -36,9 +36,23 @@ describe('Real-Time Solana Token Feed — Core Pipeline', () => {
       expect(normalized.latency?.chainTimestamp).toBe(1700000000000);
       expect(normalized.latency?.receivedTimestamp).toBe(1700000000100);
     });
+
+    it('retains measured QuickNode commitment and instruction identity', () => {
+      const normalized = EventNormalizer.normalize({ type: EVENT_TYPES.BUY, signature: 'sig-indexed',
+        mint: 'MintIndexed', instructionIndex: 2, innerInstructionIndex: 1 },
+      'quicknode', Date.now(), 'confirmed');
+      expect(normalized.id).toBe('solana:sig-indexed:MintIndexed:BUY:inner-2-1');
+      expect(normalized.source).toBe('quicknode');
+      expect(normalized.commitment).toBe('confirmed');
+      expect(normalized.slot).toBeUndefined();
+      expect(normalized.latency?.chainTimestamp).toBeUndefined();
+    });
   });
 
   describe('BlockchainDecoder', () => {
+    it('does not manufacture a transaction when its signature is absent', () => {
+      expect(BlockchainDecoder.decodeTransaction({ slot: 123, meta: { logMessages: ['Instruction: Buy'] } })).toEqual([]);
+    });
     it('decodes Pump.fun token creation and trades', () => {
       const mockTx = {
         signature: 'sig_pump_create',

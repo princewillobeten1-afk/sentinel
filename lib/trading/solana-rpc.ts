@@ -8,7 +8,8 @@ export function tradingRpcConfig(): TradingRpcConfig {
     || (process.env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(process.env.HELIUS_API_KEY.trim())}` : '');
   if (!primary || process.env.SOLANA_TRADING_ENABLED !== 'true')
     throw new ApiError('Solana swap broadcasting is not configured or is disabled.', 503, 'TRADING_NOT_CONFIGURED');
-  const fallback = process.env.SOLANA_TRADING_FALLBACK_RPC_URL?.trim() || undefined;
+  const fallback = process.env.SOLANA_TRADING_FALLBACK_RPC_URL?.trim()
+    || process.env.QUICKNODE_SOLANA_RPC_URL?.trim() || undefined;
   for (const endpoint of [primary, fallback].filter(Boolean) as string[]) {
     try { if (new URL(endpoint).protocol !== 'https:') throw new Error(); }
     catch { throw new ApiError('Trading RPC must be a valid HTTPS endpoint.', 503, 'TRADING_NOT_CONFIGURED'); }

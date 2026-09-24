@@ -1,7 +1,8 @@
 import 'server-only';
 
-import { Connection, PublicKey } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import { env } from '@/lib/server/env';
+import { quickNodeService } from '@/lib/server/quicknode';
 import type { HolderProfile } from '@/lib/market/enrichment/holder-profile';
 import { measuredNumber } from './sidebar-model';
 
@@ -16,36 +17,31 @@ function rpcUrl(): string {
   );
 }
 
-function connection(endpoint: string): Connection {
-  return new Connection(endpoint, {
-    commitment: 'confirmed',
-    disableRetryOnRateLimit: true,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(8_000) }),
-  });
-}
-
 export async function fetchOnChainOwnership(
   mint: string,
   devAddress?: string | null,
 ): Promise<HolderProfile | null> {
   const endpoint = rpcUrl();
-  if (!endpoint || !mint) return null;
+  if ((!endpoint && !quickNodeService.getHealth().configured) || !mint) return null;
 
   try {
-    const conn = connection(endpoint);
     const mintPubkey = new PublicKey(mint);
-
-    const [supplyRes, largestRes] = await Promise.allSettled([
-      conn.getTokenSupply(mintPubkey),
-      conn.getTokenLargestAccounts(mintPubkey),
-    ]);
-
-    if (supplyRes.status !== 'fulfilled' || largestRes.status !== 'fulfilled') {
-      return null;
+    let devPubkey: PublicKey | null = null;
+    if (devAddress) {
+      try { devPubkey = new PublicKey(devAddress); } catch { /* Unknown dev share must not hide top-10 data. */ }
     }
+    const { value: chain, source } = await quickNodeService.read(endpoint, async conn => {
+      const [supply, largest] = await Promise.all([
+        conn.getTokenSupply(mintPubkey), conn.getTokenLargestAccounts(mintPubkey),
+      ]);
+      const devAccounts = devPubkey
+        ? await conn.getParsedTokenAccountsByOwner(devPubkey, { mint: mintPubkey }, 'confirmed').catch(() => null)
+        : null;
+      return { supply, largest, devAccounts };
+    });
 
-    const totalSupply = measuredNumber(supplyRes.value.value.uiAmountString ?? supplyRes.value.value.uiAmount);
-    const largestAccounts = largestRes.value.value;
+    const totalSupply = measuredNumber(chain.supply.value.uiAmountString ?? chain.supply.value.uiAmount);
+    const largestAccounts = chain.largest.value;
 
     if (!totalSupply || totalSupply <= 0 || !Array.isArray(largestAccounts) || largestAccounts.length === 0) {
       return null;
@@ -57,11 +53,9 @@ export async function fetchOnChainOwnership(
       : null;
 
     let devPct: number | null = null;
-    if (devAddress) {
+    if (chain.devAccounts) {
       try {
-        const devPubkey = new PublicKey(devAddress);
-        const devAccounts = await conn.getParsedTokenAccountsByOwner(devPubkey, { mint: mintPubkey }, 'confirmed');
-        const balances = devAccounts.value.map(account => measuredNumber(account.account.data.parsed?.info?.tokenAmount?.uiAmountString));
+        const balances = chain.devAccounts.value.map(account => measuredNumber(account.account.data.parsed?.info?.tokenAmount?.uiAmountString));
         if (balances.every(balance => balance !== null && balance >= 0)) {
           devPct = Number((balances.reduce<number>((sum, balance) => sum + balance!, 0) / totalSupply * 100).toFixed(2));
         }
@@ -81,7 +75,9 @@ export async function fetchOnChainOwnership(
       proTraders: null,
       kols: null,
       fetchedAt: Date.now(),
-      source: 'solana-rpc-largest-token-accounts',
+      source: source === 'quicknode' ? 'quicknode-rpc-largest-token-accounts'
+        : (env.HELIUS_RPC_URL || env.HELIUS_API_KEY) ? 'helius-rpc-largest-token-accounts'
+          : 'solana-rpc-largest-token-accounts',
     };
   } catch {
     return null;

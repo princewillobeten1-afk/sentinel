@@ -2,7 +2,7 @@ import 'server-only';
 
 import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
-import { marketEventPipeline, type RawMarketEvent } from '@/lib/market/event-pipeline';
+import { marketEventId, marketEventPipeline, type RawMarketEvent } from '@/lib/market/event-pipeline';
 import { signalProcessor } from '@/lib/discovery/signal-processor';
 import { BirdeyeClient } from './birdeye-client';
 import { HeliusClient } from './helius-client';
@@ -19,6 +19,11 @@ import { dexMarketStats, queueDexMarketReconciliation } from '@/lib/discovery/de
 import { birdeyeLimiterStats } from '@/lib/market/enrichment/birdeye-limiter';
 import { tokenCardPersistenceHealth } from '@/lib/server/db/token-card-evidence-repository';
 import { getChartDemand, onChartDemand } from './chart-stream';
+import { ChartPoller } from './chart-poller';
+import { quickNodeService } from '@/lib/server/quicknode';
+import { redis } from '@/lib/server/redis';
+import { capabilityHealth } from './capability-health';
+import { realtimeRepository } from '@/lib/server/db/realtime-repository';
 
 /**
  * How long watched-mint changes are gathered before Helius is told.
@@ -33,6 +38,8 @@ const DEMAND_DEBOUNCE_MS = 750;
 export interface StreamManagerHealth {
   birdeye: ConnectionHealth;
   helius: ConnectionHealth;
+  chainLogProvider: 'helius' | 'quicknode' | null;
+  quickNode: ReturnType<typeof quickNodeService.getHealth>;
   trackedMintCount: number;
   recentEventCount: number;
   startedAt: string | null;
@@ -64,6 +71,8 @@ export interface StreamManagerHealth {
   ownershipAudit: ReturnType<typeof auditStats>;
   birdeyeRestLimiter: ReturnType<typeof birdeyeLimiterStats>;
   evidencePersistence: ReturnType<typeof tokenCardPersistenceHealth>;
+  chartPolling: ReturnType<ChartPoller['getHealth']>;
+  capabilities: ReturnType<typeof capabilityHealth>;
 }
 
 /**
@@ -82,6 +91,7 @@ export interface StreamManagerHealth {
 class StreamManager {
   private birdeye: BirdeyeClient | null = null;
   private unsubscribeChartDemand: (() => void) | null = null;
+  private chartPoller = new ChartPoller();
   private helius: HeliusClient | null = null;
   private started = false;
   private startedAt: string | null = null;
@@ -122,8 +132,8 @@ class StreamManager {
     try {
       this.birdeye = new BirdeyeClient({
         mints,
-        onRawEvent: (event) => this.handleRawEvent(event),
-        onDegraded: (reason) => marketEventPipeline.triggerFailover(`Birdeye: ${reason}`),
+        onRawEvent: (event) => { void this.handleRawEvent(event); },
+        onDegraded: (reason) => marketEventPipeline.triggerFailover(`Birdeye: ${reason}`, 'birdeye_ws'),
       });
       this.birdeye.connect();
     } catch (err) {
@@ -137,8 +147,11 @@ class StreamManager {
     //    scoped to the migration authority plus whatever clients are watching.
     try {
       this.helius = new HeliusClient({
-        onRawEvent: (event) => this.handleRawEvent(event),
-        onDegraded: (reason) => marketEventPipeline.triggerFailover(`Helius WS: ${reason}`),
+        onRawEvent: (event) => { void this.handleRawEvent(event); },
+        onDegraded: (reason) => {
+          const provider = this.helius?.getTransport() === 'quicknode' ? 'quicknode_logs_ws' : 'helius_logs_ws';
+          marketEventPipeline.triggerFailover(`Chain logs: ${reason}`, provider);
+        },
       });
       this.helius.connect();
     } catch (err) {
@@ -148,6 +161,7 @@ class StreamManager {
     }
 
     this.trackDemand();
+    this.chartPoller.start();
   }
 
   /**
@@ -166,6 +180,7 @@ class StreamManager {
       void hydrateTokenCards(visibleMints);
       this.helius?.setWatchedMints(visibleMints);
       this.birdeye?.setMints(visibleMints, getChartDemand());
+      this.chartPoller.setTargets(getChartDemand());
       // The same set the browser has explicitly subscribed to drives the
       // expensive ownership queue. No separate firehose or guessed "popular"
       // list can steal its quota from what the user is looking at.
@@ -197,6 +212,7 @@ class StreamManager {
   }
 
   stop(): void {
+    this.chartPoller.stop();
     this.unsubscribeChartDemand?.();
     this.unsubscribeChartDemand = null;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
@@ -228,9 +244,16 @@ class StreamManager {
   }
 
   getHealth(): StreamManagerHealth {
+    const birdeye = this.birdeye?.getHealth() ?? { state: 'closed' as const, lastMessageAt: null, consecutiveFailures: 0 };
+    const helius = this.helius?.getHealth() ?? { state: 'closed' as const, lastMessageAt: null, consecutiveFailures: 0 };
+    const chainLogProvider = this.helius?.getTransport() ?? null;
+    const quickNode = quickNodeService.getHealth();
+    const chartPolling = this.chartPoller.getHealth();
     return {
-      birdeye: this.birdeye?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
-      helius: this.helius?.getHealth() ?? { state: 'closed', lastMessageAt: null, consecutiveFailures: 0 },
+      birdeye,
+      helius,
+      chainLogProvider,
+      quickNode,
       trackedMintCount: resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS).length,
       recentEventCount: liveMarketCache.getRecentEvents(Number.MAX_SAFE_INTEGER).length,
       startedAt: this.startedAt,
@@ -246,12 +269,25 @@ class StreamManager {
       ownershipAudit: auditStats(),
       birdeyeRestLimiter: birdeyeLimiterStats(),
       evidencePersistence: tokenCardPersistenceHealth(),
+      chartPolling,
+      capabilities: capabilityHealth({ birdeye, chainLogs: helius, chainLogProvider,
+        quickNode, chartPolling, birdeyeConfigured: Boolean(env.BIRDEYE_API_KEY) }),
     };
   }
 
-  private handleRawEvent(raw: RawMarketEvent): void {
+  private async handleRawEvent(raw: RawMarketEvent): Promise<void> {
     const normalized = marketEventPipeline.processEvent(raw);
-    if (!normalized) return;
+    if (!normalized) {
+      this.enrichExistingTrade(raw);
+      return;
+    }
+
+    // The pipeline's hot-path set is process-local. Claim the provider-neutral
+    // identity before any cache, signal or client receives this observation.
+    if (!await redis.claim(`market-event:${normalized.id}`, raw.signature ? 3_600 : 60)) {
+      this.enrichExistingTrade(raw);
+      return;
+    }
 
     liveMarketCache.update(normalized);
     signalProcessor.ingestEvent(normalized);
@@ -266,6 +302,11 @@ class StreamManager {
     // `realtime_trades`, which is the path the app actually queries.
 
     // Forward to Real-Time Event Pipeline (Fast Path + Async Path)
+    // A provider tick without a chain signature is not a blockchain event.
+    // It already reached the market cache above; do not persist an invented tx.
+    if (!raw.signature || raw.eventType === 'PRICE_UPDATE') return;
+    const source = raw.providerId.startsWith('quicknode_logs_') ? 'quicknode'
+      : raw.providerId.startsWith('helius_logs_') ? 'helius_ws' : 'birdeye';
     void realtimeProcessor.processDecodedEvent({
       // A directionless provider swap is a market update, not a buy. Only the
       // Helius balance-delta decoder is allowed to publish BUY/SELL.
@@ -278,12 +319,11 @@ class StreamManager {
         : raw.eventType === 'LIQUIDITY_ADD'
           ? 'LIQUIDITY_ADDED'
           : 'TOKEN_UPDATE') as any,
-      // The bare on-chain signature when the provider supplied one. Passing
-      // `eventId` here is what wrote `helius_<sig>_<program>` into
-      // `realtime_trades.signature`, a value no explorer can resolve.
-      signature: raw.signature || raw.eventId || `evt_${Date.now()}`,
-      slot: 0,
-      programId: raw.providerId,
+      signature: raw.signature,
+      slot: raw.slot,
+      programId: raw.programId,
+      instructionIndex: raw.instructionIndex,
+      innerInstructionIndex: raw.innerInstructionIndex,
       mint: raw.mint,
       // Persisted by realtimeRepository.saveTrade, which already accepts it.
       wallet: raw.wallet,
@@ -291,13 +331,34 @@ class StreamManager {
       amountSol: raw.amountSol,
       amountUsd: raw.volumeUsd ? Number(raw.volumeUsd) : undefined,
       price: raw.priceUsd ? Number(raw.priceUsd) : undefined,
-      chainTimestamp: raw.timestamp ? new Date(raw.timestamp).getTime() : Date.now(),
-    });
+      chainTimestamp: raw.chainTimestamp,
+    }, source, Date.now(), raw.commitment);
 
     logger.debug('[market-live] event normalized', {
       mint: normalized.mint,
       eventType: normalized.eventType,
       provider: normalized.provider,
+    });
+  }
+
+  /** A second provider may fill missing fields without broadcasting a second trade. */
+  private enrichExistingTrade(raw: RawMarketEvent): void {
+    if (raw.eventType !== 'SWAP' || !raw.signature || !raw.side) return;
+    const observedAt = Date.parse(raw.timestamp);
+    if (!Number.isFinite(observedAt) || observedAt < Date.now() - 300_000) return;
+    const measuredNumber = (value: string | number | undefined) => {
+      if (value === undefined) return undefined;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : undefined;
+    };
+    void realtimeRepository.saveTrade({
+      eventId: marketEventId(raw), signature: raw.signature, mint: raw.mint,
+      side: raw.side, instructionIndex: raw.instructionIndex,
+      innerInstructionIndex: raw.innerInstructionIndex, wallet: raw.wallet,
+      amount: raw.tokenAmount, amountSol: raw.amountSol,
+      priceUsd: measuredNumber(raw.priceUsd), slot: raw.slot,
+      timestamp: raw.timestamp, source: raw.providerId,
+      commitment: raw.commitment,
     });
   }
 }

@@ -35,6 +35,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
     let latestBusy = false;
     let olderBusy = false;
     let lastStream = 0;
+    let lastPush = 0;
     let lastAttempt = 0;
     const controllers = new Set<AbortController>();
 
@@ -47,8 +48,10 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
       if (frame.observedAt < (revisions.get(frame.candle.time) ?? 0)) return;
       revisions.set(frame.candle.time, frame.observedAt);
       rows = mergeChartCandles(rows, [frame.candle]);
-      lastStream = frame.observedAt;
-      setCandles(rows); setStreamAt(lastStream); setLoading(false);
+      lastPush = frame.observedAt;
+      if (frame.source === 'birdeye-price-ws') lastStream = frame.observedAt;
+      setCandles(rows); setObservedAt(current => Math.max(current, frame.observedAt)); setStreamAt(lastStream);
+      setError(null); setLoading(false);
     };
 
     async function request(before?: number) {
@@ -59,7 +62,9 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
       controllers.add(controller);
       const timeout = setTimeout(() => controller.abort(), 15_000);
       try {
-        const params = new URLSearchParams({ timeframe, limit: '150' });
+        // Seed the viewport once, then reconcile only the newest candles. The
+        // shared server poller carries the live feed when provider WS is denied.
+        const params = new URLSearchParams({ timeframe, limit: before === undefined && rows.length ? '2' : '150' });
         if (before !== undefined) params.set('before', String(before));
         const response = await fetch(`/api/v1/tokens/${chain}/${address}/chart?${params}`, {
           signal: controller.signal, cache: 'no-store',
@@ -79,14 +84,17 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
           more = snapshot.hasMore; setHasMore(more);
         }
         if (before === undefined) {
-          setObservedAt(snapshot.observedAt);
-          setError(snapshot.status === 'stale' ? snapshot.reason || 'Provider data is delayed.' : null);
+          setObservedAt(current => Math.max(current, snapshot.observedAt));
+          if (snapshot.observedAt >= lastPush) {
+            setError(snapshot.status === 'stale' ? snapshot.reason || 'Provider data is delayed.' : null);
+          }
         } else if (snapshot.status === 'stale') setOlderError(snapshot.reason || 'Older history is delayed.');
       } catch (cause) {
         if (!active) return;
         const reason = controller.signal.aborted ? 'Chart request timed out. Please retry.'
           : cause instanceof Error ? cause.message : 'Chart data is unavailable.';
-        if (before === undefined) setError(reason); else setOlderError(reason);
+        if (before === undefined) { if (lastPush < lastAttempt) setError(reason); }
+        else setOlderError(reason);
       } finally {
         clearTimeout(timeout); controllers.delete(controller);
         if (before === undefined) latestBusy = false; else olderBusy = false;
@@ -98,7 +106,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
     void request();
     const timer = setInterval(() => {
       setNow(Date.now());
-      const interval = Date.now() - lastStream < 30_000 ? 30_000 : 10_000;
+      const interval = Date.now() - lastPush < 30_000 ? 30_000 : 10_000;
       if (!document.hidden && Date.now() - lastAttempt >= interval) void request();
     }, 1_000);
     const resume = () => { if (!document.hidden) void request(); };

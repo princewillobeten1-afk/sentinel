@@ -1,8 +1,9 @@
 import 'server-only';
 
-import { Connection, PublicKey, type AccountInfo } from '@solana/web3.js';
+import { PublicKey, type AccountInfo } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, unpackMint } from '@solana/spl-token';
 import { env } from '@/lib/server/env';
+import { quickNodeService } from '@/lib/server/quicknode';
 import { logger } from '@/lib/server/logger';
 import { acquireBirdeyeSlot } from './birdeye-limiter';
 import { getAudit } from './audit-worker';
@@ -71,19 +72,10 @@ export function parseMintAuthorities(mint: string, info: AccountInfo<Buffer> | n
   } catch { return {}; }
 }
 
-function connection(endpoint: string): Connection {
-  return new Connection(endpoint, {
-    commitment: 'confirmed', disableRetryOnRateLimit: true,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(10_000) }),
-  });
-}
-
 async function fetchMintAuthorities(mint: string): Promise<MintAuthorities> {
   const cached = authorityCache.get(mint);
   if (cached && (cached.permanent || Date.now() - cached.fetchedAt < SECURITY_TTL_MS)) return cached.value;
-  const endpoint = rpcUrl();
-  if (!endpoint) return {};
-  const info = await connection(endpoint).getAccountInfo(new PublicKey(mint), 'confirmed');
+  const { value: info } = await quickNodeService.read(rpcUrl(), rpc => rpc.getAccountInfo(new PublicKey(mint), 'confirmed'));
   const value = parseMintAuthorities(mint, info);
   if (value.mintRevoked === undefined) return {};
   authorityCache.set(mint, {
@@ -117,17 +109,17 @@ async function fetchCreatorAge(address: string): Promise<CreatorAgeResult> {
       : cached.result;
   }
   const endpoint = rpcUrl();
-  if (!endpoint) return { reason: 'Helius RPC is not configured.' };
+  if (!endpoint && !quickNodeService.getHealth().configured) return { reason: 'Mainnet RPC is not configured.' };
   const remember = (result: CreatorAgeResult): CreatorAgeResult => {
     creatorCache.set(address, { result, fetchedAt: Date.now() });
     return result;
   };
-  const rpc = connection(endpoint);
   const owner = new PublicKey(address);
   let before: string | undefined;
   let oldestSeconds: number | null = null;
   for (let page = 0; page < 5; page += 1) {
-    const batch = await rpc.getSignaturesForAddress(owner, { limit: 1_000, before }, 'confirmed');
+    const { value: batch } = await quickNodeService.read(endpoint,
+      rpc => rpc.getSignaturesForAddress(owner, { limit: 1_000, before }, 'confirmed'));
     if (batch.length === 0) {
       return oldestSeconds === null
         ? remember({ reason: 'Creator history has no confirmed timestamp.' })

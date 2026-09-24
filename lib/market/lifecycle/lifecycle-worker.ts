@@ -1,7 +1,9 @@
 import 'server-only';
 
 import { logger } from '@/lib/server/logger';
-import { fetchBondingCurves } from './bonding-curve';
+import { PublicKey } from '@solana/web3.js';
+import { quickNodeService } from '@/lib/server/quicknode';
+import { bondingCurveAddress, decodeBondingCurve, PUMPFUN_PROGRAM_ID } from './bonding-curve';
 import { fetchMigration } from './migration-detector';
 import { MigrationHistory } from './migration-history';
 import { fetchJupiterFeed, hasReadableCurve, type JupiterToken } from '@/lib/discovery/jupiter-feed';
@@ -341,7 +343,19 @@ class LifecycleWorker {
         .slice(0, MAX_CURVES_PER_SWEEP)
         .map((record) => record.mint);
 
-      const curves = await fetchBondingCurves(curveRpcUrl(), due);
+      // One bounded getMultipleAccounts read. A failed Helius read is retried
+      // against verified QuickNode mainnet; absent accounts remain absent.
+      const addresses = due.map(mint => new PublicKey(bondingCurveAddress(mint)));
+      const { value: curves } = await quickNodeService.read(curveRpcUrl(), async rpc => {
+        const accounts = await rpc.getMultipleAccountsInfo(addresses, 'confirmed');
+        const readings = new Map<string, NonNullable<ReturnType<typeof decodeBondingCurve>>>();
+        accounts.forEach((account, index) => {
+          if (!account || !account.owner.equals(new PublicKey(PUMPFUN_PROGRAM_ID))) return;
+          const curve = decodeBondingCurve(account.data);
+          if (curve) readings.set(due[index], curve);
+        });
+        return readings;
+      });
       for (const [mint, curve] of curves) {
         applyCurveReading(mint, curve);
       }

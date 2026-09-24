@@ -1,8 +1,10 @@
 import 'server-only';
 
 import { env } from '@/lib/server/env';
+import { quickNodeService } from '@/lib/server/quicknode';
 import { logger } from '@/lib/server/logger';
 import type { RawMarketEvent } from '@/lib/market/event-pipeline';
+import { chainEventId } from '@/lib/market/event-identity';
 import { ReconnectingWebSocketClient } from './ws-client';
 import { matchLogsAnyProgram } from './helius-log-matchers';
 import { normalizeHeliusLogMatch } from './normalizers';
@@ -110,6 +112,10 @@ export interface HeliusClientOptions {
 export class HeliusClient {
   private readonly client: ReconnectingWebSocketClient;
   private readonly onRawEvent: (event: RawMarketEvent) => void;
+  private readonly heliusWsUrl: string;
+  private activeSource: 'helius' | 'quicknode' = 'helius';
+  private switching = false;
+  private subscribeRefusals = 0;
 
   /** Request id → label, for subscribes awaiting their subscription id. */
   private pendingRequests = new Map<number, string>();
@@ -140,13 +146,17 @@ export class HeliusClient {
     const wsUrl = env.HELIUS_WS_URL.includes('api-key=')
       ? env.HELIUS_WS_URL
       : `${env.HELIUS_WS_URL.replace(/\/+$/, '')}/?api-key=${apiKey}`;
+    this.heliusWsUrl = wsUrl;
 
     this.client = new ReconnectingWebSocketClient({
-      name: 'helius',
+      name: 'chain-logs',
       url: wsUrl,
       onOpen: () => this.handleOpen(),
       onMessage: (raw) => this.handleMessage(raw),
-      onDegraded: options.onDegraded,
+      onDegraded: (reason) => {
+        options.onDegraded(reason);
+        void this.failoverTransport();
+      },
     });
   }
 
@@ -160,6 +170,28 @@ export class HeliusClient {
 
   getHealth(): ConnectionHealth {
     return this.client.getHealth();
+  }
+
+  getTransport(): 'helius' | 'quicknode' { return this.activeSource; }
+
+  private async failoverTransport(): Promise<void> {
+    if (this.switching) return;
+    this.switching = true;
+    try {
+      if (this.activeSource === 'helius') {
+        const fallback = await quickNodeService.websocketEndpoint();
+        if (!fallback) return;
+        this.activeSource = 'quicknode';
+        this.client.switchEndpoint(fallback);
+      } else {
+        this.activeSource = 'helius';
+        this.client.switchEndpoint(this.heliusWsUrl);
+      }
+      this.subscribeRefusals = 0;
+      logger.warn('[chain-logs] subscription transport switched', { provider: this.activeSource });
+    } finally {
+      this.switching = false;
+    }
   }
 
   getFocusedMint(): string | null {
@@ -284,7 +316,8 @@ export class HeliusClient {
     this.subscriptions.clear();
     this.subscriptionByLabel.clear();
     this.reconcile();
-    logger.info('[helius] subscribed', {
+    logger.info('[chain-logs] subscribed', {
+      provider: this.activeSource,
       migrations: true,
       mints: this.wantedLabels().size - 1,
     });
@@ -319,6 +352,7 @@ export class HeliusClient {
 
       this.subscriptions.set(message.result, label);
       this.subscriptionByLabel.set(label, message.result);
+      this.subscribeRefusals = 0;
       return;
     }
 
@@ -329,7 +363,11 @@ export class HeliusClient {
         // Dropped from pending so the next reconcile retries it, instead of
         // treating a refused subscribe as one still on its way.
         this.pendingRequests.delete(failure.id);
-        logger.warn('[helius] subscribe refused', { label, error: failure.error });
+        // Provider error text may echo a credential-bearing endpoint.
+        const code = typeof failure.error === 'object' && failure.error !== null && 'code' in failure.error
+          ? (failure.error as { code: unknown }).code : 'unknown';
+        logger.warn('[chain-logs] subscribe refused', { label, code, provider: this.activeSource });
+        if (++this.subscribeRefusals >= 3) void this.failoverTransport();
       }
       return;
     }
@@ -412,8 +450,9 @@ export class HeliusClient {
     // One id per signature, not per subscription: a swap between two watched
     // tokens arrives on both subscriptions and must still be one trade.
     const sourceLabel = 'scoped';
+    const provider = this.activeSource;
 
-    const event = normalizeHeliusLogMatch(signature, sourceLabel, match);
+    const event = normalizeHeliusLogMatch(signature, sourceLabel, match, provider);
     if (event) {
       this.onRawEvent(event);
       return;
@@ -432,17 +471,22 @@ export class HeliusClient {
     void enrichSignature(signature)
       .then((trade) => {
         if (!trade) return;
+        const side = match.eventType === 'SWAP' ? (trade.isBuy ? 'BUY' : 'SELL') : undefined;
+        const eventId = chainEventId({ signature, mint: trade.mint,
+          kind: side ?? match.eventType });
+        if (!eventId) return;
         this.onRawEvent({
-          eventId: `helius_${signature}_${sourceLabel}`,
-          providerId: `helius_logs_${sourceLabel}`,
+          eventId,
+          providerId: `${provider}_logs_${sourceLabel}`,
           mint: trade.mint,
           eventType: match.eventType,
           priceUsd: trade.priceUsd,
           volumeUsd: trade.volumeUsd,
           // Measured from which way the token crossed the transaction
           // boundary, not assumed.
-          side: match.eventType === 'SWAP' ? (trade.isBuy ? 'BUY' : 'SELL') : undefined,
+          side,
           signature,
+          commitment: 'confirmed',
           wallet: trade.wallet,
           tokenAmount: trade.tokenAmount,
           amountSol: trade.amountSol,

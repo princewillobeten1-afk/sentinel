@@ -2,6 +2,7 @@ import { dbPool } from './pool';
 import { logger } from '../logger';
 import { describeError } from '../describe-error';
 import type { NormalizedRealtimeEvent } from '../events/event-types';
+import { chainEventId } from '@/lib/market/event-identity';
 
 export interface TokenRecord {
   mint: string;
@@ -22,8 +23,13 @@ export interface TokenRecord {
 }
 
 export interface TradeRecord {
+  eventId?: string;
   signature: string;
   mint: string;
+  instructionIndex?: number;
+  innerInstructionIndex?: number;
+  commitment?: 'unknown' | 'processed' | 'confirmed' | 'finalized';
+  source?: string;
   wallet?: string;
   side: 'BUY' | 'SELL';
   amount?: number;
@@ -31,6 +37,13 @@ export interface TradeRecord {
   priceUsd?: number;
   slot?: number;
   timestamp?: string;
+}
+
+const commitmentRank = { unknown: 0, processed: 1, confirmed: 2, finalized: 3 } as const;
+function strongestCommitment(a?: TradeRecord['commitment'], b?: TradeRecord['commitment']): TradeRecord['commitment'] {
+  if (!a) return b;
+  if (!b) return a;
+  return commitmentRank[b] > commitmentRank[a] ? b : a;
 }
 
 export class RealtimeRepository {
@@ -106,26 +119,65 @@ export class RealtimeRepository {
    * Persists a trade event.
    */
   public async saveTrade(trade: TradeRecord): Promise<void> {
-    this.inMemoryTrades.push(trade);
+    const eventId = trade.eventId ?? chainEventId({ signature: trade.signature, mint: trade.mint,
+      kind: trade.side, instructionIndex: trade.instructionIndex,
+      innerInstructionIndex: trade.innerInstructionIndex });
+    if (!eventId) {
+      logger.warn('[realtime-repo] unsigned or invalid trade observation dropped');
+      return;
+    }
+    const measured = { ...trade, eventId };
+    const existingIndex = this.inMemoryTrades.findIndex((row) => row.eventId === eventId);
+    if (existingIndex >= 0) {
+      const existing = this.inMemoryTrades[existingIndex];
+      this.inMemoryTrades[existingIndex] = {
+        ...existing, wallet: existing.wallet ?? measured.wallet,
+        amount: existing.amount ?? measured.amount,
+        amountSol: existing.amountSol ?? measured.amountSol,
+        priceUsd: existing.priceUsd ?? measured.priceUsd,
+        slot: existing.slot ?? measured.slot,
+        source: existing.source && measured.source && existing.source !== measured.source
+          ? 'multiple' : existing.source ?? measured.source,
+        commitment: strongestCommitment(existing.commitment, measured.commitment),
+      };
+    } else this.inMemoryTrades.push(measured);
     if (this.inMemoryTrades.length > 2000) {
       this.inMemoryTrades.shift();
     }
 
     try {
       await dbPool.query(
-        `INSERT INTO realtime_trades (signature, mint, wallet, side, amount, amount_sol, price_usd, slot, timestamp)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::timestamptz, NOW()))
-         ON CONFLICT (signature, mint, side) DO NOTHING`,
+        `INSERT INTO realtime_trades (event_id, signature, mint, wallet, side, amount, amount_sol, price_usd, slot, timestamp,
+           instruction_index, inner_instruction_index, source, commitment)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12, $13, COALESCE($14, 'unknown'))
+         ON CONFLICT (event_id) DO UPDATE SET
+           wallet = COALESCE(realtime_trades.wallet, EXCLUDED.wallet),
+           amount = COALESCE(realtime_trades.amount, EXCLUDED.amount),
+           amount_sol = COALESCE(realtime_trades.amount_sol, EXCLUDED.amount_sol),
+           price_usd = COALESCE(realtime_trades.price_usd, EXCLUDED.price_usd),
+           slot = COALESCE(realtime_trades.slot, EXCLUDED.slot),
+           source = CASE WHEN realtime_trades.source IS NOT NULL AND EXCLUDED.source IS NOT NULL
+             AND realtime_trades.source <> EXCLUDED.source THEN 'multiple'
+             ELSE COALESCE(realtime_trades.source, EXCLUDED.source) END,
+           commitment = CASE WHEN realtime_trades.commitment = 'finalized' OR EXCLUDED.commitment = 'finalized' THEN 'finalized'
+             WHEN realtime_trades.commitment = 'confirmed' OR EXCLUDED.commitment = 'confirmed' THEN 'confirmed'
+             WHEN realtime_trades.commitment = 'processed' OR EXCLUDED.commitment = 'processed' THEN 'processed'
+             ELSE 'unknown' END`,
         [
+          eventId,
           trade.signature,
           trade.mint,
           trade.wallet || null,
           trade.side,
-          trade.amount || null,
-          trade.amountSol || null,
-          trade.priceUsd || null,
-          trade.slot || null,
+          trade.amount ?? null,
+          trade.amountSol ?? null,
+          trade.priceUsd ?? null,
+          trade.slot ?? null,
           trade.timestamp || null,
+          trade.instructionIndex ?? null,
+          trade.innerInstructionIndex ?? null,
+          trade.source ?? null,
+          trade.commitment ?? null,
         ]
       );
     } catch (err) {

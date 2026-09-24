@@ -1,9 +1,9 @@
 import 'server-only';
 import { PublicKey } from '@solana/web3.js';
 import { env } from '@/lib/server/env';
+import { quickNodeService } from '@/lib/server/quicknode';
 import { dbPool } from '@/lib/server/db/pool';
 import { updateTokenCard } from '@/lib/market/live/card-cache';
-import { marketRpc } from './wallet-position';
 import { measuredNumber, type TradeSidebarSnapshot } from './sidebar-model';
 import { evidence, readProvider, failureReason, ProviderReadError } from './provider-read';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
@@ -67,9 +67,11 @@ export function queueSidebarEnrichment(mint: string, creator?: string, imageUrl?
         (async () => {
           try {
             if (!creator) throw new ProviderReadError('Creator address is unavailable.');
-            const rpc = marketRpc(); if (!rpc) throw new ProviderReadError('Helius mainnet RPC is not configured.');
-            fields.devBalanceSol = (await rpc.getBalance(new PublicKey(creator), 'confirmed')) / 1e9;
-            fields.devBalanceEvidence = evidence('helius-confirmed-balance', 60_000);
+            const endpoint = env.HELIUS_RPC_URL || (env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${env.HELIUS_API_KEY}` : '');
+            const { value, source } = await quickNodeService.read(endpoint,
+              rpc => rpc.getBalance(new PublicKey(creator), 'confirmed'));
+            fields.devBalanceSol = value / 1e9;
+            fields.devBalanceEvidence = evidence(`${source}-confirmed-balance`, 60_000);
           } catch (error) { fields.devBalanceSol = null; fields.devBalanceEvidence = evidence('helius-confirmed-balance', 60_000, failureReason(error)); }
         })(),
         (async () => { fields.imageReuse = await findImageMatches(mint, imageUrl); })(),

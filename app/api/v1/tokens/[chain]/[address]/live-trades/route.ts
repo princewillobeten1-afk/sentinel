@@ -5,6 +5,7 @@ import { realtimeRepository } from '@/lib/server/db/realtime-repository';
 import { getTradeHistory } from '@/lib/market/trade-history';
 import { describeError } from '@/lib/server/describe-error';
 import { logger } from '@/lib/server/logger';
+import { measuredTradeUsd, mergeTradeTape, type TapeTrade } from '@/lib/market/trade-tape';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export const dynamic = 'force-dynamic';
  * ## What it serves now
  *
  * The indexer's recent trades (see `lib/market/trade-history.ts`) merged with
- * whatever the stream captured, de-duplicated by signature. The stream's rows
+ * whatever the stream captured, de-duplicated by canonical event identity. The stream's rows
  * are the freshest; the indexer's are the history the stream never saw.
  *
  * `wallet` narrows to one maker — how the Dev Activity tab gets the deployer's
@@ -34,6 +35,7 @@ export const dynamic = 'force-dynamic';
  */
 
 interface TradeRow {
+  event_id: string;
   signature: string;
   mint: string;
   wallet: string | null;
@@ -42,20 +44,6 @@ interface TradeRow {
   amount_sol: string | null;
   price_usd: string | null;
   timestamp: string;
-}
-
-interface TapeTrade {
-  signature: string;
-  mint: string;
-  wallet: string | null;
-  side: 'BUY' | 'SELL';
-  amountUsd: number | null;
-  amountSol: number | null;
-  amountTokens: number | null;
-  priceUsd: number | null;
-  timestamp: string;
-  isMev: boolean;
-  source: string;
 }
 
 const MAX_LIMIT = 200;
@@ -74,7 +62,7 @@ function toNum(value: unknown): number | null {
 async function capturedTrades(mint: string): Promise<{ trades: TapeTrade[]; fromMemory: boolean }> {
   try {
     const { rows } = await dbPool.query<TradeRow>(
-      `SELECT signature, mint, wallet, side, amount, amount_sol, price_usd, timestamp
+      `SELECT event_id, signature, mint, wallet, side, amount, amount_sol, price_usd, timestamp
          FROM realtime_trades
         WHERE mint = $1
           AND signature ~ '^[1-9A-HJ-NP-Za-km-z]{80,92}$'
@@ -85,13 +73,14 @@ async function capturedTrades(mint: string): Promise<{ trades: TapeTrade[]; from
     return {
       fromMemory: false,
       trades: rows.map((row) => ({
+        eventId: row.event_id,
         signature: row.signature,
         mint: row.mint,
         wallet: row.wallet,
         side: row.side,
-        amountUsd: toNum(row.amount),
+        amountUsd: measuredTradeUsd(row.amount, row.price_usd),
         amountSol: toNum(row.amount_sol),
-        amountTokens: null,
+        amountTokens: toNum(row.amount),
         priceUsd: toNum(row.price_usd),
         timestamp: new Date(row.timestamp).toISOString(),
         isMev: false,
@@ -109,13 +98,14 @@ async function capturedTrades(mint: string): Promise<{ trades: TapeTrade[]; from
         .getInMemoryTradesForMint(mint)
         .filter((t) => SIGNATURE_RE.test(t.signature))
         .map((t) => ({
+          eventId: t.eventId,
           signature: t.signature,
           mint: t.mint,
           wallet: t.wallet ?? null,
           side: t.side,
-          amountUsd: toNum(t.amount),
+          amountUsd: measuredTradeUsd(t.amount, t.priceUsd),
           amountSol: toNum(t.amountSol),
-          amountTokens: null,
+          amountTokens: toNum(t.amount),
           priceUsd: toNum(t.priceUsd),
           timestamp: t.timestamp ?? new Date().toISOString(),
           isMev: false,
@@ -150,19 +140,9 @@ export async function GET(
       capturedTrades(address),
     ]);
 
-    // Captured rows win a tie: they were decoded by this platform from the
-    // transaction itself. Indexer rows fill everything the stream never saw.
-    const bySignature = new Map<string, TapeTrade>();
-    for (const t of history.trades) {
-      bySignature.set(t.signature, { ...t, mint: address });
-    }
-    for (const t of captured.trades) {
-      const existing = bySignature.get(t.signature);
-      // Keep the indexer's token amount when ours has none.
-      bySignature.set(t.signature, existing ? { ...existing, ...t, amountTokens: existing.amountTokens } : t);
-    }
-
-    const trades = [...bySignature.values()]
+    // Exact captured fills supersede an indexer's transaction-level aggregate
+    // without collapsing two instructions from the same transaction.
+    const trades = mergeTradeTape(history.trades.map(t => ({ ...t, mint: address })), captured.trades)
       .filter((t) => (!side || t.side === side) && (!wallet || t.wallet === wallet))
       .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
       .slice(0, limit);

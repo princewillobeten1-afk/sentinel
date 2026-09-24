@@ -26,7 +26,7 @@ export interface ReconnectingWebSocketClientOptions {
   /** Called after every successful connect/reconnect — re-issue subscriptions here. */
   onOpen?: () => void;
   onClose?: (code: number, reason: string) => void;
-  /** Called once consecutive failed connection attempts crosses the degraded threshold. */
+  /** Called on every degraded threshold interval so a recovered standby can be retried. */
   onDegraded?: (reason: string) => void;
 }
 
@@ -55,9 +55,11 @@ function rawDataLength(data: WebSocketImpl.RawData): number {
  */
 export class ReconnectingWebSocketClient {
   private readonly options: ReconnectingWebSocketClientOptions;
+  private endpoint: string;
   private socket: WebSocketImpl | null = null;
   private state: ConnectionState = 'closed';
   private lastMessageAt: number | null = null;
+  private openedAt: number | null = null;
   /** Inbound payload bytes across every socket this client has opened. */
   private bytesReceived = 0;
   private readonly countingSince = Date.now();
@@ -72,6 +74,7 @@ export class ReconnectingWebSocketClient {
 
   constructor(options: ReconnectingWebSocketClientOptions) {
     this.options = options;
+    this.endpoint = options.url;
   }
 
   connect(): void {
@@ -85,6 +88,19 @@ export class ReconnectingWebSocketClient {
     this.socket?.close();
     this.socket = null;
     this.state = 'closed';
+  }
+
+  /** Move the existing subscriptions to a standby provider without opening two sockets. */
+  switchEndpoint(endpoint: string): void {
+    if (this.endpoint === endpoint) return;
+    this.endpoint = endpoint;
+    this.clearTimers();
+    const old = this.socket;
+    this.socket = null;
+    old?.close();
+    this.reconnectAttempts = 0;
+    this.consecutiveFailures = 0;
+    if (!this.intentionalClose) this.openSocket();
   }
 
   send(payload: unknown): void {
@@ -110,14 +126,15 @@ export class ReconnectingWebSocketClient {
   private openSocket(): void {
     this.state = this.reconnectAttempts === 0 ? 'connecting' : 'reconnecting';
 
-    const socket = new WebSocketImpl(this.options.url, this.options.protocols, {
+    const socket = new WebSocketImpl(this.endpoint, this.options.protocols, {
       headers: this.options.headers,
     });
     this.socket = socket;
 
-    socket.on('open', () => this.handleOpen());
-    socket.on('message', (data) => this.handleMessage(data));
+    socket.on('open', () => { if (this.socket === socket) this.handleOpen(); });
+    socket.on('message', (data) => { if (this.socket === socket) this.handleMessage(data); });
     socket.on('pong', () => {
+      if (this.socket !== socket) return;
       this.clearPongTimeout();
       // A pong is proof of life too. Without this, a healthy but quiet socket
       // tripped the silent-connection watchdog: once subscriptions were scoped
@@ -127,9 +144,10 @@ export class ReconnectingWebSocketClient {
       // ~90s.
       this.lastMessageAt = Date.now();
     });
-    socket.on('close', (code, reasonBuf) => this.handleClose(code, reasonBuf.toString()));
+    socket.on('close', (code, reasonBuf) => { if (this.socket === socket) this.handleClose(code, reasonBuf.toString()); });
     socket.on('error', (err) => {
-      logger.warn(`[${this.options.name}] WebSocket error`, { message: err.message });
+      // Provider error strings can echo credential-bearing WSS URLs.
+      logger.warn(`[${this.options.name}] WebSocket error`, { type: err.name });
       // 'close' fires after 'error' for ws; reconnect scheduling happens there.
     });
   }
@@ -137,9 +155,8 @@ export class ReconnectingWebSocketClient {
   private handleOpen(): void {
     logger.info(`[${this.options.name}] WebSocket connected`);
     this.state = 'open';
-    this.reconnectAttempts = 0;
-    this.consecutiveFailures = 0;
-    this.lastMessageAt = Date.now();
+    this.openedAt = Date.now();
+    this.lastMessageAt = this.openedAt;
     this.startHeartbeat();
     this.startWatchdog();
     this.options.onOpen?.();
@@ -172,12 +189,20 @@ export class ReconnectingWebSocketClient {
       return;
     }
 
+    // A TCP handshake alone is not a healthy subscription. Providers can open
+    // and immediately close repeatedly (including quota/auth failures).
+    if (this.openedAt && Date.now() - this.openedAt > 60_000) {
+      this.consecutiveFailures = 0;
+      this.reconnectAttempts = 0;
+    }
     this.consecutiveFailures += 1;
-    logger.warn(`[${this.options.name}] WebSocket closed`, { code, reason, consecutiveFailures: this.consecutiveFailures });
-    this.options.onClose?.(code, reason);
+    this.openedAt = null;
+    logger.warn(`[${this.options.name}] WebSocket closed`, { code, consecutiveFailures: this.consecutiveFailures });
+    this.options.onClose?.(code, reason ? 'provider closed connection' : '');
 
-    if (this.consecutiveFailures === DEGRADED_AFTER_CONSECUTIVE_FAILURES) {
-      this.options.onDegraded?.(`${this.consecutiveFailures} consecutive connection failures (last close code ${code}: ${reason})`);
+    if (this.consecutiveFailures >= DEGRADED_AFTER_CONSECUTIVE_FAILURES
+      && this.consecutiveFailures % DEGRADED_AFTER_CONSECUTIVE_FAILURES === 0) {
+      this.options.onDegraded?.(`${this.consecutiveFailures} consecutive connection failures (last close code ${code})`);
     }
 
     this.scheduleReconnect();

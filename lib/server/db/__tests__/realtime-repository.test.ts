@@ -50,4 +50,20 @@ describe('realtimeRepository.getInMemoryTradesForMint', () => {
   it('returns an empty array for a mint nothing has traded', () => {
     expect(realtimeRepository.getInMemoryTradesForMint('NeverTradedMintXXXXXXXXXXXXXXXXXXXXXXXXXXX')).toEqual([]);
   });
+
+  it('upserts provider observations but preserves distinct instruction positions', async () => {
+    const mint = 'MintCanonicalEventIdentityXXXXXXXXXXXXXXXXXX';
+    await realtimeRepository.saveTrade({ signature: 'sig-canonical', mint, side: 'BUY',
+      instructionIndex: 1, source: 'birdeye', commitment: 'processed' });
+    await realtimeRepository.saveTrade({ signature: 'sig-canonical', mint, side: 'BUY',
+      instructionIndex: 1, source: 'helius_ws', commitment: 'confirmed', wallet: 'measured-wallet' });
+    await realtimeRepository.saveTrade({ signature: 'sig-canonical', mint, side: 'BUY',
+      instructionIndex: 2, source: 'helius_ws', commitment: 'confirmed' });
+
+    const rows = realtimeRepository.getInMemoryTradesForMint(mint);
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row => row.instructionIndex === 1)).toMatchObject({
+      wallet: 'measured-wallet', commitment: 'confirmed',
+    });
+  });
 });

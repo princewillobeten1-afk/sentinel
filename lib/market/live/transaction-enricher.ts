@@ -288,7 +288,11 @@ async function decodeSlot(result: unknown): Promise<EnrichedTrade | null> {
 
 async function transport(body: JsonRpcRequest[]): Promise<{ status: number; body: unknown }> {
   const url = rpcUrl();
-  if (!url) return { status: 0, body: null };
+  if (!url) {
+    if (!process.env.QUICKNODE_SOLANA_RPC_URL?.trim()) return { status: 0, body: null };
+    const { quickNodeService } = await import('@/lib/server/quicknode');
+    return quickNodeService.request(body.length === 1 ? body[0] : body, RPC_TIMEOUT_MS);
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS);
@@ -311,7 +315,19 @@ async function transport(body: JsonRpcRequest[]): Promise<{ status: number; body
     } catch {
       parsed = null;
     }
+    if ((res.status === 429 || res.status >= 500) && process.env.QUICKNODE_SOLANA_RPC_URL?.trim()) {
+      try {
+        const { quickNodeService } = await import('@/lib/server/quicknode');
+        return await quickNodeService.request(body.length === 1 ? body[0] : body, RPC_TIMEOUT_MS);
+      } catch { /* Keep the original provider response for the batcher's backoff. */ }
+    }
     return { status: res.status, body: parsed };
+  } catch {
+    if (process.env.QUICKNODE_SOLANA_RPC_URL?.trim()) {
+      const { quickNodeService } = await import('@/lib/server/quicknode');
+      return quickNodeService.request(body.length === 1 ? body[0] : body, RPC_TIMEOUT_MS);
+    }
+    throw new Error('Transaction RPC transport unavailable.');
   } finally {
     clearTimeout(timer);
   }

@@ -1,5 +1,6 @@
 import { recordAuditEvent } from '@/lib/server/audit';
 import { logger } from '@/lib/server/logger';
+import { chainEventId } from './event-identity';
 
 export interface RawMarketEvent {
   eventId: string;
@@ -31,6 +32,14 @@ export interface RawMarketEvent {
    * single event instead of two.
    */
   signature?: string;
+  /** Only set when the provider or transaction decoder actually identifies it. */
+  instructionIndex?: number;
+  innerInstructionIndex?: number;
+  slot?: number;
+  commitment?: 'processed' | 'confirmed' | 'finalized';
+  /** Chain time only; never substitute provider receipt time for this field. */
+  chainTimestamp?: number;
+  programId?: string;
   /**
    * The trading wallet, when the provider identified one.
    *
@@ -54,17 +63,23 @@ export interface NormalizedMarketEvent {
   processedAt: string;
 }
 
+/** Cross-provider identity for on-chain facts; market ticks retain their source ID. */
+export function marketEventId(raw: RawMarketEvent): string {
+  const kind = raw.eventType === 'SWAP' ? (raw.side ?? 'SWAP_UNRESOLVED') : raw.eventType;
+  return raw.signature && raw.eventType !== 'PRICE_UPDATE'
+    ? chainEventId({ signature: raw.signature, mint: raw.mint, kind,
+      instructionIndex: raw.instructionIndex, innerInstructionIndex: raw.innerInstructionIndex }) ?? raw.eventId
+    : raw.eventId;
+}
+
 export class MarketEventPipeline {
   private static instance: MarketEventPipeline;
   private processedEventIds: Set<string> = new Set();
-  // These two labels are what NormalizedMarketEvent.provider is actually set
-  // from below (processEvent() never reads raw.providerId) — keep them in
-  // sync with the real upstream providers wired in lib/market/live/.
-  private activeProvider = 'birdeye_ws';
-  private secondaryProvider = 'helius_logs_ws';
+  // Health is tracked by source; normalized provenance comes from raw.providerId.
   private providerHealth: Map<string, boolean> = new Map([
     ['birdeye_ws', true],
     ['helius_logs_ws', true],
+    ['quicknode_logs_ws', true],
   ]);
 
   private constructor() {}
@@ -80,9 +95,10 @@ export class MarketEventPipeline {
    * Process raw market event through listener, normalizer, quality validator, and failover check.
    */
   public processEvent(raw: RawMarketEvent): NormalizedMarketEvent | null {
+    const identity = marketEventId(raw);
     // 1. Deduplication Check
-    if (this.processedEventIds.has(raw.eventId)) {
-      logger.warn(`[PIPELINE] Duplicate event dropped: ${raw.eventId}`);
+    if (this.processedEventIds.has(identity)) {
+      logger.warn(`[PIPELINE] Duplicate event dropped: ${identity}`);
       return null;
     }
 
@@ -94,16 +110,13 @@ export class MarketEventPipeline {
     }
 
     // 3. Provider Health & Failover Check
-    let isStale = false;
-    let providerName = this.activeProvider;
+    const providerName = raw.providerId.startsWith('quicknode_logs_') ? 'quicknode_logs_ws'
+      : raw.providerId.startsWith('helius_logs_') ? 'helius_logs_ws'
+        : raw.providerId.startsWith('birdeye_') ? 'birdeye_ws' : raw.providerId;
+    // A current event proves this particular source has recovered.
+    this.providerHealth.set(providerName, true);
 
-    if (!this.providerHealth.get(this.activeProvider)) {
-      this.triggerFailover('RPC Timeout detected on primary provider');
-      providerName = this.secondaryProvider;
-      isStale = true;
-    }
-
-    this.processedEventIds.add(raw.eventId);
+    this.processedEventIds.add(identity);
     if (this.processedEventIds.size > 2000) {
       // Memory cleanup for set
       const items = Array.from(this.processedEventIds);
@@ -111,13 +124,13 @@ export class MarketEventPipeline {
     }
 
     const normalized: NormalizedMarketEvent = {
-      id: `norm_${raw.eventId}`,
+      id: identity,
       mint: raw.mint,
       eventType: raw.eventType,
       ...(raw.priceUsd !== undefined ? { priceUsd: raw.priceUsd } : {}),
       ...(raw.volumeUsd !== undefined ? { volumeUsd: raw.volumeUsd } : {}),
       provider: providerName,
-      freshness: isStale ? 'stale' : 'fresh',
+      freshness: 'fresh',
       processedAt: new Date().toISOString(),
     };
 
@@ -128,19 +141,19 @@ export class MarketEventPipeline {
   /**
    * Triggers provider failover if RPC errors occur.
    */
-  public triggerFailover(reason: string): void {
-    logger.warn(`[FAILOVER] Primary market provider failure: ${reason}`);
-    this.providerHealth.set(this.activeProvider, false);
+  public triggerFailover(reason: string, provider = 'birdeye_ws'): void {
+    logger.warn(`[FAILOVER] Market provider degraded: ${reason}`, { provider });
+    this.providerHealth.set(provider, false);
 
     recordAuditEvent({
       action: 'AUTH_FAILED', // Incident record
       entityType: 'user',
-      changes: { incident: 'MARKET_PROVIDER_FAILOVER', reason, failedProvider: this.activeProvider, fallbackProvider: this.secondaryProvider },
+      changes: { incident: 'MARKET_PROVIDER_FAILOVER', reason, failedProvider: provider },
     });
   }
 
   public resetProviderHealth(): void {
-    this.providerHealth.set(this.activeProvider, true);
+    for (const provider of this.providerHealth.keys()) this.providerHealth.set(provider, true);
   }
 }
 

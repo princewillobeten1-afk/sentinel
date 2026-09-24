@@ -4,8 +4,10 @@ import { EVENT_TYPES, type RealtimeEventType } from '../events/event-types';
 export interface DecodedBlockchainEvent {
   type: RealtimeEventType;
   signature: string;
-  slot: number;
-  programId: string;
+  slot?: number;
+  instructionIndex?: number;
+  innerInstructionIndex?: number;
+  programId?: string;
   mint?: string;
   name?: string;
   symbol?: string;
@@ -28,9 +30,11 @@ export class BlockchainDecoder {
     const events: DecodedBlockchainEvent[] = [];
     if (!tx) return events;
 
-    const signature = tx.signature || tx.transaction?.signatures?.[0] || `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const slot = Number(tx.slot) || 0;
-    const chainTimestamp = tx.blockTime ? Number(tx.blockTime) * 1000 : Date.now();
+    const signature = tx.signature || tx.transaction?.signatures?.[0];
+    if (typeof signature !== 'string' || !signature) return events;
+    const slot = Number.isSafeInteger(tx.slot) && tx.slot >= 0 ? tx.slot as number : undefined;
+    const chainTimestamp = Number.isFinite(tx.blockTime) && tx.blockTime > 0
+      ? Number(tx.blockTime) * 1000 : undefined;
 
     // Check account keys and log messages
     const logs: string[] = tx.meta?.logMessages || tx.logs || [];
@@ -71,9 +75,9 @@ export class BlockchainDecoder {
   private static decodePumpFunLogs(
     logs: string[],
     signature: string,
-    slot: number,
+    slot: number | undefined,
     accounts: string[],
-    chainTimestamp: number
+    chainTimestamp: number | undefined
   ): DecodedBlockchainEvent[] {
     const events: DecodedBlockchainEvent[] = [];
     const mint = accounts[1] || accounts[2];
@@ -136,9 +140,9 @@ export class BlockchainDecoder {
   private static decodeRaydiumLogs(
     logs: string[],
     signature: string,
-    slot: number,
+    slot: number | undefined,
     accounts: string[],
-    chainTimestamp: number
+    chainTimestamp: number | undefined
   ): DecodedBlockchainEvent[] {
     const events: DecodedBlockchainEvent[] = [];
     const mint = accounts.find((a) => a !== PROTOCOL_PROGRAMS.raydiumAmmV4.programId && a.length >= 32);
@@ -191,9 +195,9 @@ export class BlockchainDecoder {
   private static decodeMeteoraLogs(
     logs: string[],
     signature: string,
-    slot: number,
+    slot: number | undefined,
     accounts: string[],
-    chainTimestamp: number
+    chainTimestamp: number | undefined
   ): DecodedBlockchainEvent[] {
     const events: DecodedBlockchainEvent[] = [];
     const mint = accounts.find((a) => a !== PROTOCOL_PROGRAMS.meteoraDlmm.programId && a.length >= 32);

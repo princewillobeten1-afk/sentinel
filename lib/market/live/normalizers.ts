@@ -8,6 +8,7 @@
  */
 
 import type { RawMarketEvent } from '@/lib/market/event-pipeline';
+import { chainEventId } from '@/lib/market/event-identity';
 import type {
   BirdeyeMessage,
   BirdeyePriceDataMessage,
@@ -33,7 +34,8 @@ export function normalizeBirdeyePrice(mint: string, message: BirdeyeMessage): Ra
     mint,
     eventType: 'PRICE_UPDATE',
     priceUsd: String(data.c),
-    volumeUsd: Number.isFinite(data.v) ? String(data.v) : undefined,
+    // Birdeye `v` is base-token volume, not USD notional. Never relabel it.
+    volumeUsd: Number.isFinite(data.v_usd ?? data.vUsd) ? String(data.v_usd ?? data.vUsd) : undefined,
     timestamp,
   };
 }
@@ -41,25 +43,29 @@ export function normalizeBirdeyePrice(mint: string, message: BirdeyeMessage): Ra
 export function normalizeBirdeyeTx(mint: string, message: BirdeyeMessage): RawMarketEvent | null {
   if (message.type !== 'TXS_DATA' && message.type !== 'TRANSACTION_DATA') return null;
   const data = (message as BirdeyeTxMessage).data;
-  if (!data) return null;
+  // Without a chain signature this cannot be deduplicated or verified as a trade.
+  if (!data || !data.txHash) return null;
 
   const priceUsd = data.priceUsd ?? data.price;
   const volumeUsd = data.volumeUsd ?? data.volumeUSD ?? data.volume;
-  const timestamp = Number.isFinite(data.blockUnixTime)
-    ? new Date((data.blockUnixTime as number) * 1000).toISOString()
+  const chainTimestamp = typeof data.blockUnixTime === 'number' && Number.isFinite(data.blockUnixTime)
+    ? data.blockUnixTime * 1000 : undefined;
+  const timestamp = chainTimestamp !== undefined
+    ? new Date(chainTimestamp).toISOString()
     : new Date().toISOString();
 
-  const eventId = data.txHash
-    ? `birdeye_tx_${data.txHash}`
-    : `birdeye_tx_${mint}_${data.blockUnixTime ?? Date.now()}`;
+  const side = data.side === 'buy' ? 'BUY' : data.side === 'sell' ? 'SELL' : undefined;
+  const eventId = chainEventId({ signature: data.txHash, mint, kind: side ?? 'SWAP_UNRESOLVED' });
+  if (!eventId) return null;
 
   return {
     eventId,
     providerId: 'birdeye_txs_ws',
     mint,
     eventType: 'SWAP',
-    side: data.side === 'buy' ? 'BUY' : data.side === 'sell' ? 'SELL' : undefined,
+    side,
     signature: data.txHash,
+    chainTimestamp,
     wallet: data.owner,
     tokenAmount: typeof data.tokenAmount === 'number' && Number.isFinite(data.tokenAmount) ? data.tokenAmount : undefined,
     amountSol: typeof data.amountSol === 'number' && Number.isFinite(data.amountSol) ? data.amountSol : undefined,
@@ -170,14 +176,21 @@ export function normalizeHeliusLogMatch(
   signature: string,
   programLabel: string,
   match: LogMatchResult,
+  provider: 'helius' | 'quicknode' = 'helius',
 ): RawMarketEvent | null {
   if (!match.mint) return null;
 
+  const eventId = chainEventId({ signature, mint: match.mint,
+    kind: match.eventType === 'SWAP' ? 'SWAP_UNRESOLVED' : LOG_MATCH_TO_EVENT_TYPE[match.eventType] });
+  if (!eventId) return null;
+
   return {
-    eventId: `helius_${signature}_${programLabel}`,
-    providerId: `helius_logs_${programLabel}`,
+    eventId,
+    providerId: `${provider}_logs_${programLabel}`,
     mint: match.mint,
     eventType: LOG_MATCH_TO_EVENT_TYPE[match.eventType],
+    signature,
+    commitment: 'confirmed',
     priceUsd: match.priceUsd,
     volumeUsd: match.volumeUsd,
     timestamp: new Date().toISOString(),

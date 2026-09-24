@@ -57,10 +57,12 @@ async function main() {
     await page.getByText(token.name, { exact: true }).first().waitFor({ timeout: 45000 });
     const chart = page.getByRole('region', { name: 'Token price chart', exact: true });
     await chart.locator('[data-testid="chart-ohlcv"]').getByText('Vol:', { exact: false }).waitFor({ timeout: 30000 });
+    // The KLineChart canvas is loaded client-side after the REST candle hook resolves.
+    await chart.locator('canvas').first().waitFor({ timeout: 30000 });
     assert.equal(await chart.getAttribute('data-chart-status'), 'Polling');
     assert.equal(await chart.locator('canvas').count() > 0, true);
     assert.equal(await page.locator('[data-nextjs-dialog]').count(), 0);
-    console.log('Dev server verified: real chart canvas, controls and fallback status render; no error overlay.');
+    console.log('Trade page verified: real chart canvas, controls and fallback status render; no error overlay.');
     const before = await chart.getByTestId('chart-ohlcv').innerText();
     await page.waitForTimeout(1800);
     assert.equal(await chart.getByTestId('chart-ohlcv').innerText(), before, 'No random micro ticks');

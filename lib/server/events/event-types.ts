@@ -29,12 +29,14 @@ export interface EventLatencyMetrics {
 }
 
 export interface NormalizedRealtimeEvent {
-  id: string; // Deterministic: `${signature}:${type}:${mint}`
+  id: string; // Provider-independent chain event identity.
   sequence: number; // Monotonically increasing sequence number
   type: RealtimeEventType;
   timestamp: number; // Unix milliseconds
   slot?: number;
   signature?: string;
+  instructionIndex?: number;
+  innerInstructionIndex?: number;
   mint?: string;
   name?: string;
   symbol?: string;
@@ -52,7 +54,7 @@ export interface NormalizedRealtimeEvent {
   liquidityUsd?: number;
   marketCapUsd?: number;
   volume24hUsd?: number;
-  source?: 'helius_laserstream' | 'helius_ws' | 'birdeye' | 'mock';
+  source?: 'helius_laserstream' | 'helius_ws' | 'quicknode' | 'birdeye' | 'mock';
   commitment?: 'processed' | 'confirmed' | 'finalized';
   latency?: EventLatencyMetrics;
   extra?: Record<string, unknown>;

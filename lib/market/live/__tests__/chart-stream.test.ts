@@ -2,7 +2,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('@/lib/market/live/card-cache', () => ({ updateTokenCard: vi.fn() }));
 vi.mock('@/lib/market/lifecycle/lifecycle-worker', () => ({ lifecycleWorker: {} }));
 import { buildBirdeyeSubscriptions } from '../birdeye-client';
-import { getChartDemand, getChartFrame, noteChartTopics, onChartFrame, publishBirdeyeCandle, resetChartStreamForTests } from '../chart-stream';
+import { getChartDemand, getChartFrame, noteChartTopics, onChartFrame, publishBirdeyeCandle,
+  publishPolledCandle, resetChartStreamForTests } from '../chart-stream';
 const mint = 'So11111111111111111111111111111111111111112';
 const topic = `token.ohlcv:${mint}:15m`;
 const time = Math.floor(Date.now() / 900000) * 900;
@@ -34,4 +35,22 @@ it('rejects wrong interval, older bars, bad OHLC, future bars, and scaled prices
   for (const change of [{ type: '1m' }, { h: 0 }, { currency: 'sol' }, { isScaled: true }]) {
     const message = wire(); Object.assign(message.data, change); expect(publishBirdeyeCandle(message, mint)).toBeNull();
   }
+});
+it('fans out only measured REST candles and does not overwrite a fresh WebSocket bar', () => {
+  noteChartTopics([topic], 1);
+  const observedAt = Date.now();
+  const snapshot = { address: mint, timeframe: '15m' as const, chain: 'solana' as const, currency: 'usd' as const,
+    market: 'token-aggregate' as const, source: 'birdeye-ohlcv-v3' as const,
+    observedAt, status: 'measured' as const, hasMore: false, oldestTime: time,
+    candles: [{ time, open: 2, high: 4, low: 1, close: 3, volume: 100, volumeUsd: 300 }] };
+  const listener = vi.fn(); onChartFrame(listener);
+  expect(publishPolledCandle(snapshot)?.source).toBe('birdeye-ohlcv-rest');
+  expect(listener).toHaveBeenCalledOnce();
+  expect(publishPolledCandle({ ...snapshot, status: 'stale' })).toBeNull();
+  expect(publishPolledCandle({ ...snapshot, currency: 'sol' } as any)).toBeNull();
+  expect(publishPolledCandle({ ...snapshot, market: 'pool-specific' } as any)).toBeNull();
+  const wsFrame = publishBirdeyeCandle(wire(), mint);
+  expect(wsFrame?.source).toBe('birdeye-price-ws');
+  expect(publishPolledCandle({ ...snapshot, observedAt: observedAt + 1000 })).toBeNull();
+  expect(getChartFrame(`${mint}:15m`)?.source).toBe('birdeye-price-ws');
 });

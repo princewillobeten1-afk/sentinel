@@ -13,6 +13,8 @@ services:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_VERSION=v1
       - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - QUICKNODE_SOLANA_RPC_URL=${QUICKNODE_SOLANA_RPC_URL:-}
+      - QUICKNODE_SOLANA_WSS_URL=${QUICKNODE_SOLANA_WSS_URL:-}
       - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
     depends_on:
       - db

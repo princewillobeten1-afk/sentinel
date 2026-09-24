@@ -15,9 +15,16 @@ describe('normalizeBirdeyePrice', () => {
     expect(event?.eventType).toBe('PRICE_UPDATE');
     expect(event?.mint).toBe(MINT);
     expect(event?.priceUsd).toBe('100.5');
-    expect(event?.volumeUsd).toBe('42');
+    expect(event?.volumeUsd).toBeUndefined();
     expect(event?.providerId).toBe('birdeye_price_ws');
     expect(event?.timestamp).toBe(new Date(1_700_000_000 * 1000).toISOString());
+  });
+
+  it('uses measured USD notional rather than base-token volume', () => {
+    const event = normalizeBirdeyePrice(MINT, { type: 'PRICE_DATA', data: {
+      eventType: 'ohlcv', unixTime: 1_700_000_000, o: 1, h: 2, l: 1, c: 2, v: 42, v_usd: 84,
+    } });
+    expect(event?.volumeUsd).toBe('84');
   });
 
   it('returns null for a non-PRICE_DATA message', () => {
@@ -40,7 +47,8 @@ describe('normalizeBirdeyeTx', () => {
 
     expect(event).not.toBeNull();
     expect(event?.eventType).toBe('SWAP');
-    expect(event?.eventId).toBe('birdeye_tx_sig123');
+    expect(event?.eventId).toBe(`solana:sig123:${MINT}:BUY:aggregate`);
+    expect(event?.chainTimestamp).toBe(1_700_000_100_000);
     expect(event?.priceUsd).toBe('12.5');
     expect(event?.volumeUsd).toBe('340');
   });
@@ -49,9 +57,9 @@ describe('normalizeBirdeyeTx', () => {
     expect(normalizeBirdeyeTx(MINT, { type: 'PRICE_DATA', data: {} })).toBeNull();
   });
 
-  it('falls back to a synthetic eventId when txHash is absent', () => {
+  it('does not publish an unverifiable transaction without a signature', () => {
     const event = normalizeBirdeyeTx(MINT, { type: 'TXS_DATA', data: { blockUnixTime: 5 } });
-    expect(event?.eventId).toBe(`birdeye_tx_${MINT}_5`);
+    expect(event).toBeNull();
   });
 });
 
@@ -71,8 +79,10 @@ describe('normalizeHeliusLogMatch', () => {
     expect(event).not.toBeNull();
     expect(event?.eventType).toBe('LIQUIDITY_ADD');
     expect(event?.mint).toBe(MINT);
-    expect(event?.eventId).toBe('helius_sig_abc_orca_whirlpool');
+    expect(event?.eventId).toBe(`solana:sig_abc:${MINT}:LIQUIDITY_ADD:aggregate`);
     expect(event?.providerId).toBe('helius_logs_orca_whirlpool');
+    expect(event?.signature).toBe('sig_abc');
+    expect(event?.commitment).toBe('confirmed');
   });
 });
 

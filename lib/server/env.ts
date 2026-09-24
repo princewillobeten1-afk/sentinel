@@ -36,6 +36,9 @@ export const env = {
   // NEXT_PUBLIC_SOLANA_RPC_URL, which stays on devnet because wallet transfers
   // are devnet-only — market data is read from mainnet, funds never move there.
   HELIUS_RPC_URL: process.env.HELIUS_RPC_URL ?? '',
+  // Optional mainnet infrastructure fallback. Never expose these credentials through NEXT_PUBLIC_.
+  QUICKNODE_SOLANA_RPC_URL: process.env.QUICKNODE_SOLANA_RPC_URL ?? '',
+  QUICKNODE_SOLANA_WSS_URL: process.env.QUICKNODE_SOLANA_WSS_URL ?? '',
   HELIUS_GRPC_URL: process.env.HELIUS_GRPC_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',
   HELIUS_GRPC_TOKEN: process.env.HELIUS_GRPC_TOKEN ?? '',
   HELIUS_LASERSTREAM_URL: process.env.HELIUS_LASERSTREAM_URL ?? 'https://laserstream-devnet-ewr.helius-rpc.com',

@@ -35,7 +35,7 @@
     },
     {
       "tf": "15m",
-      "before": 1790085600,
+      "before": 1790199900,
       "mode": "measured"
     },
     {
@@ -84,7 +84,6 @@
     "/api/v1/market/live/focus",
     "/api/v1/market/live/focus",
     "/api/v1/market/live/focus",
-    "/api/v1/trading/quote",
     "/api/v1/trading/quote"
   ],
   "fixtureWebsocket": true,
