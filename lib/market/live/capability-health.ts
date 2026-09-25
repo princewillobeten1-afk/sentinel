@@ -9,7 +9,8 @@ export function capabilityHealth(input: {
   chainLogs: ConnectionHealth;
   chainLogProvider: 'helius' | 'quicknode' | null;
   quickNode: { configured: boolean; rpcState: string };
-  chartPolling: { active: boolean; targetCount: number; lastSuccessAt: string | null };
+  chartPolling: { active: boolean; targetCount: number; lastSuccessAt: string | null; lastSource?: string | null };
+  chartStreaming?: { connected: boolean; lastTradeAt: string | null; pausedUntil: string | null };
   birdeyeConfigured: boolean;
 }): Record<'marketStreaming' | 'chainEvents' | 'chartLive' | 'quickNodeRpcFallback', CapabilityHealth> {
   const marketStreaming: CapabilityHealth = !input.birdeyeConfigured
@@ -30,13 +31,18 @@ export function capabilityHealth(input: {
 
   const recentPoll = input.chartPolling.lastSuccessAt !== null
     && Date.now() - Date.parse(input.chartPolling.lastSuccessAt) < 45_000;
+  const recentTrade = input.chartStreaming?.connected && input.chartStreaming.lastTradeAt !== null
+    && Date.now() - Date.parse(input.chartStreaming!.lastTradeAt!) < 30_000;
   const chartLive: CapabilityHealth = input.chartPolling.targetCount === 0
     ? { state: 'idle', source: null }
-    : marketStreaming.state === 'healthy'
+    : recentTrade
+      ? { state: 'healthy', source: 'quicknode-pool-ws' }
+      : marketStreaming.state === 'healthy'
       ? { state: 'healthy', source: 'birdeye-ws' }
       : input.chartPolling.active && recentPoll
-        ? { state: 'degraded', source: 'birdeye-ohlcv-rest', reason: 'Live candles are polling.' }
-        : { state: 'degraded', source: 'birdeye-ohlcv-rest', reason: 'Waiting for a measured candle.' };
+        ? { state: 'degraded', source: input.chartPolling.lastSource ?? 'birdeye-ohlcv-rest', reason: 'Candles are reconciling through REST.' }
+        : { state: 'degraded', source: input.chartStreaming?.connected ? 'quicknode-pool-ws' : 'ohlcv-rest',
+          reason: input.chartStreaming?.pausedUntil ? 'Chart stream data budget is paused.' : 'Waiting for a measured candle or swap.' };
 
   const quickNodeRpcFallback: CapabilityHealth = !input.quickNode.configured
     ? { state: 'unavailable', source: null, reason: 'QuickNode RPC is not configured.' }

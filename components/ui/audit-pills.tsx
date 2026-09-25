@@ -9,6 +9,7 @@ import { toValueState } from '@/lib/ui/value-state';
 import type { MetricEvidence } from '@/lib/discovery/types';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
 import { useEvidenceClock } from '@/lib/hooks/use-evidence-clock';
+import { formatDisplaySource } from '@/lib/discovery/format';
 
 /**
  * The ownership audit row, in one place.
@@ -152,7 +153,6 @@ export function AuditPills({
         const state = toValueState(pill.value ?? null, {
           isPending: pill.value === undefined && (pending || resolvedEvidence.status === 'loading'),
           isStale: resolvedEvidence.status !== 'measured' && pill.value !== undefined,
-          reason: resolvedEvidence?.reason,
         });
         const tone =
           state.kind !== 'value'
@@ -193,7 +193,7 @@ export function AuditPills({
                     <div className="flex items-center justify-between gap-1 text-slate-400">
                       <span className="flex items-center gap-1">
                         <span className="text-slate-500">Source:</span>
-                        <span className="text-slate-200 font-semibold">{resolvedEvidence.source}</span>
+                        <span className="text-slate-200 font-semibold">{formatDisplaySource(resolvedEvidence.source)}</span>
                       </span>
                       <span
                         className={clsx(
@@ -215,17 +215,10 @@ export function AuditPills({
                         <span className="text-slate-300">{evidenceAge}</span>
                       </div>
                     )}
-
-                    {resolvedEvidence.reason && (
-                      <div className="pt-1 mt-1 border-t border-slate-800/80 text-amber-300 text-[10px] leading-tight break-words">
-                        <span className="text-amber-500 font-semibold">Note: </span>
-                        {resolvedEvidence.reason}
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="text-[10px] text-slate-500 italic">
-                    Source has not reported this metric yet.
+                    Metric not yet available.
                   </div>
                 )}
               </div>

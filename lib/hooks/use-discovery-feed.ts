@@ -48,7 +48,7 @@ export function useDiscoveryFeed(
   // needs to be a changing value.
   const [version, setVersion] = useState(0);
 
-  useEffect(() => subscribeToDiscovery(() => setVersion((v) => v + 1)), []);
+  useEffect(() => subscribeToDiscovery(() => setVersion((v) => v + 1), section), [section]);
 
   useEffect(() => {
     setDiscoveryQuery({ chain, timeWindow });

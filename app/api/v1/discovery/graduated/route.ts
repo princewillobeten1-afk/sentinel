@@ -40,7 +40,11 @@ export const GET = withApiGateway(
         tokens: mappedTokens,
       }, 200);
     } catch (error) {
-      return errorResponse(error instanceof Error ? error : new ApiError('Failed to fetch graduated tokens', 500));
+      const message = error instanceof Error ? error.message : 'Failed to fetch graduated tokens';
+      if (message.includes('temporarily unavailable')) {
+        return errorResponse(new ApiError(message, 503, 'SERVICE_UNAVAILABLE'));
+      }
+      return errorResponse(error instanceof Error ? error : new ApiError(message, 500));
     }
   },
   { scopes: ['READ_MARKET_DATA'], optionalAuth: true },

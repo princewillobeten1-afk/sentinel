@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   rugcheck: vi.fn(),
   onchain: vi.fn(),
   trackerConfigured: vi.fn(),
+  bitquery: vi.fn(),
 }));
 
 vi.mock('@/lib/trading/solana-tracker', () => ({
@@ -20,6 +21,10 @@ vi.mock('@/lib/trading/onchain-ownership', () => ({
   fetchOnChainOwnership: mocks.onchain,
 }));
 
+vi.mock('../bitquery-ownership', () => ({
+  fetchBitqueryOwnership: mocks.bitquery,
+}));
+
 describe('ownership fallback orchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,6 +32,7 @@ describe('ownership fallback orchestrator', () => {
     mocks.tracker.mockResolvedValue(null);
     mocks.rugcheck.mockResolvedValue(null);
     mocks.onchain.mockResolvedValue(null);
+    mocks.bitquery.mockResolvedValue(null);
   });
 
   it('uses tracker when configured and successful', async () => {
@@ -106,7 +112,7 @@ describe('ownership fallback orchestrator', () => {
     expect(result?.source).toBe('solana-rpc');
   });
 
-  it('does not mix source fields when Rugcheck returns a partial profile', async () => {
+  it('joins only missing fields when Rugcheck returns a partial profile', async () => {
     mocks.rugcheck.mockResolvedValue({
       mint: 'test-mint',
       top10Pct: null,
@@ -137,9 +143,28 @@ describe('ownership fallback orchestrator', () => {
 
     const { resolveOwnershipFallback } = await import('../ownership-fallback');
     const result = await resolveOwnershipFallback('test-mint', 'creator-wallet');
-    expect(result?.top10Pct).toBeNull();
+    expect(result?.top10Pct).toBe(48.2);
     expect(result?.devPct).toBe(3.0);
-    expect(result?.source).toBe('rugcheck-report');
-    expect(mocks.onchain).not.toHaveBeenCalled();
+    expect(result?.source).toBe('rugcheck-report+solana-rpc');
+    expect(mocks.onchain).toHaveBeenCalled();
+  });
+
+  it('fills a missing holder count from a complete Bitquery snapshot', async () => {
+    mocks.onchain.mockResolvedValue({
+      mint: 'test-mint', top10Pct: 42, totalHolders: null, snipersPct: null,
+      insidersPct: null, bundlersPct: null, devPct: null, proTraders: null,
+      kols: null, source: 'quicknode-rpc', fetchedAt: Date.now(),
+    });
+    mocks.bitquery.mockResolvedValue({
+      mint: 'test-mint', top10Pct: 41, totalHolders: 27, snipersPct: null,
+      insidersPct: null, bundlersPct: null, devPct: 3, proTraders: null,
+      kols: null, source: 'bitquery-balance-updates+solana-rpc-supply', fetchedAt: Date.now(),
+    });
+    const { resolveOwnershipFallback } = await import('../ownership-fallback');
+    const result = await resolveOwnershipFallback('test-mint', 'creator-wallet');
+    expect(result?.top10Pct).toBe(42);
+    expect(result?.totalHolders).toBe(27);
+    expect(result?.devPct).toBe(3);
+    expect(result?.source).toContain('bitquery-balance-updates');
   });
 });

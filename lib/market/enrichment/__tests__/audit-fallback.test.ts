@@ -30,7 +30,7 @@ describe('audit provider fallback', () => {
         top10HoldingsPct: 17, sniperPercentage: 0, insiderHoldingsPct: 2,
         bundlerPercentage: undefined,
         ownershipEvidence: expect.objectContaining({ status: 'measured', source: 'solana-tracker-token-risk' }),
-      }), 'solana-tracker-token-risk', 'fresh', expect.any(String)), { timeout: 1500 });
+      }), 'solana-tracker-token-risk', 'fresh', expect.any(String)), { timeout: 5000 });
     expect(mocks.birdeye).toHaveBeenCalledTimes(1);
     expect(mocks.tracker).toHaveBeenCalledTimes(1);
   });

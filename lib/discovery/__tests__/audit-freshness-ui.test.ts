@@ -44,3 +44,11 @@ it('downgrades a complete low risk score when liquidity evidence expires', async
   expect(green(container)).toBe(0);
   expect(container.textContent).toContain('stale');
 });
+
+it('does not display a reassuring zero while the risk assessment is partial', () => {
+  const { container } = render(React.createElement(RugRiskPill, {
+    risk: { ...risk, completeness: 'partial' }, securityEvidence: measured(),
+  }));
+  expect(container.textContent).toContain('Risk pending');
+  expect(container.textContent).not.toContain('Risk 0');
+});

@@ -198,9 +198,9 @@ export function AnalyticsView() {
 
   const dataQuality = DataQualityEngine.auditProviders({
     quotes: [
-      { providerName: 'Helius Geyser WS', priceUsd: 148.52, poolLiquidityUsd: 4200000, timestampMs: Date.now() - 60 },
-      { providerName: 'Birdeye Price Stream', priceUsd: 148.55, poolLiquidityUsd: 4195000, timestampMs: Date.now() - 120 },
-      { providerName: 'QuickNode RPC Cluster', priceUsd: 148.5, poolLiquidityUsd: 4205000, timestampMs: Date.now() - 180 },
+      { providerName: 'Primary Geyser WS', priceUsd: 148.52, poolLiquidityUsd: 4200000, timestampMs: Date.now() - 60 },
+      { providerName: 'Market Price Stream', priceUsd: 148.55, poolLiquidityUsd: 4195000, timestampMs: Date.now() - 120 },
+      { providerName: 'Validator RPC Cluster', priceUsd: 148.5, poolLiquidityUsd: 4205000, timestampMs: Date.now() - 180 },
     ],
     indexerLagMs: 220,
   });

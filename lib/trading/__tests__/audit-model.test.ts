@@ -34,6 +34,18 @@ describe('audit evidence contract', () => {
     expect(data.ownershipEvidence.status).toBe('unavailable');
     expect(data.devMigrations).toBeNull();
   });
+  it('keeps measured fields and the actual provider visible for a partial holder profile', () => {
+    const holder = {
+      mint: 'mint', top10Pct: 42, totalHolders: 20, devPct: null,
+      snipersPct: null, insidersPct: null, bundlersPct: null,
+      proTraders: null, kols: null, fetchedAt: now - 1_000,
+      source: 'bitquery-balance-updates+solana-rpc-supply',
+    };
+    const data = composeTokenAudit('mint', undefined, holder, null, evidence, false, now);
+    expect(data.top10HoldersPct).toBe(42);
+    expect(data.ownershipEvidence).toMatchObject({ status: 'measured', source: holder.source });
+    expect(data.snipersPct).toBeNull();
+  });
   it('expires on the boundary and fails closed for missing or invalid timestamps', () => {
     expect(currentEvidence(evidence, now + 60_000).status).toBe('stale');
     expect(currentEvidence({ ...evidence, expiresAt: 'invalid' }, now).status).toBe('stale');

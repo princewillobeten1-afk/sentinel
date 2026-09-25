@@ -7,7 +7,8 @@ import { calculateRugRisk, RUG_RISK_VERSION } from './rug-risk';
 import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repository';
 import { redis } from '@/lib/server/redis';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
-import { resolveOwnershipFallback, hasOwnershipFallback } from './ownership-fallback';
+import { resolveOwnershipFallback, backfillMissingProfileFields, hasOwnershipFallback } from './ownership-fallback';
+import { bitqueryOwnershipHealth } from './bitquery-ownership';
 
 /**
  * Fills the ownership audit behind the feed, off the fast path.
@@ -33,6 +34,7 @@ import { resolveOwnershipFallback, hasOwnershipFallback } from './ownership-fall
  */
 
 const HIT_TTL_MS = 10 * 60 * 1000;
+const FALLBACK_TTL_MS = 30_000;
 const VISIBLE_OWNERSHIP_TTL_MS = 60_000;
 const MIGRATED_OWNERSHIP_TTL_MS = 3 * 60_000;
 
@@ -75,35 +77,50 @@ const CIRCUIT_COOLDOWN_MS = 60_000;
 const globalForAudit = globalThis as unknown as {
   sentinelAuditCache?: Map<string, HolderProfile>;
   sentinelAuditQueued?: Set<string>;
+  sentinelAuditCoordinator?: AuditCoordinator;
 };
+
+interface AuditCoordinator {
+  pending: string[];
+  targetsBySection: Map<string, string[]>;
+  detailTargets: Map<string, number>;
+  attempts: Map<string, number>;
+  draining: boolean;
+  activeMint: string | null;
+  consecutiveFailures: number;
+  quotaExhaustedAt: number;
+  rateLimitBackoffMs: number;
+  circuitOpenUntil: number;
+}
 
 const cache: Map<string, HolderProfile> = (globalForAudit.sentinelAuditCache ??= new Map());
 const queued: Set<string> = (globalForAudit.sentinelAuditQueued ??= new Set());
-
-const pending: string[] = [];
+// Next compiles each API route in its own module graph. The queue *and* its
+// drain flag must be shared with the Set above; sharing only `queued` left
+// mints marked pending while the route inspecting them had no work to drain.
+const state: AuditCoordinator = (globalForAudit.sentinelAuditCoordinator ??= {
+  pending: [], targetsBySection: new Map(), detailTargets: new Map(), attempts: new Map(),
+  draining: false, activeMint: null, consecutiveFailures: 0, quotaExhaustedAt: 0,
+  rateLimitBackoffMs: RATE_LIMIT_BACKOFF_MS, circuitOpenUntil: 0,
+});
+const pending = state.pending;
 /** Mints each rendered section currently wants audited, in display order. */
-const targetsBySection = new Map<string, string[]>();
+const targetsBySection = state.targetsBySection;
 /** Short leases renewed by open Audit tabs; don't pin abandoned detail pages. */
-const detailTargets = new Map<string, number>();
+const detailTargets = state.detailTargets;
 /** Rate-limited attempts per mint, so a requeue cannot loop forever. */
-const attempts = new Map<string, number>();
-let draining = false;
-let activeMint: string | null = null;
-let consecutiveFailures = 0;
-/** When the provider last reported its quota spent, or 0. */
-let quotaExhaustedAt = 0;
-let rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
-let circuitOpenUntil = 0;
+const attempts = state.attempts;
 
 function circuitOpen(): boolean {
-  return Date.now() < circuitOpenUntil;
+  return Date.now() < state.circuitOpenUntil;
 }
 
 /** A measured profile, or null when none is fresh. */
 export function getAudit(mint: string): HolderProfile | null {
   const hit = cache.get(mint);
   if (!hit) return null;
-  if (Date.now() - hit.fetchedAt > HIT_TTL_MS) {
+  const ttl = hit.source && hit.source !== 'birdeye-holder-profile' ? FALLBACK_TTL_MS : HIT_TTL_MS;
+  if (Date.now() - hit.fetchedAt > ttl) {
     cache.delete(mint);
     return null;
   }
@@ -166,12 +183,12 @@ export function setAuditTargets(section: string, mints: string[]): void {
       }, 'audit-coordinator');
     }
   }
-  if (!draining) void drain();
+  if (!state.draining) void drain();
 }
 
 /** True while the provider's compute-unit budget is known to be spent. */
 export function quotaPaused(): boolean {
-  return quotaExhaustedAt > 0 && Date.now() - quotaExhaustedAt < QUOTA_RETRY_MS;
+  return state.quotaExhaustedAt > 0 && Date.now() - state.quotaExhaustedAt < QUOTA_RETRY_MS;
 }
 
 /**
@@ -198,12 +215,13 @@ function rebuildQueue(): void {
     for (const mint of mints) {
       if (seen.has(mint)) continue;
       seen.add(mint);
-      if (mint === activeMint) continue;
+      if (mint === state.activeMint) continue;
       const hit = getAudit(mint);
       if (hit) {
         if (!visible) continue;
         const lifecycle = getTokenCardPatch(mint)?.changedFields.lifecycleState;
-        const refreshAfter = lifecycle === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+        const refreshAfter = hit.source && hit.source !== 'birdeye-holder-profile'
+          ? FALLBACK_TTL_MS : lifecycle === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
         if (Date.now() - hit.fetchedAt < refreshAfter) continue;
       }
       wanted.push(mint);
@@ -218,8 +236,9 @@ function rebuildQueue(): void {
 
   // `queued` drives the card's pending pip, so it must match what is really
   // outstanding — otherwise a rotated-out token shows a pip forever.
+  const outstanding = new Set(pending);
   for (const mint of [...queued]) {
-    if (!seen.has(mint)) {
+    if (!seen.has(mint) || (mint !== state.activeMint && !outstanding.has(mint))) {
       queued.delete(mint);
       attempts.delete(mint);
     }
@@ -247,9 +266,10 @@ export function queueAudit(mints: string[]): void {
   for (const mint of mints) {
     if (!mint) continue;
     if (detailTargets.has(mint) || detailTargets.size < MAX_QUEUE) detailTargets.set(mint, Date.now() + 45_000);
-    if (mint === activeMint || queued.has(mint)) continue;
+    if (mint === state.activeMint || queued.has(mint)) continue;
     const hit = getAudit(mint);
-    const ttl = getTokenCardPatch(mint)?.changedFields.lifecycleState === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+    const ttl = hit?.source && hit.source !== 'birdeye-holder-profile' ? FALLBACK_TTL_MS
+      : getTokenCardPatch(mint)?.changedFields.lifecycleState === 'migrated' ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
     if (hit && Date.now() - hit.fetchedAt < ttl) continue;
     if (pending.length >= MAX_QUEUE) break;
     queued.add(mint);
@@ -259,20 +279,20 @@ export function queueAudit(mints: string[]): void {
       ownershipEvidence: { status: 'loading', source: 'birdeye-holder-profile', observedAt: new Date().toISOString() },
     }, 'audit-coordinator');
   }
-  if (!draining) void drain();
+  if (!state.draining) void drain();
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function drain(): Promise<void> {
-  if (draining) return;
-  draining = true;
+  if (state.draining) return;
+  state.draining = true;
 
   try {
     while (pending.length > 0) {
       const mint = pending.shift();
       if (!mint) continue;
-      activeMint = mint;
+      state.activeMint = mint;
 
       // A Redis lease makes the visible-card queue one logical coordinator
       // across server instances. Without it every instance spends one paid
@@ -298,29 +318,42 @@ async function drain(): Promise<void> {
         : circuitOpen()
           ? { kind: 'failed' as const }
           : await fetchHolderProfileResult(mint);
+      // A 429 is not evidence that this mint lacks classifications. Retry the
+      // authoritative profile before accepting a partial on-chain fallback;
+      // otherwise one busy provider window pins n/a pills for minutes.
+      if (primaryResult.kind === 'rate-limited') {
+        const tries = (attempts.get(mint) ?? 0) + 1;
+        attempts.set(mint, tries);
+        if (tries < MAX_ATTEMPTS) {
+          pending.push(mint);
+          await sleep(Math.max(state.rateLimitBackoffMs, primaryResult.retryAfterMs ?? 0));
+          state.rateLimitBackoffMs = Math.min(MAX_RATE_LIMIT_BACKOFF_MS, state.rateLimitBackoffMs * 2);
+          continue;
+        }
+      }
       const devAddress = getTokenCardPatch(mint)?.changedFields.devAddress;
       let alternate: HolderProfile | null = null;
-      if (primaryResult.kind !== 'ok') {
+      if (primaryResult.kind === 'ok') {
+        alternate = await backfillMissingProfileFields(primaryResult.profile, devAddress);
+      } else {
         alternate = await resolveOwnershipFallback(mint, devAddress);
       }
-      if (primaryResult.kind === 'quota-exhausted') quotaExhaustedAt = Date.now();
-      if (alternate && primaryResult.kind === 'rate-limited') {
-        circuitOpenUntil = Date.now() + Math.max(30_000, primaryResult.retryAfterMs ?? 0);
-      }
+      if (primaryResult.kind === 'quota-exhausted') state.quotaExhaustedAt = Date.now();
       if (alternate && primaryResult.kind === 'failed' && (primaryResult.status === 401 || primaryResult.status === 403)) {
-        circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+        state.circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
       }
       const result = alternate ? { kind: 'ok' as const, profile: alternate } : primaryResult;
 
       if (result.kind === 'ok') {
         cache.set(mint, result.profile);
         queued.delete(mint);
+        attempts.delete(mint);
         const observedAt = new Date(result.profile.fetchedAt).toISOString();
         const ownershipSource = result.profile.source ?? 'birdeye-holder-profile';
         const security = getTokenCardPatch(mint)?.changedFields;
-        const ownershipTtl = security?.lifecycleState === 'migrated'
-          ? MIGRATED_OWNERSHIP_TTL_MS
-          : VISIBLE_OWNERSHIP_TTL_MS;
+        const ownershipTtl = result.profile.source && result.profile.source !== 'birdeye-holder-profile'
+          ? FALLBACK_TTL_MS : security?.lifecycleState === 'migrated'
+            ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
         const completeProfile = [result.profile.top10Pct, result.profile.totalHolders,
           result.profile.snipersPct, result.profile.insidersPct, result.profile.bundlersPct,
           result.profile.devPct, result.profile.proTraders, result.profile.kols].every((value) => value !== null);
@@ -366,8 +399,8 @@ async function drain(): Promise<void> {
           kolsCount: result.profile.kols,
           rugRisk,
         }, observedAt, RUG_RISK_VERSION);
-        consecutiveFailures = 0;
-        rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+        state.consecutiveFailures = 0;
+        state.rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
       } else if (result.kind === 'rate-limited') {
         // Requeue rather than discard: the token is fine, we asked too fast.
         // Discarding here is what left rows permanently unresolved while the
@@ -391,8 +424,8 @@ async function drain(): Promise<void> {
           }, 'birdeye-holder-profile', 'stale');
         }
 
-        await sleep(Math.max(rateLimitBackoffMs, result.retryAfterMs ?? 0));
-        rateLimitBackoffMs = Math.min(MAX_RATE_LIMIT_BACKOFF_MS, rateLimitBackoffMs * 2);
+        await sleep(Math.max(state.rateLimitBackoffMs, result.retryAfterMs ?? 0));
+        state.rateLimitBackoffMs = Math.min(MAX_RATE_LIMIT_BACKOFF_MS, state.rateLimitBackoffMs * 2);
       } else if (result.kind === 'quota-exhausted') {
         // The provider is out of compute units, so every remaining mint will
         // fail identically. Stop the pass and clear the queue rather than
@@ -402,7 +435,7 @@ async function drain(): Promise<void> {
         const affected = [...new Set([mint, ...pending, ...queued])];
         queued.delete(mint);
         attempts.delete(mint);
-        quotaExhaustedAt = Date.now();
+        state.quotaExhaustedAt = Date.now();
         pending.length = 0;
         queued.clear();
         const observedAt = new Date().toISOString();
@@ -426,7 +459,7 @@ async function drain(): Promise<void> {
         // card shows "not measured" rather than a reassuring zero.
         queued.delete(mint);
         attempts.delete(mint);
-        consecutiveFailures += 1;
+        state.consecutiveFailures += 1;
         updateTokenCard(mint, {
           auditPending: false,
           ownershipEvidence: {
@@ -436,15 +469,15 @@ async function drain(): Promise<void> {
             reason: result.status ? `Provider returned HTTP ${result.status}.` : 'Provider request failed.',
           },
         }, 'birdeye-holder-profile', 'stale');
-        if (consecutiveFailures === 10) {
+        if (state.consecutiveFailures === 10) {
           logger.warn('[audit] holder-profile lookups failing', {
-            consecutiveFailures,
+            consecutiveFailures: state.consecutiveFailures,
             status: result.status,
             queueDepth: pending.length,
           });
         }
-        if (consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
-          circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+        if (state.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
+          state.circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
           const affected = [...new Set([...pending, ...queued])];
           pending.length = 0;
           queued.clear();
@@ -467,8 +500,8 @@ async function drain(): Promise<void> {
       await sleep(REQUEST_GAP_MS);
     }
   } finally {
-    activeMint = null;
-    draining = false;
+    state.activeMint = null;
+    state.draining = false;
   }
 }
 
@@ -478,13 +511,14 @@ export function auditStats() {
     sections: targetsBySection.size,
     queued: queued.size,
     pending: pending.length,
-    draining,
-    consecutiveFailures,
+    draining: state.draining,
+    consecutiveFailures: state.consecutiveFailures,
     quotaPaused: quotaPaused(),
     circuitOpen: circuitOpen(),
-    circuitRetryAfterMs: circuitOpen() ? Math.max(0, circuitOpenUntil - Date.now()) : 0,
-    rateLimitBackoffMs,
+    circuitRetryAfterMs: circuitOpen() ? Math.max(0, state.circuitOpenUntil - Date.now()) : 0,
+    rateLimitBackoffMs: state.rateLimitBackoffMs,
     requestGapMs: REQUEST_GAP_MS,
+    bitqueryOwnership: bitqueryOwnershipHealth(),
   };
 }
 
@@ -493,13 +527,13 @@ export function __resetAudit(): void {
   cache.clear();
   queued.clear();
   pending.length = 0;
-  draining = false;
-  activeMint = null;
-  consecutiveFailures = 0;
-  rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+  state.draining = false;
+  state.activeMint = null;
+  state.consecutiveFailures = 0;
+  state.rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
   attempts.clear();
   targetsBySection.clear();
   detailTargets.clear();
-  quotaExhaustedAt = 0;
-  circuitOpenUntil = 0;
+  state.quotaExhaustedAt = 0;
+  state.circuitOpenUntil = 0;
 }

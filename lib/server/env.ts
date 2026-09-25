@@ -30,6 +30,7 @@ export const env = {
   // so importing `env` elsewhere never throws just because streaming isn't configured yet.
   HELIUS_API_KEY: process.env.HELIUS_API_KEY ?? '',
   BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY ?? '',
+  BITQUERY_ACCESS_TOKEN: process.env.BITQUERY_ACCESS_TOKEN ?? '',
   SOLANA_TRACKER_API_KEY: process.env.SOLANA_TRACKER_API_KEY ?? '',
   HELIUS_WS_URL: process.env.HELIUS_WS_URL ?? 'wss://devnet.helius-rpc.com',
   // Mainnet RPC for the parsed-transaction enricher. Separate from

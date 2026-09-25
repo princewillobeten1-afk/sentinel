@@ -2,6 +2,10 @@
 export const CHART_TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'] as const;
 export type ChartTimeframe = typeof CHART_TIMEFRAMES[number];
 export const CHART_SECONDS: Record<ChartTimeframe, number> = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+/** Birdeye's minute intervals are lowercase, but hour/day intervals are uppercase. */
+export const BIRDEYE_CHART_INTERVAL: Record<ChartTimeframe, string> = {
+  '1m': '1m', '5m': '5m', '15m': '15m', '1h': '1H', '4h': '4H', '1d': '1D',
+};
 export interface ChartCandle {
   time: number; open: number; high: number; low: number; close: number;
   /** Unknown volume must not become a zero-volume bar. */
@@ -13,12 +17,14 @@ export interface ChartSnapshot {
   chain: 'solana';
   timeframe: ChartTimeframe;
   currency: 'usd';
-  market: 'token-aggregate';
+  market: 'token-aggregate' | 'pool';
+  /** A pool chart is not silently mixed with token-aggregate candles. */
+  poolAddress?: string;
   candles: ChartCandle[];
   hasMore: boolean;
   oldestTime: number | null;
   observedAt: number;
-  source: 'birdeye-ohlcv-v3';
+  source: 'birdeye-ohlcv-v3' | 'bitquery-token-ohlcv' | 'bitquery-dex-ohlcv' | 'geckoterminal-pool-ohlcv';
   status: 'measured' | 'stale';
   reason?: string;
 }
@@ -27,7 +33,11 @@ export interface ChartFrame {
   timeframe: ChartTimeframe;
   candle: ChartCandle;
   observedAt: number;
-  source: 'birdeye-price-ws' | 'birdeye-ohlcv-rest';
+  source: 'birdeye-price-ws' | 'birdeye-ohlcv-rest' | 'bitquery-ohlcv-rest' | 'bitquery-dex-ohlcv-rest' | 'geckoterminal-pool-rest' | 'quicknode-pool-ws';
+  market?: 'token-aggregate' | 'pool';
+  poolAddress?: string;
+  /** Live swap-derived OHLC is provisional until a provider reconciles it. */
+  provisional?: boolean;
 }
 export const isChartTimeframe = (value: unknown): value is ChartTimeframe => CHART_TIMEFRAMES.includes(value as ChartTimeframe);
 export const isSolanaMint = (value: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
@@ -58,7 +68,10 @@ export function mergeChartCandles(current: ChartCandle[], incoming: ChartCandle[
 export function parseChartFrame(value: unknown): ChartFrame | null {
   const frame = value as ChartFrame | null;
   if (!frame || typeof frame.address !== 'string' || !isSolanaMint(frame.address) || !isChartTimeframe(frame.timeframe)
-    || (frame.source !== 'birdeye-price-ws' && frame.source !== 'birdeye-ohlcv-rest')
+    || !['birdeye-price-ws', 'birdeye-ohlcv-rest', 'bitquery-ohlcv-rest', 'bitquery-dex-ohlcv-rest', 'geckoterminal-pool-rest', 'quicknode-pool-ws'].includes(frame.source)
+    || ((frame.source === 'quicknode-pool-ws' || frame.source === 'geckoterminal-pool-rest')
+      ? frame.market !== 'pool' || !isSolanaMint(frame.poolAddress ?? '')
+      : frame.market === 'pool')
     || !Number.isFinite(frame.observedAt) || frame.observedAt <= 0) return null;
   const c = frame.candle;
   if (!c) return null;
@@ -75,7 +88,9 @@ export function chartPrecision(price: number): { precision: number; minMove: num
 export function parseChartSnapshot(value: unknown, address: string, timeframe: ChartTimeframe): ChartSnapshot | null {
   const s = value as ChartSnapshot | null;
   if (!s || s.address !== address || s.timeframe !== timeframe || s.chain !== 'solana' || s.currency !== 'usd'
-    || s.market !== 'token-aggregate' || s.source !== 'birdeye-ohlcv-v3' || !Number.isFinite(s.observedAt)
+    || !((s.market === 'token-aggregate' && ['birdeye-ohlcv-v3', 'bitquery-token-ohlcv', 'bitquery-dex-ohlcv'].includes(s.source))
+      || (s.market === 'pool' && s.source === 'geckoterminal-pool-ohlcv' && isSolanaMint(s.poolAddress ?? '')))
+    || !Number.isFinite(s.observedAt)
     || s.observedAt <= 0 || !['measured', 'stale'].includes(s.status) || !Array.isArray(s.candles)
     || typeof s.hasMore !== 'boolean') return null;
   const candles = s.candles.map(c => c && parseProviderCandle({ unixTime: c.time, o: c.open, h: c.high,

@@ -20,7 +20,13 @@ import { birdeyeLimiterStats } from '@/lib/market/enrichment/birdeye-limiter';
 import { tokenCardPersistenceHealth } from '@/lib/server/db/token-card-evidence-repository';
 import { getChartDemand, onChartDemand } from './chart-stream';
 import { ChartPoller } from './chart-poller';
+import { QuickNodeChartClient } from './quicknode-chart-client';
 import { quickNodeService } from '@/lib/server/quicknode';
+import { getBitqueryChartHealth } from '@/lib/market/bitquery-chart';
+import { bitqueryDexChartHealth } from '@/lib/market/bitquery-dex-chart';
+import { bitqueryActivityHealth, queueBitqueryActivity } from '@/lib/market/bitquery-activity';
+import { bitqueryLimiterStats } from '@/lib/market/bitquery-limiter';
+import { bitqueryLaunchHealth } from '@/lib/discovery/bitquery-launch-feed';
 import { redis } from '@/lib/server/redis';
 import { capabilityHealth } from './capability-health';
 import { realtimeRepository } from '@/lib/server/db/realtime-repository';
@@ -72,6 +78,12 @@ export interface StreamManagerHealth {
   birdeyeRestLimiter: ReturnType<typeof birdeyeLimiterStats>;
   evidencePersistence: ReturnType<typeof tokenCardPersistenceHealth>;
   chartPolling: ReturnType<ChartPoller['getHealth']>;
+  bitqueryChart: ReturnType<typeof getBitqueryChartHealth>;
+  bitqueryDexChart: ReturnType<typeof bitqueryDexChartHealth>;
+  bitqueryActivity: ReturnType<typeof bitqueryActivityHealth>;
+  bitqueryLimiter: ReturnType<typeof bitqueryLimiterStats>;
+  bitqueryLaunches: ReturnType<typeof bitqueryLaunchHealth>;
+  chartStreaming: ReturnType<QuickNodeChartClient['getHealth']>;
   capabilities: ReturnType<typeof capabilityHealth>;
 }
 
@@ -92,6 +104,7 @@ class StreamManager {
   private birdeye: BirdeyeClient | null = null;
   private unsubscribeChartDemand: (() => void) | null = null;
   private chartPoller = new ChartPoller();
+  private quickNodeCharts = new QuickNodeChartClient();
   private helius: HeliusClient | null = null;
   private started = false;
   private startedAt: string | null = null;
@@ -162,6 +175,7 @@ class StreamManager {
 
     this.trackDemand();
     this.chartPoller.start();
+    this.quickNodeCharts.start();
   }
 
   /**
@@ -181,11 +195,13 @@ class StreamManager {
       this.helius?.setWatchedMints(visibleMints);
       this.birdeye?.setMints(visibleMints, getChartDemand());
       this.chartPoller.setTargets(getChartDemand());
+      this.quickNodeCharts.setTargets(getChartDemand());
       // The same set the browser has explicitly subscribed to drives the
       // expensive ownership queue. No separate firehose or guessed "popular"
       // list can steal its quota from what the user is looking at.
       setAuditTargets('visible', visibleMints);
       setSecurityTargets(visibleMints);
+      queueBitqueryActivity(visibleMints);
     };
 
     this.unsubscribeDemand?.();
@@ -207,12 +223,14 @@ class StreamManager {
       setAuditTargets('visible', visibleMints);
       setSecurityTargets(visibleMints);
       queueDexMarketReconciliation(visibleMints);
+      queueBitqueryActivity(visibleMints);
     }, 15_000);
     this.refreshTimer.unref?.();
   }
 
   stop(): void {
     this.chartPoller.stop();
+    this.quickNodeCharts.stop();
     this.unsubscribeChartDemand?.();
     this.unsubscribeChartDemand = null;
     if (this.refreshTimer) clearInterval(this.refreshTimer);
@@ -270,8 +288,15 @@ class StreamManager {
       birdeyeRestLimiter: birdeyeLimiterStats(),
       evidencePersistence: tokenCardPersistenceHealth(),
       chartPolling,
+      bitqueryChart: getBitqueryChartHealth(),
+      bitqueryDexChart: bitqueryDexChartHealth(),
+      bitqueryActivity: bitqueryActivityHealth(),
+      bitqueryLimiter: bitqueryLimiterStats(),
+      bitqueryLaunches: bitqueryLaunchHealth(),
+      chartStreaming: this.quickNodeCharts.getHealth(),
       capabilities: capabilityHealth({ birdeye, chainLogs: helius, chainLogProvider,
-        quickNode, chartPolling, birdeyeConfigured: Boolean(env.BIRDEYE_API_KEY) }),
+        quickNode, chartPolling, chartStreaming: this.quickNodeCharts.getHealth(),
+        birdeyeConfigured: Boolean(env.BIRDEYE_API_KEY) }),
     };
   }
 

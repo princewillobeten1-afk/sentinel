@@ -2,13 +2,12 @@ import 'server-only';
 
 import { getChartHistory } from '@/lib/market/chart-history';
 import { isSolanaMint, isChartTimeframe } from '@/lib/market/chart-model';
-import { env } from '@/lib/server/env';
 import { logger } from '@/lib/server/logger';
 import { publishPolledCandle, type ChartDemand } from './chart-stream';
 
-// One shared, bounded fallback for all viewers. The global Birdeye REST gate
-// still controls the actual request rate alongside ownership and enrichment.
-const POLL_INTERVAL_MS = 15_000;
+// One shared, bounded REST reconciliation for all viewers. Pool candles use
+// GeckoTerminal; aggregate candles still pass through Birdeye's REST gate.
+const POLL_INTERVAL_MS = 30_000;
 const MAX_PER_TICK = 2;
 
 export class ChartPoller {
@@ -18,6 +17,7 @@ export class ChartPoller {
   private active = false;
   private busy = false;
   private lastSuccessAt: string | null = null;
+  private lastSource: string | null = null;
   private lastError: string | null = null;
   private published = 0;
 
@@ -47,13 +47,14 @@ export class ChartPoller {
   }
 
   getHealth() {
-    return { active: this.active && Boolean(env.BIRDEYE_API_KEY), targetCount: this.targets.length,
+    return { active: this.active, targetCount: this.targets.length,
       intervalMs: POLL_INTERVAL_MS, maxPerTick: MAX_PER_TICK, lastSuccessAt: this.lastSuccessAt,
+      lastSource: this.lastSource,
       lastError: this.lastError, published: this.published };
   }
 
   async tick(): Promise<void> {
-    if (!this.active || this.busy || !env.BIRDEYE_API_KEY || !this.targets.length) return;
+    if (!this.active || this.busy || !this.targets.length) return;
     this.busy = true;
     const count = Math.min(MAX_PER_TICK, this.targets.length);
     const selected = Array.from({ length: count }, () => {
@@ -69,6 +70,7 @@ export class ChartPoller {
           if (!this.active) break;
           if (snapshot.status !== 'measured') { this.lastError = snapshot.reason || 'Candle provider is delayed.'; continue; }
           this.lastSuccessAt = new Date(snapshot.observedAt).toISOString();
+          this.lastSource = snapshot.source;
           this.lastError = null;
           if (publishPolledCandle(snapshot)) this.published += 1;
         } catch (cause) {

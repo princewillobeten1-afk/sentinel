@@ -3,11 +3,19 @@ import 'server-only';
 import { CURVE_FRESHNESS_MS, finalStretch, getLifecycle, migrated } from '@/lib/market/lifecycle/lifecycle-engine';
 import type { TokenLifecycle } from '@/lib/market/lifecycle/types';
 import { fetchJupiterTokensByMint, mapJupiterToken, type JupiterToken } from './jupiter-feed';
+import { fetchDexPairSnapshots, finite, type DexPair } from './dexscreener-market';
 import type { DiscoveryToken } from './types';
+import { ApiError } from '@/lib/server/errors';
 
 type Section = 'migrating' | 'graduated';
-const METADATA_TTL_MS = 15_000;
-const metadata = new Map<string, { token: JupiterToken; at: number }>();
+// Live card patches update fast fields. This lookup decorates verified lifecycle
+// records; it must not erase a whole column during a brief Jupiter outage.
+const METADATA_TTL_MS = 60_000;
+const METADATA_RETENTION_MS = 60 * 60_000;
+const MAX_CACHED_MINTS = 2_000;
+type CachedMetadata = { token: JupiterToken; source: 'jupiter'; at: number }
+  | { token: DexPair; source: 'dexscreener'; at: number };
+const metadata = new Map<string, CachedMetadata>();
 const pending = new Map<string, Promise<void>>();
 
 async function loadMetadata(mints: string[]): Promise<void> {
@@ -19,18 +27,78 @@ async function loadMetadata(mints: string[]): Promise<void> {
   const task = (async () => {
     const rows = await fetchJupiterTokensByMint(missing);
     const wanted = new Set(missing);
+    const supplied = new Set<string>();
     for (const token of rows) {
-      if (wanted.has(token.id)) metadata.set(token.id, { token, at: Date.now() });
+      if (wanted.has(token.id)) {
+        metadata.set(token.id, { token, source: 'jupiter', at: Date.now() });
+        supplied.add(token.id);
+      }
+    }
+    // Jupiter's public endpoint can be quota-limited for hours. DexScreener
+    // decorates only the lifecycle mints it knows; it never decides membership.
+    const fallback = await fetchDexPairSnapshots(missing.filter(mint => !supplied.has(mint)));
+    for (const [mint, pair] of fallback) {
+      metadata.set(mint, { token: pair, source: 'dexscreener', at: Date.now() });
     }
     for (const [mint, cached] of metadata) {
-      if (Date.now() - cached.at > 5 * 60_000) metadata.delete(mint);
+      if (Date.now() - cached.at > METADATA_RETENTION_MS) metadata.delete(mint);
     }
+    while (metadata.size > MAX_CACHED_MINTS) metadata.delete(metadata.keys().next().value!);
   })();
   pending.set(key, task);
   try { await task; } finally { pending.delete(key); }
 }
 
 import { resolveLaunchpad } from '@/lib/market/lifecycle/launchpads';
+
+/** Identity and market values from the matched DexScreener BASE pair. Missing
+ * token age, creator, audit and holder facts stay unknown. */
+export function mapDexLifecycleToken(mint: string, pair: DexPair, observedAt: number): DiscoveryToken {
+  const token = mapJupiterToken({ id: mint, name: pair.baseToken?.name,
+    symbol: pair.baseToken?.symbol, icon: pair.info?.imageUrl });
+  const price = finite(pair.priceUsd);
+  const cap = finite(pair.marketCap ?? pair.fdv);
+  const liq = finite(pair.liquidity?.usd);
+  const buys5m = finite(pair.txns?.m5?.buys);
+  const sells5m = finite(pair.txns?.m5?.sells);
+  const buys1h = finite(pair.txns?.h1?.buys);
+  const sells1h = finite(pair.txns?.h1?.sells);
+  const buys24h = finite(pair.txns?.h24?.buys);
+  const sells24h = finite(pair.txns?.h24?.sells);
+  const evidence = { status: 'measured' as const, source: 'dexscreener-token-rest',
+    observedAt: new Date(observedAt).toISOString(),
+    expiresAt: new Date(observedAt + METADATA_TTL_MS).toISOString() };
+  return {
+    ...token,
+    ageMinutes: Number.NaN, ageFormatted: '—', isNewToken: false,
+    // A pool's creation time is not necessarily the token's launch time.
+    discoveryScore: { ...token.discoveryScore, confidence: 0,
+      explanations: ['Launch age and ownership evidence are not available from this source.'] },
+    liquidityPoolAddress: pair.pairAddress,
+    priceUsd: price === undefined ? '' : String(price),
+    marketCapUsd: cap === undefined ? '' : String(cap),
+    liquidityUsd: liq === undefined ? '' : String(liq),
+    volume5mUsd: finite(pair.volume?.m5) === undefined ? '' : String(pair.volume!.m5),
+    volume1hUsd: finite(pair.volume?.h1) === undefined ? '' : String(pair.volume!.h1),
+    volume24hUsd: finite(pair.volume?.h24) === undefined ? '' : String(pair.volume!.h24),
+    priceChange5m: finite(pair.priceChange?.m5) ?? Number.NaN,
+    priceChange1h: finite(pair.priceChange?.h1) ?? Number.NaN,
+    priceChange24h: finite(pair.priceChange?.h24) ?? Number.NaN,
+    buysCount: buys1h ?? Number.NaN, sellsCount: sells1h ?? Number.NaN,
+    buysCount5m: buys5m, sellsCount5m: sells5m,
+    buysCount1h: buys1h, sellsCount1h: sells1h,
+    buysCount24h: buys24h, sellsCount24h: sells24h,
+    txCount5m: buys5m !== undefined && sells5m !== undefined ? buys5m + sells5m : undefined,
+    txCount1h: buys1h !== undefined && sells1h !== undefined ? buys1h + sells1h : Number.NaN,
+    txCount24h: buys24h !== undefined && sells24h !== undefined ? buys24h + sells24h : undefined,
+    marketEvidence: price !== undefined || cap !== undefined || liq !== undefined ? evidence : undefined,
+    activityEvidence: buys1h !== undefined || sells1h !== undefined || finite(pair.volume?.h1) !== undefined
+      ? evidence : undefined,
+    websiteUrl: pair.info?.websites?.find(site => typeof site.url === 'string')?.url,
+    twitterUrl: pair.info?.socials?.find(site => site.type === 'twitter')?.url,
+    telegramUrl: pair.info?.socials?.find(site => site.type === 'telegram')?.url,
+  };
+}
 
 /** The engine decides membership; metadata can decorate it, never classify it. */
 export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecycle): DiscoveryToken {
@@ -91,14 +159,21 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
     const cached = metadata.get(record.mint);
     const current = getLifecycle(record.mint);
     if (!eligible.has(record.mint) || !current || !cached) continue;
-    const token = mapJupiterToken(cached.token);
-    if (Date.now() - cached.at >= METADATA_TTL_MS && token.marketEvidence) {
-      token.marketEvidence = { ...token.marketEvidence, status: 'stale', observedAt: new Date(cached.at).toISOString() };
+    const token = cached.source === 'jupiter' ? mapJupiterToken(cached.token)
+      : mapDexLifecycleToken(record.mint, cached.token, cached.at);
+    // Mapping is pure presentation, not a new provider observation. Preserve
+    // the actual observation time for every fact carried by this payload.
+    const stale = Date.now() - cached.at >= METADATA_TTL_MS;
+    for (const group of ['marketEvidence', 'activityEvidence', 'ownershipEvidence', 'securityEvidence', 'creatorEvidence'] as const) {
+      const evidence = token[group];
+      if (evidence) token[group] = { ...evidence, observedAt: new Date(cached.at).toISOString(),
+        ...(stale ? { status: 'stale', reason: 'Metadata refresh is delayed.' } : {}) };
     }
     tokens.push(applyLifecycleToToken(token, current));
   }
   if (!tokens.length && records.some((record) => eligible.has(record.mint))) {
-    throw new Error('Lifecycle confirmed; token metadata is temporarily unavailable. Retrying.');
+    throw new ApiError('Lifecycle confirmed; token metadata is temporarily unavailable. Retrying.',
+      503, 'LIFECYCLE_METADATA_UNAVAILABLE');
   }
   return tokens;
 }

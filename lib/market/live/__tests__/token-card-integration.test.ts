@@ -62,6 +62,7 @@ describe('token card ordering', () => {
     updateTokenCard('MintA', { priceUsd: '1', top10HoldingsPct: 10 }, 'old', 'fresh', '2026-09-11T09:59:00.000Z');
     expect(getTokenCardPatch('MintA')?.changedFields.priceUsd).toBe('2');
     expect(getTokenCardPatch('MintA')?.changedFields.top10HoldingsPct).toBe(30);
+    expect(getTokenCardPatch('MintA')?.fieldSources?.priceUsd).toBe('new');
   });
 
   it('accepts an older observation for a field that has never been seen', () => {
@@ -90,6 +91,8 @@ describe('token card ordering', () => {
       updateTokenCard('MintA', { sniperPercentage: 5 }, 'ownership', 'fresh', '2026-09-11T09:30:00.000Z');
       expect(getTokenCardPatch('MintA')?.changedFields.sniperPercentage).toBe(5);
       expect(getTokenCardPatch('MintA')?.changedFields.priceUsd).toBe('2');
+      expect(getTokenCardPatch('MintA')?.fieldSources?.priceUsd).toBe('market');
+      expect(getTokenCardPatch('MintA')?.fieldSources?.sniperPercentage).toBe('ownership');
     } finally { read.mockRestore(); }
   });
 });

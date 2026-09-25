@@ -6,6 +6,7 @@ import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import type { MetricEvidence } from '@/lib/discovery/types';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
 import { useEvidenceClock } from '@/lib/hooks/use-evidence-clock';
+import { formatDisplaySource } from '@/lib/discovery/format';
 
 export interface SecurityPillsProps {
   isMintRenounced?: boolean;
@@ -37,8 +38,8 @@ function SecurityPill({ label, value, evidence, icon: Icon, compact = false, dis
       ? 'border-emerald-800 bg-emerald-950/60 text-emerald-400'
       : 'border-rose-800 bg-rose-950/60 text-rose-400';
   const provenance = resolvedEvidence
-    ? `Source: ${resolvedEvidence.source}. ${resolvedEvidence.status}, observed ${resolvedEvidence.observedAt}${resolvedEvidence.reason ? `. ${resolvedEvidence.reason}` : ''}`
-    : 'Source has not reported this fact yet.';
+    ? `Source: ${formatDisplaySource(resolvedEvidence.source)}. ${resolvedEvidence.status}${resolvedEvidence.observedAt ? `, observed ${resolvedEvidence.observedAt}` : ''}`
+    : 'Fact has not been verified yet.';
 
   return (
     <LegendTooltip label={label} definition={`${label} is an observed contract or pool fact, not a safety guarantee. ${provenance}`}>

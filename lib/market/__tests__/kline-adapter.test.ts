@@ -23,6 +23,13 @@ describe('KLineChart v10 data adapter', () => {
     });
   });
 
+  it('uses measured USD volume for a pool chart without calling it token volume', () => {
+    expect(toKLineData(candle(60, { volume: null, volumeUsd: 24 }), 'usd')).toMatchObject({
+      timestamp: 60_000, volume: 24, turnover: 24,
+    });
+    expect(toKLineData(candle(60, { volume: null, volumeUsd: null }), 'usd')).not.toHaveProperty('volume');
+  });
+
   it('sorts history and retains the latest revision of each timestamp', () => {
     expect(toKLineDataList([
       candle(120), candle(60), candle(120, { close: 2.5, volumeUsd: 30 }),

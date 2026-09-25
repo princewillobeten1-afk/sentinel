@@ -35,7 +35,7 @@ import {
   LAUNCHPAD_CONFIGS,
   type LaunchpadConfig,
 } from '@/lib/market/lifecycle/launchpads';
-import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase, formatBoostCountdown } from '@/lib/discovery/format';
+import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase, formatBoostCountdown, formatDisplaySource } from '@/lib/discovery/format';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { AuditPills } from '@/components/ui/audit-pills';
@@ -139,7 +139,7 @@ function CardMetric({
   return (
     <MetricValue
       state={state}
-      label={observed ? `${label} · ${resolvedEvidence?.source} at ${observed}` : label}
+      label={observed ? `${label} · ${formatDisplaySource(resolvedEvidence?.source)} at ${observed}` : label}
       format={format}
       className={className}
     />
@@ -164,14 +164,14 @@ function SafetyValue({
     : evidence?.status === 'stale' ? 'stale' : 'measured';
   const color = state === 'measured' ? 'text-slate-200' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
   const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : `${format(value as number)}${suffix}`;
-  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={evidence?.reason || evidence?.source}>{rendered}</span></span>;
+  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={formatDisplaySource(evidence?.source)}>{rendered}</span></span>;
 }
 
 function SafetyFlag({ label, value, evidence }: { label: string; value: boolean | undefined; evidence?: MetricEvidence }) {
   const state = value === undefined ? evidence?.status === 'loading' ? 'pending' : evidence?.status === 'stale' ? 'stale' : 'unknown' : 'measured';
   const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : value ? 'Yes' : 'No';
   const color = state === 'measured' ? value ? 'text-emerald-400' : 'text-rose-400' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
-  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={evidence?.reason || evidence?.source}>{rendered}</span></span>;
+  return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={formatDisplaySource(evidence?.source)}>{rendered}</span></span>;
 }
 
 /** Live-ticking relative time formatter: 7s, 47s, 1m, 2m, 1h, 1d */
@@ -949,19 +949,19 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
       <div className="discovery-card-evidence">
       <div className="flex flex-wrap items-center gap-1 font-mono text-[9px]">
-        <LegendTooltip label="Holders" definition={`Unique holders reported by the ownership provider. ${ownershipEvidence ? `Source: ${ownershipEvidence.source}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}>
+        <LegendTooltip label="Holders" definition={`Unique holders verified on-chain. ${ownershipEvidence ? `Source: ${formatDisplaySource(ownershipEvidence.source)}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}>
           <span className="flex items-center gap-1 text-slate-300">
             <Users className="h-2.5 w-2.5 text-slate-500" />
             <MetricValue state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Holder count" format={formatCount} />
           </span>
         </LegendTooltip>
-        <LegendTooltip label="Pro traders" definition="Wallets classified as smart traders by Birdeye Holder Profile; classification is heuristic and time-stamped.">
+        <LegendTooltip label="Pro traders" definition="Wallets classified as smart traders; algorithmic heuristic and time-stamped.">
           <span className="flex items-center gap-1 text-slate-300">
             <Trophy className="h-2.5 w-2.5 text-amber-400" />
             <MetricValue state={toValueState(proTraders, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Pro traders" format={formatCount} />
           </span>
         </LegendTooltip>
-        <LegendTooltip label="KOL wallets" definition="Known influencer wallets classified by Birdeye Holder Profile; classification is heuristic and time-stamped.">
+        <LegendTooltip label="KOL wallets" definition="Known influencer and creator wallets; algorithmic heuristic and time-stamped.">
           <span className="flex items-center gap-1 text-slate-300">
             <Award className="h-2.5 w-2.5 text-purple-400" />
             <MetricValue state={toValueState(kols, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="KOL wallets" format={formatCount} />

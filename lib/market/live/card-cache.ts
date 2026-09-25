@@ -78,6 +78,8 @@ export interface TokenCardPatch {
   changedFields: TokenCardFields;
   /** Individual observation times survive snapshot replay and process restart. */
   fieldObservedAt?: Partial<Record<keyof TokenCardFields, string>>;
+  /** The provider that last measured each field; a whole-card source is insufficient for mixed feeds. */
+  fieldSources?: Partial<Record<keyof TokenCardFields, string>>;
 }
 
 type Listener = (patch: TokenCardPatch) => void;
@@ -125,6 +127,7 @@ function applyTokenCard(
   observedAt = new Date().toISOString(),
   publishDistributed = true,
   restoredFieldTimes?: TokenCardPatch['fieldObservedAt'],
+  restoredFieldSources?: TokenCardPatch['fieldSources'],
 ): TokenCardPatch {
   const previous = state.rows.get(mint);
   const observedMs = Date.parse(observedAt);
@@ -136,13 +139,17 @@ function applyTokenCard(
     return Number.isFinite(fieldMs) && fieldMs >= previousObserved;
   });
   const delta = Object.fromEntries(accepted) as TokenCardFields;
+  const fieldSources = { ...previous?.fieldSources };
   if (previous && accepted.length === 0) return previous;
   if (!Number.isFinite(observedMs)) {
     // Invalid timestamps have no ordering and cannot replace measured data.
     return { mint, sequence: state.sequence, observedAt, source, freshness: 'stale', changedFields: {} };
   }
   if (Number.isFinite(observedMs)) {
-    for (const [field] of accepted) fieldTimes.set(field, Date.parse(restoredFieldTimes?.[field as keyof TokenCardFields] ?? observedAt));
+    for (const [field] of accepted) {
+      fieldTimes.set(field, Date.parse(restoredFieldTimes?.[field as keyof TokenCardFields] ?? observedAt));
+      fieldSources[field as keyof TokenCardFields] = restoredFieldSources?.[field as keyof TokenCardFields] ?? source;
+    }
     state.fieldObservedAt.set(mint, fieldTimes);
   }
   const patch: TokenCardPatch = {
@@ -153,6 +160,7 @@ function applyTokenCard(
     freshness,
     changedFields: mergeEvidence(previous?.changedFields ?? {}, delta),
     fieldObservedAt: Object.fromEntries([...fieldTimes].map(([field, time]) => [field, new Date(time).toISOString()])),
+    fieldSources,
   };
   state.rows.set(mint, patch);
   void redis.set(`${REDIS_PREFIX}${mint}`, JSON.stringify(patch), REDIS_TTL_SECONDS);
@@ -160,7 +168,8 @@ function applyTokenCard(
   if (publishDistributed) {
     const message: DistributedPatch = {
       origin: state.instanceId,
-      patch: { mint, observedAt, source, freshness, changedFields: delta },
+      patch: { mint, observedAt, source, freshness, changedFields: delta,
+        fieldSources: Object.fromEntries(accepted.map(([field]) => [field, fieldSources[field as keyof TokenCardFields]])) },
     };
     void redis.publish(REDIS_CHANNEL, JSON.stringify(message));
   }
@@ -192,6 +201,7 @@ export function startTokenCardFanout(): void {
         message.patch.observedAt,
         false,
         message.patch.fieldObservedAt,
+        message.patch.fieldSources,
       );
     } catch {
       // Malformed fan-out messages are ignored; REST reconciliation repairs
@@ -223,7 +233,8 @@ export async function hydrateTokenCards(mints: string[]): Promise<void> {
       }
       // A stream may have arrived while Redis was being read. Per-field times
       // let the merge keep those newer values and recover older ownership too.
-      applyTokenCard(mint, restored, stored.source || 'redis-cache', 'stale', stored.observedAt, false, stored.fieldObservedAt);
+      applyTokenCard(mint, restored, stored.source || 'redis-cache', 'stale', stored.observedAt, false,
+        stored.fieldObservedAt, stored.fieldSources);
     } catch {
       // Corrupt cache entries are ignored and replaced by the provider pass.
     }

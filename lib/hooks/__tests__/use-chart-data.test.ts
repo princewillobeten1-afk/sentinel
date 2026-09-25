@@ -19,10 +19,25 @@ it('labels real REST fallback Polling, never Live just because the socket connec
   const fetcher = vi.fn().mockResolvedValue(response()); vi.stubGlobal('fetch', fetcher);
   const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
   await act(async () => {}); expect(result.current.status).toBe('Polling');
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
   expect(fetcher).toHaveBeenCalledTimes(2); expect(result.current.candles[0].close).toBe(3);
   expect(String(fetcher.mock.calls[0][0])).toContain('limit=150');
-  expect(String(fetcher.mock.calls[1][0])).toContain('limit=2');
+  expect(String(fetcher.mock.calls[1][0])).toContain('limit=150');
+});
+it('backfills a sparse fallback with full pool history instead of polling two bars forever', async () => {
+  const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';
+  const history = Array.from({ length: 75 }, (_, index) => candle(time - (74 - index) * 900, 3 + index / 100));
+  const fetcher = vi.fn().mockResolvedValueOnce(response(snapshot([candle()], { source: 'bitquery-token-ohlcv' })))
+    .mockResolvedValue(response(snapshot(history, { market: 'pool', poolAddress,
+      source: 'geckoterminal-pool-ohlcv' })));
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.candles).toHaveLength(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(45_000); });
+  expect(String(fetcher.mock.calls[1][0])).toContain('limit=150');
+  expect(result.current.candles).toHaveLength(75);
+  expect(result.current.market).toBe('pool');
 });
 it('uses measured server-poll frames without labeling them provider WebSocket Live', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()));
@@ -33,11 +48,18 @@ it('uses measured server-poll frames without labeling them provider WebSocket Li
   expect(result.current.status).toBe('Polling');
   expect(result.current.streamAt).toBe(0);
 });
+it('exposes Bitquery as the measured aggregate source without claiming a live stream', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(snapshot([candle()], { source: 'bitquery-token-ohlcv' }))));
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.source).toBe('bitquery-token-ohlcv');
+  expect(result.current.status).toBe('Polling');
+});
 it('recovers from a failed history request when a measured server-poll candle arrives', async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('History temporarily unavailable')));
   const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
   await act(async () => {});
-  expect(result.current.status).toBe('Delayed');
+  expect(result.current.status).toBe('Unavailable');
   await act(async () => { ws.handler({ ...frame(4), source: 'birdeye-ohlcv-rest' }, { sequence: 1 }); });
   expect(result.current.status).toBe('Polling');
   expect(result.current.error).toBeNull();
@@ -69,6 +91,59 @@ it('retains real candles on failure and recovers on retry', async () => {
   expect(result.current.status).toBe('Delayed'); expect(result.current.candles).toHaveLength(1);
   fetcher.mockResolvedValue(response()); await act(async () => { result.current.refresh(); });
   expect(result.current.error).toBeNull(); expect(result.current.status).toBe('Polling');
+});
+it('switches from a pool fallback to primary Birdeye without mixing histories', async () => {
+  const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';
+  const pool = { ...snapshot([candle(time, 7)]), market: 'pool', poolAddress,
+    source: 'geckoterminal-pool-ohlcv' };
+  const fetcher = vi.fn().mockResolvedValueOnce(response()).mockResolvedValue(response(pool as any));
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.market).toBe('token-aggregate');
+  await act(async () => { result.current.refresh(); });
+  expect(result.current.market).toBe('pool');
+  expect(result.current.poolAddress).toBe(poolAddress);
+  expect(result.current.candles.map(c => c.close)).toEqual([7]);
+  await act(async () => { ws.handler({ ...frame(4), source: 'birdeye-ohlcv-rest' }, { sequence: 1 }); });
+  expect(result.current.market).toBe('pool');
+  expect(result.current.candles.map(c => c.close)).toEqual([7]);
+  await act(async () => { ws.handler({ ...frame(4), source: 'birdeye-price-ws' }, { sequence: 2 }); });
+  expect(result.current.candles.map(c => c.close)).not.toContain(7);
+});
+it('accepts confirmed QuickNode pool ticks as provisional live bars without inventing volume', async () => {
+  const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';
+  const pool = { ...snapshot([candle(time, 7)]), market: 'pool', poolAddress,
+    source: 'geckoterminal-pool-ohlcv' };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(pool as any)));
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  await act(async () => { ws.handler({ address: mint, timeframe: '15m', market: 'pool', poolAddress,
+    source: 'quicknode-pool-ws', observedAt: Date.now(), provisional: true,
+    candle: { time, open: 8, high: 8, low: 8, close: 8, volume: null, volumeUsd: null } }, { sequence: 1 }); });
+  expect(result.current.status).toBe('Live');
+  expect(result.current.liveSource).toBe('quicknode');
+  expect(result.current.candles[0]).toMatchObject({ open: 2, high: 9, low: 1, close: 8, volume: null, volumeUsd: null });
+  await act(async () => { ws.handler({ address: mint, timeframe: '15m', market: 'pool',
+    poolAddress: '31p1hptjhFo6ZD8oBqkfutNXQKGGPyi7YcEAfsyKW777', source: 'quicknode-pool-ws',
+    observedAt: Date.now() + 1, candle: { time, open: 10, high: 10, low: 10, close: 10, volume: null, volumeUsd: null } }, { sequence: 2 }); });
+  expect(result.current.candles[0].close).toBe(8);
+});
+it('does not let a QuickNode pool trade replace measured aggregate history', async () => {
+  const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';
+  const fetcher = vi.fn().mockResolvedValue(response());
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.candles[0].close).toBe(3);
+  await act(async () => { ws.handler({ address: mint, timeframe: '15m', market: 'pool', poolAddress,
+    source: 'quicknode-pool-ws', observedAt: Date.now(), provisional: true,
+    candle: { time, open: 8, high: 8, low: 8, close: 8, volume: null, volumeUsd: null } }, { sequence: 1 }); });
+  expect(result.current.market).toBe('token-aggregate');
+  expect(result.current.candles).toMatchObject([{ close: 3, volume: 100 }]);
+  await act(async () => { result.current.refresh(); });
+  expect(result.current.market).toBe('token-aggregate');
+  expect(result.current.candles).toMatchObject([{ close: 3, volume: 100 }]);
 });
 it('reconciles on reconnect and accepts sequence numbers restarting from one', async () => {
   const fetcher = vi.fn().mockImplementation(async () => response()); vi.stubGlobal('fetch', fetcher);

@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { toAtomic, fromAtomic, toSwapQuote, SOL_MINT, type JupiterQuoteResponse } from '../jupiter-quote';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { toAtomic, fromAtomic, toSwapQuote, getSwapQuote, resetJupiterQuoteForTests, SOL_MINT, type JupiterQuoteResponse } from '../jupiter-quote';
 
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+afterEach(() => { vi.unstubAllGlobals(); resetJupiterQuoteForTests(); });
 
 describe('atomic conversion', () => {
   it('converts SOL amounts at 9 decimals', () => {
@@ -85,4 +86,16 @@ describe('toSwapQuote', () => {
   it('keeps a real zero impact as zero', () => {
     expect(toSwapQuote({ ...raw, priceImpactPct: '0' }, 9, 6).priceImpactPct).toBe(0);
   });
+});
+
+it('surfaces provider 429 as a temporary 503 and observes its retry window', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce({ ok: true, json: async () => [{ id: USDC, decimals: 6 }] })
+    .mockResolvedValueOnce({ ok: false, status: 429, headers: new Headers({ 'retry-after': '30' }) });
+  vi.stubGlobal('fetch', fetcher);
+  await expect(getSwapQuote({ inputMint: SOL_MINT, outputMint: USDC, amount: '0.1' }))
+    .rejects.toMatchObject({ statusCode: 503, code: 'QUOTE_RATE_LIMITED' });
+  await expect(getSwapQuote({ inputMint: SOL_MINT, outputMint: USDC, amount: '0.1' }))
+    .rejects.toMatchObject({ statusCode: 503, code: 'QUOTE_RATE_LIMITED' });
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

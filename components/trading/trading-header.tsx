@@ -60,7 +60,7 @@ export function TradingHeader() {
   const handleSelectToken = (tokenId: string) => {
     setIsSearchOpen(false);
     setSearchQuery('');
-    router.push(`/tokens/${tokenId}`);
+    router.push(`/trade/solana/${tokenId}`);
   };
 
   const handleKeyDownNav = (e: React.KeyboardEvent) => {

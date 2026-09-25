@@ -77,6 +77,64 @@ describe('QuickNode server-only infrastructure fallback', () => {
     expect(await service.websocketEndpoint()).toBe('wss://quicknode.example/secret');
   });
 
+  it('keeps a previously verified chart socket available during unrelated RPC read cooldown', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_input: string, init: RequestInit) => {
+      const method = JSON.parse(String(init.body)).method;
+      return method === 'getGenesisHash' ? rpcReply(MAINNET_GENESIS)
+        : new Response(JSON.stringify({ error: { message: 'quota' } }), { status: 429 });
+    }));
+    const service = new QuickNodeService();
+    expect(await service.websocketEndpoint()).toBe('wss://quicknode.example/secret');
+    for (let i = 0; i < 3; i++) await expect(service.read('', rpc => rpc.getSlot())).rejects.toThrow();
+    expect(service.getHealth().rpcState).toBe('paused');
+    expect(await service.websocketEndpoint()).toBe('wss://quicknode.example/secret');
+  });
+
+  it('retrieves a confirmed chart transaction despite unrelated RPC cooldown', async () => {
+    const signature = '4cNdjMkkA8TAc6HKcSXDywRXxiXVyDSix6dSuLpbgkzEbP7rbF6AEcdCSEXKrNcaqhJDZvmCULPmEd1hncdq2NdC';
+    vi.stubGlobal('fetch', vi.fn(async (_input: string, init: RequestInit) => {
+      const method = JSON.parse(String(init.body)).method;
+      if (method === 'getGenesisHash') return rpcReply(MAINNET_GENESIS);
+      if (method === 'getSlot') return new Response(JSON.stringify({ error: { message: 'quota' } }), { status: 429 });
+      expect(method).toBe('getTransaction');
+      return rpcReply({ slot: 1, meta: {}, transaction: {} });
+    }));
+    const service = new QuickNodeService();
+    await service.websocketEndpoint();
+    for (let i = 0; i < 3; i++) await expect(service.read('', rpc => rpc.getSlot())).rejects.toThrow();
+    expect(service.getHealth().rpcState).toBe('paused');
+    expect(await service.chartTransaction(signature)).toMatchObject({ slot: 1 });
+  });
+
+  it('falls back for confirmed migration reads when Helius is quota-limited', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init: RequestInit) => {
+      const method = JSON.parse(String(init.body)).method;
+      calls.push(`${input.includes('quicknode') ? 'quicknode' : 'helius'}:${method}`);
+      if (input.includes('helius')) return new Response(JSON.stringify({ error: { message: 'max usage reached' } }), { status: 429 });
+      return rpcReply(method === 'getGenesisHash' ? MAINNET_GENESIS : [{ signature: 'confirmed' }]);
+    }));
+    const service = new QuickNodeService();
+    const params = ['migration-authority', { limit: 8, commitment: 'confirmed' }];
+    expect(await service.rpcResult('https://helius.example/secret', 'getSignaturesForAddress', params))
+      .toEqual([{ signature: 'confirmed' }]);
+    expect(service.getHealth().primaryPaused).toBe(true);
+    expect(await service.rpcResult('https://helius.example/secret', 'getSignaturesForAddress', params))
+      .toEqual([{ signature: 'confirmed' }]);
+    expect(calls).toEqual([
+      'helius:getSignaturesForAddress', 'quicknode:getGenesisHash',
+      'quicknode:getSignaturesForAddress', 'quicknode:getSignaturesForAddress',
+    ]);
+  });
+
+  it('does not present a missing transaction as a confirmed migration', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init: RequestInit) => {
+      const method = JSON.parse(String(init.body)).method;
+      return rpcReply(input.includes('quicknode') && method === 'getGenesisHash' ? MAINNET_GENESIS : null);
+    }));
+    expect(await new QuickNodeService().rpcResult('https://helius.example/secret', 'getTransaction', ['signature'])).toBeNull();
+  });
+
   it('rejects insecure endpoints and keeps WebSocket failover disabled without a paired RPC', async () => {
     process.env.QUICKNODE_SOLANA_RPC_URL = 'http://quicknode.example/secret';
     const service = new QuickNodeService();

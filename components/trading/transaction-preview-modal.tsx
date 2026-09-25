@@ -178,7 +178,7 @@ export function TransactionPreviewModal({
           <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-2">
             <div className="flex items-start gap-2 text-rose-300 text-xs">
               <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>{quote.priceImpactMeasured === false ? 'Price impact is unavailable. The provider must measure it before this swap can proceed.' : `High price impact (${quote.priceImpact}%)! Large orders deplete liquidity and result in significant loss.`}</span>
+              <span>{quote.priceImpactMeasured === false ? 'Price impact is currently unavailable for this swap.' : `High price impact (${quote.priceImpact}%)! Large orders deplete liquidity and result in significant loss.`}</span>
             </div>
             <label className="flex items-center gap-2 cursor-pointer pt-1 text-2xs text-white">
               <input

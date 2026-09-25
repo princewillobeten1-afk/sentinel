@@ -25,6 +25,7 @@
  */
 
 import 'server-only';
+import { ApiError } from '@/lib/server/errors';
 const JUPITER_ORIGIN = process.env.JUPITER_API_KEY ? 'https://api.jup.ag' : 'https://lite-api.jup.ag';
 const JUPITER_QUOTE_URL = `${JUPITER_ORIGIN}/swap/v1/quote`;
 const JUPITER_SWAP_URL = `${JUPITER_ORIGIN}/swap/v1/swap`;
@@ -32,6 +33,7 @@ const TOKEN_LOOKUP_URL = `${JUPITER_ORIGIN}/tokens/v2/search`;
 const providerHeaders = (): Record<string, string> => ({ accept: 'application/json',
   ...(process.env.JUPITER_API_KEY ? { 'x-api-key': process.env.JUPITER_API_KEY } : {}) });
 const REQUEST_TIMEOUT_MS = 10_000;
+let quotePausedUntil = 0;
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
@@ -129,11 +131,28 @@ export function toSwapQuote(
 }
 
 async function getJson(url: string): Promise<unknown> {
+  if (Date.now() < quotePausedUntil) {
+    const retryAfterMs = quotePausedUntil - Date.now();
+    throw new ApiError('Jupiter is rate-limiting quotes. Please retry shortly; no trade has been submitted.',
+      503, 'QUOTE_RATE_LIMITED', { retryAfterMs });
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, headers: providerHeaders(), cache: 'no-store' });
-    if (!res.ok) throw new Error(`Jupiter responded ${res.status}`);
+    if (res.status === 429) {
+      const retry = res.headers.get('retry-after');
+      const seconds = retry ? Number(retry) : NaN;
+      const retryAt = retry && !Number.isFinite(seconds) ? Date.parse(retry) : NaN;
+      const retryAfterMs = Math.max(5_000, Math.min(60_000,
+        Number.isFinite(seconds) && seconds > 0 ? seconds * 1000
+          : Number.isFinite(retryAt) ? retryAt - Date.now() : 15_000));
+      quotePausedUntil = Date.now() + retryAfterMs;
+      throw new ApiError('Jupiter is rate-limiting quotes. Please retry shortly; no trade has been submitted.',
+        503, 'QUOTE_RATE_LIMITED', { retryAfterMs });
+    }
+    if (!res.ok) throw new ApiError(`Jupiter quote provider is unavailable (HTTP ${res.status}).`,
+      503, 'QUOTE_PROVIDER_UNAVAILABLE');
     return await res.json();
   } finally {
     clearTimeout(timer);
@@ -174,6 +193,7 @@ export async function getSwapTransaction(params: {
 }
 
 const decimalsCache = new Map<string, number>();
+export function resetJupiterQuoteForTests(): void { quotePausedUntil = 0; decimalsCache.clear(); }
 
 /**
  * A mint's decimals, needed before any amount can be converted.

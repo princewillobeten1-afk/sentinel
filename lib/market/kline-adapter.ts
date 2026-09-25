@@ -1,24 +1,26 @@
 import type { KLineData } from 'klinecharts';
 import type { ChartCandle } from './chart-model';
 
-/** Sentinel candles use Unix seconds; KLineChart v10 requires milliseconds. */
-export function toKLineData(candle: ChartCandle): KLineData {
+/** Sentinel candles use Unix seconds; KLineChart v10 requires milliseconds.
+ * A pool-only feed has measured USD volume but no token-unit volume. */
+export function toKLineData(candle: ChartCandle, volumeUnit: 'token' | 'usd' = 'token'): KLineData {
+  const chartVolume = volumeUnit === 'usd' ? candle.volumeUsd : candle.volume;
   return {
     timestamp: candle.time * 1000,
     open: candle.open,
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    ...(candle.volume === null ? {} : { volume: candle.volume }),
+    ...(chartVolume === null ? {} : { volume: chartVolume }),
     // USD notional is the quote-currency turnover. Unknown values stay absent.
     ...(candle.volumeUsd === null ? {} : { turnover: candle.volumeUsd }),
   };
 }
 
 /** KLineChart expects ascending, unique timestamps for both history and live replay. */
-export function toKLineDataList(candles: ChartCandle[]): KLineData[] {
+export function toKLineDataList(candles: ChartCandle[], volumeUnit: 'token' | 'usd' = 'token'): KLineData[] {
   const byTimestamp = new Map(candles.map(candle => {
-    const bar = toKLineData(candle);
+    const bar = toKLineData(candle, volumeUnit);
     return [bar.timestamp, bar] as const;
   }));
   return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);

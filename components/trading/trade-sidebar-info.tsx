@@ -5,7 +5,7 @@ import { ExternalLink, RefreshCw, Users, Shield, Target, Boxes, Wallet, Trophy, 
 import { MetricValue } from '@/components/ui/metric-value';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { toValueState } from '@/lib/ui/value-state';
-import { formatCompactUsd, formatCount } from '@/lib/discovery/format';
+import { formatCompactUsd, formatCount, formatDisplaySource } from '@/lib/discovery/format';
 import { measuredNumber, type TradeSidebarSnapshot } from '@/lib/trading/sidebar-model';
 import type { MetricEvidence } from '@/lib/discovery/types';
 
@@ -23,7 +23,7 @@ export function TradeActivityStrip({ data }: { data: TradeSidebarSnapshot }) {
       { label: 'Buys', value: `${count(data.buysCount5m)} / ${buy === null ? '—' : formatCompactUSD(buy)}`, color: 'text-emerald-400' },
       { label: 'Sells', value: `${count(data.sellsCount5m)} / ${sell === null ? '—' : formatCompactUSD(sell)}`, color: 'text-rose-400' },
       { label: 'Net Vol.', value: net === null ? '—' : `${net >= 0 ? '+' : '-'}${formatCompactUSD(Math.abs(net))}`, color: net === null ? 'text-slate-400' : net >= 0 ? 'text-emerald-400' : 'text-rose-400' },
-    ].map(item => <div key={item.label} className="min-w-0" title={`${item.label}: ${item.value}. ${data.activityEvidence ? `${data.activityEvidence.source}; ${data.activityEvidence.status}; observed ${data.activityEvidence.observedAt}. ${data.activityEvidence.reason ?? ''}` : 'No provider evidence is available.'}`}>
+    ].map(item => <div key={item.label} className="min-w-0" title={`${item.label}: ${item.value}. ${data.activityEvidence ? `${formatDisplaySource(data.activityEvidence.source)}; ${data.activityEvidence.status}; observed ${data.activityEvidence.observedAt}.` : 'Activity data is pending.'}`}>
       <div className="text-slate-500">{item.label}</div><div className={`truncate font-numeric ${item.color}`}>{item.value}</div>
     </div>)}
   </div>;
@@ -36,7 +36,7 @@ function AuditTile({ label, value, percent = true, icon: Icon, evidence, loading
   const stale = evidence?.status === 'stale' || evidence?.status === 'unavailable'
     || (evidence?.expiresAt ? Date.parse(evidence.expiresAt) < Date.now() : false);
   const state = toValueState(number, { isPending: loading || evidence?.status === 'loading', isStale: stale, reason: evidence?.reason });
-  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${label === 'LP Locked' ? 'Measured on Rugcheck’s deepest reported pool only; other pools may differ. ' : ''}${evidence ? `Source: ${evidence.source}; ${evidence.status}; observed ${evidence.observedAt}. ${evidence.reason ?? ''}` : 'Unavailable until a provider reports this metric.'}`}>
+  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${label === 'LP Locked' ? 'Measured on deepest liquidity pool; other pools may differ. ' : ''}${evidence ? `Source: ${formatDisplaySource(evidence.source)}; ${evidence.status}; observed ${evidence.observedAt}.` : 'Data is currently pending.'}`}>
     <div className="flex w-full min-w-0 flex-col items-center gap-1 rounded border border-slate-800 px-1 py-2 text-[11px]">
       <span className="flex items-center gap-1 font-numeric text-slate-200"><Icon className="h-3 w-3 shrink-0" />
         <MetricValue label={label} state={state} format={value => percent ? `${value.toFixed(value < 1 ? 2 : 1)}%` : formatCount(value)}
@@ -86,10 +86,10 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
     <div className="space-y-1.5">
       {address('CA', data.mint)}{address('DA', data.devAddress)}
       <div className="flex justify-between gap-2 px-1 text-slate-500"><span>Dev wallet age</span><span>{data.devWalletAge ?? 'Unavailable'}</span></div>
-      <div className="flex justify-between gap-2 px-1 text-slate-500" title={data.devBalanceEvidence ? `${data.devBalanceEvidence.source}; ${data.devBalanceEvidence.status}; observed ${data.devBalanceEvidence.observedAt}. ${data.devBalanceEvidence.reason ?? ''}` : undefined}>
+      <div className="flex justify-between gap-2 px-1 text-slate-500" title={data.devBalanceEvidence ? `${formatDisplaySource(data.devBalanceEvidence.source)}; ${data.devBalanceEvidence.status}; observed ${data.devBalanceEvidence.observedAt}.` : undefined}>
         <span>Dev SOL balance</span><span className="font-numeric text-slate-300">{measuredNumber(data.devBalanceSol) === null ? 'Unavailable' : `${Number(data.devBalanceSol).toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL`}</span>
       </div>
-      <div className="flex min-w-0 justify-between gap-2 px-1 text-slate-500" title={data.fundingEvidence ? `${data.fundingEvidence.source}; ${data.fundingEvidence.status}; observed ${data.fundingEvidence.observedAt}. ${data.fundingEvidence.reason ?? ''}` : undefined}>
+      <div className="flex min-w-0 justify-between gap-2 px-1 text-slate-500" title={data.fundingEvidence ? `${formatDisplaySource(data.fundingEvidence.source)}; ${data.fundingEvidence.status}; observed ${data.fundingEvidence.observedAt}.` : undefined}>
         <span>Funding wallet</span>{data.funding ? <Link href={`https://solscan.io/tx/${data.funding.signature}`} target="_blank" rel="noreferrer" className="min-w-0 truncate font-numeric text-sky-400 hover:text-sky-300" title={`${data.funding.address}; ${data.funding.amountSol} SOL; ${data.funding.fundedAt}`}>
           {data.funding.name ?? `${data.funding.address.slice(0, 5)}…${data.funding.address.slice(-4)}`} · {data.funding.amountSol.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
         </Link> : <span>Unavailable</span>}
@@ -98,7 +98,7 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
     <p className="sr-only" role="status">{message}</p>
     <details className="mt-3 border-t border-slate-800 pt-2">
       <summary className="cursor-pointer text-slate-300">Reused Image Tokens <span className="text-slate-500">{data.imageReuse ? data.imageReuse.matches.length : '—'}</span></summary>
-      {data.imageReuse ? <div className="space-y-1 py-2 text-slate-500" title={`${data.imageReuse.evidence.source}; ${data.imageReuse.evidence.status}; observed ${data.imageReuse.evidence.observedAt}. ${data.imageReuse.evidence.reason ?? ''}`}>
+      {data.imageReuse ? <div className="space-y-1 py-2 text-slate-500" title={`${formatDisplaySource(data.imageReuse.evidence.source)}; ${data.imageReuse.evidence.status}; observed ${data.imageReuse.evidence.observedAt}.`}>
         <p>{data.imageReuse.matches.length === 0 ? 'No exact image URL reuse found in Sentinel’s indexed tokens.' : `Exact image URL reused by ${data.imageReuse.matches.length} indexed token${data.imageReuse.matches.length === 1 ? '' : 's'}.`}</p>
         {data.imageReuse.matches.slice(0, 5).map(match => <Link key={match.mint} href={`/trade/solana/${match.mint}`} className="block truncate text-sky-400 hover:text-sky-300" title={match.mint}>{match.symbol || match.name || match.mint}</Link>)}
       </div> : <p className="py-2 text-slate-500">Image-index result is pending or unavailable.</p>}

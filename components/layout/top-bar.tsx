@@ -20,8 +20,6 @@ import {
   BrainCircuit,
   Sparkles,
   BarChart3,
-  Settings,
-  HelpCircle,
   ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,8 +47,6 @@ export const secondaryNavItems: NavItemConfig[] = [
   { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'ai', label: 'AI Co-Pilot', icon: Sparkles, hotkey: 'G AI' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, hotkey: 'G AN' },
-  { id: 'settings', label: 'Settings', icon: Settings, hotkey: 'G S' },
-  { id: 'help', label: 'Help & Docs', icon: HelpCircle, hotkey: 'G ?' },
 ];
 
 export function TopBar() {

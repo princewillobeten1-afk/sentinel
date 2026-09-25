@@ -240,7 +240,14 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
     } catch (err: any) {
       logger.warn('[solana-provider] getMarketSummary degraded', { message: err?.message });
       if (cachedSummary) {
-        return { ...cachedSummary.data, freshness: 'delayed' };
+        const sol = await getTokenPriceUsd(CANONICAL_SOL_MINT);
+        const delayed: MarketSummary = { ...cachedSummary.data,
+          solPriceUsd: acceptSolPrice(sol?.usdPrice ?? cachedSummary.data.solPriceUsd),
+          solChange24h: sol?.priceChange24h ?? cachedSummary.data.solChange24h,
+          updatedAt: sol ? new Date().toISOString() : cachedSummary.data.updatedAt,
+          freshness: 'delayed' };
+        cachedSummary = { data: delayed, timestamp: now };
+        return delayed;
       }
       // Birdeye is the primary here and its quota is exhausted, so this branch
       // runs on essentially every call. It used to answer with a block of
@@ -252,7 +259,7 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
       // anything genuinely unavailable is reported as unavailable rather than
       // invented.
       const sol = await getTokenPriceUsd(CANONICAL_SOL_MINT);
-      return {
+      const summary: MarketSummary = {
         solPriceUsd: acceptSolPrice(sol?.usdPrice ?? null),
         solChange24h: sol?.priceChange24h ?? null,
         totalMarketCapUsd: null,
@@ -262,10 +269,12 @@ export class SolanaMarketDataProvider implements MarketDataProvider {
         trendingTokens: [],
         averageSpread: null,
         marketSentiment: null,
-        dataSource: 'jupiter',
+        dataSource: sol?.source === 'dexscreener-sol-usd' ? 'external' : 'jupiter',
         updatedAt: new Date().toISOString(),
         freshness: sol ? 'delayed' : 'unavailable',
       };
+      cachedSummary = { data: summary, timestamp: now };
+      return summary;
     }
   }
 

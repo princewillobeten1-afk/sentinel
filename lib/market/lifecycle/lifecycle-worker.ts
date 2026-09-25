@@ -4,7 +4,7 @@ import { logger } from '@/lib/server/logger';
 import { PublicKey } from '@solana/web3.js';
 import { quickNodeService } from '@/lib/server/quicknode';
 import { bondingCurveAddress, decodeBondingCurve, PUMPFUN_PROGRAM_ID } from './bonding-curve';
-import { fetchMigration } from './migration-detector';
+import { fetchConfirmedSignatures, fetchMigrationWithFailover } from './migration-rpc';
 import { MigrationHistory } from './migration-history';
 import { fetchJupiterFeed, hasReadableCurve, type JupiterToken } from '@/lib/discovery/jupiter-feed';
 import {
@@ -50,6 +50,7 @@ import { resolveLaunchpad } from './launchpads';
 
 const SWEEP_INTERVAL_MS = Number(process.env.LIFECYCLE_SWEEP_MS ?? 15_000);
 const MAX_CURVES_PER_SWEEP = 100;
+const MAX_QUICKNODE_CURVES_PER_SWEEP = 25;
 const MAX_HISTORICAL_MIGRATIONS_PER_SWEEP = 3;
 const HISTORICAL_MIGRATION_RETRY_MS = 30 * 60_000;
 
@@ -71,6 +72,7 @@ class LifecycleWorker {
   private pendingMigrations = new Set<string>();
   private unsubscribeLifecycle: (() => void) | null = null;
   private historicalMigrationCheckedAt = new Map<string, number>();
+  private curveAttemptedAt = new Map<string, number>();
   private migrationHistory = new MigrationHistory();
 
   /**
@@ -85,22 +87,15 @@ class LifecycleWorker {
     this.historicalMigrationCheckedAt.set(mint, Date.now());
 
     try {
-      const response = await fetch(curveRpcUrl(), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        signal: AbortSignal.timeout(8_000),
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getSignaturesForAddress',
-          params: [poolAddress, { limit: 8, commitment: 'confirmed' }],
-        }),
-      });
-      if (!response.ok) return;
-      const body = await response.json() as { result?: Array<{ signature?: string; err?: unknown }> };
-      for (const row of body.result ?? []) {
+      const signatures = await fetchConfirmedSignatures(curveRpcUrl(), poolAddress, 8);
+      if (!signatures) {
+        // Provider outage is not a completed lookup. Retry on the next sweep.
+        this.historicalMigrationCheckedAt.delete(mint);
+        return;
+      }
+      for (const row of signatures) {
         if (!row.signature || row.err) continue;
-        const resolved = await fetchMigration(curveRpcUrl(), row.signature);
+        const resolved = await fetchMigrationWithFailover(curveRpcUrl(), row.signature);
         if (!resolved || resolved.mint !== mint || resolved.poolAddress !== poolAddress) continue;
         recordMigration(mint, {
           signature: resolved.signature,
@@ -184,7 +179,7 @@ class LifecycleWorker {
     this.pendingMigrations.add(signature);
 
     try {
-      const resolved = await fetchMigration(curveRpcUrl(), signature);
+      const resolved = await fetchMigrationWithFailover(curveRpcUrl(), signature);
       if (!resolved) {
         // Unresolvable means unconfirmed. The token stays where it is rather
         // than being moved to Migrated with no pool to point at.
@@ -338,7 +333,12 @@ class LifecycleWorker {
           const priorityA = a.state === 'FINAL_STRETCH' ? 3 : a.state === 'MIGRATING' ? 4 : a.curve === null ? 2 : 1;
           const priorityB = b.state === 'FINAL_STRETCH' ? 3 : b.state === 'MIGRATING' ? 4 : b.curve === null ? 2 : 1;
           if (priorityA !== priorityB) return priorityB - priorityA;
-          return (a.curve?.readAt ?? 0) - (b.curve?.readAt ?? 0);
+          const attemptedA = a.curve?.readAt ?? this.curveAttemptedAt.get(a.mint) ?? 0;
+          const attemptedB = b.curve?.readAt ?? this.curveAttemptedAt.get(b.mint) ?? 0;
+          if (attemptedA !== attemptedB) return attemptedA - attemptedB;
+          // Among unread curves, scan newer launches first so the visible
+          // launch feed is not stuck behind a backlog of old, absent accounts.
+          return b.firstSeenAt - a.firstSeenAt;
         })
         .slice(0, MAX_CURVES_PER_SWEEP)
         .map((record) => record.mint);
@@ -346,17 +346,32 @@ class LifecycleWorker {
       // One bounded getMultipleAccounts read. A failed Helius read is retried
       // against verified QuickNode mainnet; absent accounts remain absent.
       const addresses = due.map(mint => new PublicKey(bondingCurveAddress(mint)));
-      const { value: curves } = await quickNodeService.read(curveRpcUrl(), async rpc => {
-        const accounts = await rpc.getMultipleAccountsInfo(addresses, 'confirmed');
+      const { value: sweep } = await quickNodeService.read(curveRpcUrl(), async (rpc, source) => {
+        // QuickNode Discover plans cap getMultipleAccounts at five accounts.
+        // Its RPC is healthy, but a 100-address fallback returns HTTP 413.
+        const batchSize = source === 'quicknode' ? 5 : 100;
+        const budget = source === 'quicknode' ? MAX_QUICKNODE_CURVES_PER_SWEEP : addresses.length;
+        const accounts: Array<Awaited<ReturnType<typeof rpc.getAccountInfo>>> = [];
+        for (let offset = 0; offset < Math.min(addresses.length, budget); offset += batchSize) {
+          try {
+            accounts.push(...await rpc.getMultipleAccountsInfo(addresses.slice(offset, offset + batchSize), 'confirmed'));
+          } catch (error) {
+            // A later quota error must not throw away earlier confirmed reads.
+            // The unread remainder stays due for the next sweep.
+            if (accounts.length === 0) throw error;
+            break;
+          }
+        }
         const readings = new Map<string, NonNullable<ReturnType<typeof decodeBondingCurve>>>();
         accounts.forEach((account, index) => {
           if (!account || !account.owner.equals(new PublicKey(PUMPFUN_PROGRAM_ID))) return;
           const curve = decodeBondingCurve(account.data);
           if (curve) readings.set(due[index], curve);
         });
-        return readings;
+        return { readings, attempted: due.slice(0, accounts.length) };
       });
-      for (const [mint, curve] of curves) {
+      for (const mint of sweep.attempted) this.curveAttemptedAt.set(mint, Date.now());
+      for (const [mint, curve] of sweep.readings) {
         applyCurveReading(mint, curve);
       }
 

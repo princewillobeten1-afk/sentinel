@@ -250,6 +250,12 @@
 .overview-token-grid .terminal-token-card .terminal-card-metrics,
 .overview-token-grid .terminal-token-card > div[class*='grid-cols-3'] { border-color: #1d222b; }
 .discovery-card-footer { align-items: center; }
+
+/* ── Axiom compact token info strip ── */
+.scrollbar-none, .terminal-detail-tabs { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-none::-webkit-scrollbar, .terminal-detail-tabs::-webkit-scrollbar { display: none; }
+.axiom-token-strip { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
 .terminal-trade-order { border-radius: 8px; }
 .terminal-trade-order [class*='text-[9px]'], .terminal-trade-order [class*='text-[10px]'] { font-size: 11px; }
 .terminal-trade-order :is(input, select) { background: theme('colors.slate.950'); }

@@ -15,7 +15,9 @@ function readSummary(): Promise<MarketSummary> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8_000);
+    // The measured SOL/USD fallback may need a second provider after a
+    // rate-limited Jupiter request. Do not cancel it before that read finishes.
+    const timer = setTimeout(() => controller.abort(), 15_000);
     try {
       const response = await fetch('/api/v1/market/live/summary', { signal: controller.signal, cache: 'no-store' });
       const data = await readApiData<{ summary: MarketSummary }>(response, 'Market summary unavailable');

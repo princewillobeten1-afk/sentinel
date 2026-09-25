@@ -3,6 +3,7 @@
 import type { MetricEvidence, RugRiskEvidence } from '@/lib/discovery/types';
 import { currentEvidence, rugRiskState } from '@/lib/discovery/audit-freshness';
 import { useEvidenceClock } from '@/lib/hooks/use-evidence-clock';
+import { formatDisplaySource } from '@/lib/discovery/format';
 import { LegendTooltip } from './legend-tooltip';
 
 export function RugRiskPill({ risk, ownershipEvidence, securityEvidence, liquidityEvidence }: {
@@ -21,11 +22,12 @@ export function RugRiskPill({ risk, ownershipEvidence, securityEvidence, liquidi
     : 'border-emerald-800 bg-emerald-950/60 text-emerald-400';
   const provenance = groups.map((group, i) => {
     const resolved = currentEvidence(group, now);
-    return `${['Ownership', 'Authorities', 'Liquidity'][i]}: ${resolved.status}, ${resolved.source}${resolved.observedAt ? `, observed ${resolved.observedAt}` : ''}${resolved.reason ? ` (${resolved.reason})` : ''}`;
+    return `${['Ownership', 'Authorities', 'Liquidity'][i]}: ${resolved.status}, ${formatDisplaySource(resolved.source)}${resolved.observedAt ? `, observed ${resolved.observedAt}` : ''}`;
   }).join('. ');
   return <LegendTooltip label="Rug risk evidence" definition={`${state === 'measured' ? 'Current evidence' : `${state} evidence — not a current risk assessment`}. ${risk.factors.join('; ') || 'No elevated factors in the measured inputs'}. ${provenance}. Model ${risk.version}. Not a safety guarantee.`}>
     <span className={`self-start whitespace-nowrap rounded-full border px-1 py-0.5 font-sans text-[9px] font-medium ${tone}`}>
-      Risk {risk.score}{state !== 'measured' ? ` · ${state}` : ` · ${risk.level}`}
+      {state === 'measured' ? `Risk ${risk.score} · ${risk.level}`
+        : state === 'stale' ? 'Risk stale' : 'Risk pending'}
     </span>
   </LegendTooltip>;
 }

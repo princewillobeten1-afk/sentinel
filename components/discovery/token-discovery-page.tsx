@@ -175,7 +175,7 @@ export function TokenDiscoveryPage() {
                     <td className="p-3.5 text-slate-500 font-bold">{idx + 1}</td>
 
                     <td className="p-3.5">
-                      <Link href={`/tokens/${item.tokenId}`} className="flex items-center gap-3">
+                      <Link href={`/trade/solana/${item.tokenId}`} className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-sky-500/20 to-indigo-600/20 border border-sky-500/30 flex items-center justify-center font-bold text-sky-300 text-xs shrink-0">
                           {item.symbol.slice(0, 3)}
                         </div>
@@ -205,7 +205,7 @@ export function TokenDiscoveryPage() {
                     </td>
 
                     <td className="p-3.5 text-right">
-                      <Link href={`/tokens/${item.tokenId}`}>
+                      <Link href={`/trade/solana/${item.tokenId}`}>
                         <Button
                           variant="outline"
                           size="sm"

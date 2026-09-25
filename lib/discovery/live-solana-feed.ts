@@ -6,13 +6,18 @@ import {
   mapJupiterToken,
   formatAge,
   collapseDuplicateLaunches,
+  hasGraduated,
   type JupiterFeed,
   type JupiterToken,
 } from './jupiter-feed';
 import { getLifecycleDiscoveryTokens } from './lifecycle-feed';
-import { hydrateTokenCards, getTokenCardPatch } from '@/lib/market/live/card-cache';
+import { getBitqueryRecentLaunches } from './bitquery-launch-feed';
+import { getLifecycle } from '@/lib/market/lifecycle/lifecycle-engine';
+import { hydrateTokenCards, getTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache';
 import { mergeTokenCardSnapshot } from './card-snapshot';
 import { getAudit, isAuditPending, queueAudit } from '@/lib/market/enrichment/audit-worker';
+import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
+import { getWatchedMints } from '@/lib/market/live/stream-demand';
 import { calculateRugRisk } from '@/lib/market/enrichment/rug-risk';
 
 /**
@@ -56,6 +61,8 @@ interface FeedCache {
 }
 
 const caches = new Map<JupiterFeed, FeedCache>();
+
+export function __resetLiveSolanaFeedForTests(): void { caches.clear(); }
 
 /** Per-feed freshness, matched to how fast each list actually turns over. */
 const FEED_TTL_MS: Record<JupiterFeed, number> = {
@@ -108,7 +115,11 @@ async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
  * Fresh launches for New Pairs. Lifecycle columns have their own evidence feed.
  */
 async function recentTokens(): Promise<{ token: DiscoveryToken; raw: JupiterToken }[]> {
-  const { raw, mapped } = await loadFeed('recent');
+  const { raw, mapped, error } = await loadFeed('recent');
+  if (error) {
+    const alternate = await getBitqueryRecentLaunches();
+    if (alternate.length) return alternate;
+  }
   return mapped.map((token, index) => ({
     token: withCurrentAge(token, launchMs.get(raw[index]) ?? null),
     raw: raw[index],
@@ -143,7 +154,7 @@ export async function fetchLiveSolanaTokens(): Promise<DiscoveryToken[]> {
  * Enriches discovery tokens with cached ownership audits, live card patches,
  * and queues un-audited tokens in the background.
  */
-export async function enrichTokensWithAudits(tokens: DiscoveryToken[]): Promise<DiscoveryToken[]> {
+export async function enrichTokensWithAudits(tokens: DiscoveryToken[], section?: DiscoveryFilter['section']): Promise<DiscoveryToken[]> {
   if (!tokens || tokens.length === 0) return tokens;
   const mints = tokens.map((t) => t.mint).filter(Boolean);
   if (mints.length === 0) return tokens;
@@ -159,6 +170,13 @@ export async function enrichTokensWithAudits(tokens: DiscoveryToken[]): Promise<
   const enriched = tokens.map((token) => {
     let t = token;
     const patch = getTokenCardPatch(token.mint);
+    if (token.devAddress && !patch?.changedFields.devAddress) {
+      // Security checks can use the creator already measured by Jupiter;
+      // repeating Birdeye Token Security for every visible card competes with
+      // Holder Profile for the same provider budget.
+      updateTokenCard(token.mint, { devAddress: token.devAddress },
+        token.creatorEvidence?.source ?? 'jupiter-token-api');
+    }
     if (patch) {
       t = mergeTokenCardSnapshot(t, patch);
     }
@@ -226,12 +244,19 @@ export async function enrichTokensWithAudits(tokens: DiscoveryToken[]): Promise<
     return t;
   });
 
-  if (unAuditedMints.length > 0) {
+  if (getWatchedMints().length === 0 && unAuditedMints.length > 0) {
     try {
-      queueAudit(unAuditedMints.slice(0, 10));
+      queueAudit(unAuditedMints.slice(0, 6));
     } catch {
       // Best-effort audit queuing
     }
+  }
+
+  // A browser normally supplies its exact visible set over WebSocket. If that
+  // transport is unavailable, keep the first rows of the three terminal
+  // columns functional through a bounded REST fallback.
+  if (getWatchedMints().length === 0 && (section === 'new' || section === 'migrating' || section === 'graduated')) {
+    for (const token of tokens.slice(0, 2)) queueSecurityTarget(token.mint);
   }
 
   return enriched;
@@ -256,9 +281,19 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
       // Collapsed before sorting: an unfiltered response is routinely two
       // thirds noise — measured at 30 rows carrying 19 distinct names, one
       // repeated ten times, with 12 rows holding no liquidity at all.
-      const rows = await recentTokens();
+      const rows = (await recentTokens()).filter(({ token, raw }) => {
+        const state = getLifecycle(token.mint)?.state;
+        // /recent can retain a just-graduated mint. The verified lifecycle
+        // engine and Jupiter's own graduation fact both outrank listing age.
+        return (!state || state === 'NEW_PAIR') && !hasGraduated(raw);
+      });
+      const verifiedCreations = rows.length > 0 && rows.every(({ token }) =>
+        token.lifecycleEvidence?.source === 'bitquery-pump-creation');
       const collapsed = collapseDuplicateLaunches(rows.map((r) => r.token), {
-        includeZeroLiquidity: filter?.includeZeroLiquidity,
+        // A confirmed pump creation is a legitimate New Pair even before
+        // DexScreener indexes its curve. Keep liquidity unknown and trading
+        // disabled; do not make the whole column disappear during Jupiter 429s.
+        includeZeroLiquidity: filter?.includeZeroLiquidity || verifiedCreations,
       });
       tokens = apply(collapsed).sort((a, b) => a.ageMinutes - b.ageMinutes);
       break;
@@ -358,7 +393,7 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
     }
   }
 
-  return enrichTokensWithAudits(tokens);
+  return enrichTokensWithAudits(tokens, section);
 }
 
 /** Diagnostics for the feed's freshness, surfaced by the discovery routes. */

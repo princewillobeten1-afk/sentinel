@@ -37,4 +37,26 @@ describe('REST/card snapshot reconciliation', () => {
     expect(merged.volume5mUsd).toBe('20');
     expect(merged.buysCount5m).toBe(4);
   });
+
+  it('lets Bitquery fill only absent fields even when its patch arrived after primary REST', () => {
+    const token = { volume1hUsd: '900', buysCount1h: undefined,
+      marketEvidence: { status: 'measured', source: 'birdeye-token-stats', observedAt: '2026-09-25T10:00:00Z' } } as DiscoveryToken;
+    const merged = mergeTokenCardSnapshot(token, { mint: 'mint', sequence: 2, source: 'bitquery-dex-activity', freshness: 'fresh',
+      observedAt: '2026-09-25T10:01:00Z',
+      fieldSources: { volume1hUsd: 'bitquery-dex-activity', buysCount1h: 'bitquery-dex-activity' },
+      changedFields: { volume1hUsd: '100', buysCount1h: 4 } });
+    expect(merged.volume1hUsd).toBe('900');
+    expect(merged.buysCount1h).toBe(4);
+  });
+
+  it('keeps Birdeye ahead of DexScreener, but upgrades DexScreener to Bitquery', () => {
+    const patch = { mint: 'mint', sequence: 3, source: 'dexscreener-batch-rest', freshness: 'fresh' as const,
+      observedAt: '2026-09-25T10:01:00Z', fieldSources: { txCount5m: 'dexscreener-batch-rest' },
+      changedFields: { txCount5m: 4 } };
+    const primary = { txCount5m: 9, activityEvidence: { status: 'measured', source: 'birdeye-token-stats', observedAt: '2026-09-25T10:00:00Z' } } as DiscoveryToken;
+    expect(mergeTokenCardSnapshot(primary, patch).txCount5m).toBe(9);
+    const tertiary = { ...primary, activityEvidence: { ...primary.activityEvidence!, source: 'dexscreener-batch-rest' } };
+    const upgraded = { ...patch, source: 'bitquery-dex-activity', fieldSources: { txCount5m: 'bitquery-dex-activity' } };
+    expect(mergeTokenCardSnapshot(tertiary, upgraded).txCount5m).toBe(4);
+  });
 });

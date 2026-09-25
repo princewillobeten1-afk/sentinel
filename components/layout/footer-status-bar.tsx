@@ -1,12 +1,25 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Terminal, Command, CheckCircle2, Wifi, ShieldCheck, Activity, Clock } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { clsx } from 'clsx';
+import {
+  Terminal,
+  Command,
+  Wifi,
+  ShieldCheck,
+  Clock,
+  HelpCircle,
+  BookOpen,
+  Settings,
+} from 'lucide-react';
 import { useAppState, useAppActions } from '@/lib/store';
 
 export function FooterStatusBar() {
+  const pathname = usePathname();
   const { isConsoleOpen } = useAppState();
-  const { setHotkeysOpen, setConsoleOpen } = useAppActions();
+  const { setHotkeysOpen, setConsoleOpen, setActiveView } = useAppActions();
   /**
    * Every figure here is measured. None of them used to be.
    *
@@ -21,7 +34,7 @@ export function FooterStatusBar() {
    * product can have. These now come from the stream's own health endpoint.
    */
   const [status, setStatus] = useState<{
-    wsState: 'LIVE' | 'DELAYED' | 'RECONNECTING' | 'OFFLINE';
+    wsState: 'LIVE' | 'DEGRADED' | 'DELAYED' | 'RECONNECTING' | 'OFFLINE';
     latencyMs: number | null;
     lastMessageAgeSec: number | null;
     slot: number | null;
@@ -47,11 +60,12 @@ export function FooterStatusBar() {
         const lastAt = helius.lastMessageAt ? Date.parse(helius.lastMessageAt) : NaN;
         const ageSec = Number.isFinite(lastAt) ? Math.max(0, (Date.now() - lastAt) / 1000) : null;
 
-        const state: 'LIVE' | 'DELAYED' | 'RECONNECTING' | 'OFFLINE' =
+        const marketHealthy = health?.capabilities?.marketStreaming?.state === 'healthy';
+        const state: 'LIVE' | 'DEGRADED' | 'DELAYED' | 'RECONNECTING' | 'OFFLINE' =
           helius.state === 'open'
             ? ageSec !== null && ageSec > 30
               ? 'DELAYED'
-              : 'LIVE'
+              : marketHealthy ? 'LIVE' : 'DEGRADED'
             : helius.state === 'connecting'
               ? 'RECONNECTING'
               : 'OFFLINE';
@@ -85,16 +99,16 @@ export function FooterStatusBar() {
   const stateColour =
     wsState === 'LIVE'
       ? 'text-emerald-300'
-      : wsState === 'DELAYED' || wsState === 'RECONNECTING'
+      : wsState === 'DEGRADED' || wsState === 'DELAYED' || wsState === 'RECONNECTING'
         ? 'text-amber-300'
         : 'text-rose-300';
 
   return (
-    <footer className="terminal-footer shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-sentinel-700 bg-sentinel-950 px-3 sm:px-4 py-2 text-2xs font-numeric text-slate-400 select-none">
+    <footer className="terminal-footer shrink-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-sentinel-700 bg-sentinel-950 px-3 sm:px-4 py-2 text-2xs font-numeric text-slate-400 select-none">
       {/* Left: Operational Metrics */}
-      <div className="flex items-center gap-3 sm:gap-4">
+      <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto no-scrollbar">
         {/* Subsystem Health Indicator */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <span
             className={`h-2 w-2 rounded-full ${
               isHealthy
@@ -110,7 +124,7 @@ export function FooterStatusBar() {
         </div>
 
         {/* Network & WS Live State */}
-        <div className="hidden sm:flex items-center gap-1.5 text-slate-400">
+        <div className="hidden sm:flex items-center gap-1.5 text-slate-400 shrink-0">
           <Wifi className={`h-3 w-3 ${isHealthy ? 'text-emerald-400' : 'text-slate-500'}`} />
           <span>
             Stream:{' '}
@@ -122,7 +136,7 @@ export function FooterStatusBar() {
         </div>
 
         {/* Data Freshness Indicator */}
-        <div className="hidden lg:flex items-center gap-1.5 text-slate-400">
+        <div className="hidden lg:flex items-center gap-1.5 text-slate-400 shrink-0">
           <Clock className="h-3 w-3 text-sky-400" />
           <span>
             Last event:{' '}
@@ -133,7 +147,7 @@ export function FooterStatusBar() {
         </div>
 
         {/* Block Height */}
-        <div className="hidden md:flex items-center gap-1.5 text-slate-400">
+        <div className="hidden md:flex items-center gap-1.5 text-slate-400 shrink-0">
           <ShieldCheck className="h-3 w-3 text-sky-400" />
           <span>
             Slot:{' '}
@@ -144,8 +158,62 @@ export function FooterStatusBar() {
         </div>
       </div>
 
-      {/* Right: Actions */}
-      <div className="flex items-center gap-2">
+      {/* Right: Navigation Links & Actions */}
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        {/* Help Link */}
+        <Link
+          href="/help"
+          prefetch={true}
+          onClick={() => setActiveView('help')}
+          className={clsx(
+            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            pathname === '/help'
+              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
+              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+          )}
+          title="Help & documentation"
+        >
+          <HelpCircle className="h-2.5 w-2.5 text-sky-400" />
+          <span>Help</span>
+        </Link>
+
+        {/* Docs Link */}
+        <Link
+          href="/docs"
+          prefetch={true}
+          onClick={() => setActiveView('developers')}
+          className={clsx(
+            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            pathname === '/docs' || pathname === '/developers'
+              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
+              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+          )}
+          title="Developer platform and API documentation"
+        >
+          <BookOpen className="h-2.5 w-2.5 text-sky-400" />
+          <span>Docs</span>
+        </Link>
+
+        {/* Settings Link */}
+        <Link
+          href="/settings"
+          prefetch={true}
+          onClick={() => setActiveView('settings')}
+          className={clsx(
+            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            pathname === '/settings' || pathname?.startsWith('/settings/')
+              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
+              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+          )}
+          title="Terminal settings & preferences"
+        >
+          <Settings className="h-2.5 w-2.5 text-sky-400" />
+          <span>Settings</span>
+        </Link>
+
+        <span className="hidden sm:inline-block h-3 w-px bg-sentinel-800 mx-0.5" aria-hidden="true" />
+
+        {/* Console Action */}
         <button
           onClick={() => setConsoleOpen(!isConsoleOpen)}
           className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono font-bold ${
@@ -158,6 +226,7 @@ export function FooterStatusBar() {
           <span>Console</span>
         </button>
 
+        {/* Hotkeys Action */}
         <button
           onClick={() => setHotkeysOpen(true)}
           className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sentinel-900/90 text-slate-400 border border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700 transition text-2xs font-mono"
@@ -169,3 +238,5 @@ export function FooterStatusBar() {
     </footer>
   );
 }
+
+export default FooterStatusBar;

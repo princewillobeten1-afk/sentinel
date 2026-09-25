@@ -92,11 +92,14 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
   jupiter: JupiterAuditToken | null, jupiterEvidence: MetricEvidence, pending: boolean, now = Date.now()): TokenAudit {
   const audit = jupiter?.audit;
   const source = currentEvidence(jupiterEvidence, now);
+  const holderFields = holder ? [holder.top10Pct, holder.devPct, holder.snipersPct, holder.insidersPct,
+    holder.bundlersPct, holder.totalHolders, holder.proTraders, holder.kols] : [];
   const holderEvidence: MetricEvidence | undefined = holder ? {
-    status: [holder.top10Pct, holder.devPct, holder.snipersPct, holder.insidersPct, holder.bundlersPct,
-      holder.totalHolders, holder.proTraders, holder.kols].every(value => value !== null) ? 'measured' : 'unavailable',
-    source: 'birdeye-holder-profile', observedAt: new Date(holder.fetchedAt).toISOString(),
+    status: holderFields.some(value => value !== null) ? 'measured' : 'unavailable',
+    source: holder.source ?? 'birdeye-holder-profile', observedAt: new Date(holder.fetchedAt).toISOString(),
     expiresAt: new Date(holder.fetchedAt + (live?.lifecycleState === 'migrated' ? 180_000 : 60_000)).toISOString(),
+    reason: holderFields.every(value => value !== null) ? undefined
+      : 'This source does not supply every ownership classification; missing fields remain unverified.',
   } : undefined;
   const ownershipEvidence = currentEvidence(live?.ownershipEvidence ?? holderEvidence ?? (pending
     ? { status: 'loading', source: 'birdeye-holder-profile', observedAt: '' } : undefined), now);

@@ -139,9 +139,10 @@ async function fetchCreatorAge(address: string): Promise<CreatorAgeResult> {
 }
 
 async function enrich(mint: string): Promise<void> {
+  const knownCreator = getTokenCardPatch(mint)?.changedFields.devAddress;
   const [authorities, security, liquidityLock] = await Promise.all([
     fetchMintAuthorities(mint).catch((): MintAuthorities => ({})),
-    fetchBirdeyeSecurity(mint).catch(() => null),
+    knownCreator ? Promise.resolve({ creatorAddress: knownCreator }) : fetchBirdeyeSecurity(mint).catch(() => null),
     getLiquidityLock(mint),
   ]);
   const cachedAudit = getAudit(mint);

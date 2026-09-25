@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useId, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
+import { formatDisplaySource } from '@/lib/discovery/format';
 
 export interface LegendTooltipProps {
   label: string;
@@ -55,10 +56,10 @@ function parseDefinitionString(text: string) {
   return {
     description,
     provenance: {
-      source: source || 'On-chain',
+      source: formatDisplaySource(source || 'On-chain'),
       status: status || undefined,
       observed: observed || undefined,
-      reason: reason || undefined,
+      reason: undefined,
     },
   };
 }
@@ -101,7 +102,7 @@ function renderDefinitionContent(definition: string | React.ReactNode) {
         <div className="flex items-center justify-between gap-1">
           <span className="text-slate-400">
             <span className="text-slate-500">Source: </span>
-            <span className="text-slate-200 font-semibold">{provenance.source}</span>
+            <span className="text-slate-200 font-semibold">{formatDisplaySource(provenance.source)}</span>
           </span>
           {provenance.status && (
             <span
@@ -122,12 +123,6 @@ function renderDefinitionContent(definition: string | React.ReactNode) {
           <div className="flex items-center justify-between text-slate-400 text-[10px]">
             <span className="text-slate-500">Observed:</span>
             <span className="text-slate-300">{provenance.observed}</span>
-          </div>
-        )}
-        {provenance.reason && (
-          <div className="pt-1 mt-1 border-t border-slate-800/80 text-amber-300 text-[10px] leading-tight break-words">
-            <span className="text-amber-500 font-semibold">Note: </span>
-            {provenance.reason}
           </div>
         )}
       </div>

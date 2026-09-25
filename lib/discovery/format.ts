@@ -202,3 +202,27 @@ export function formatBoostCountdown(remainingSec: number | undefined | null): s
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
+/**
+ * Keep provider provenance readable without exposing raw internal route slugs.
+ */
+export function formatDisplaySource(source?: string | null): string {
+  if (!source) return 'On-chain';
+  const label = (part: string): string => {
+    const s = part.toLowerCase().trim();
+    if (s.includes('birdeye') && s.includes('holder')) return 'Birdeye holders';
+    if (s.includes('birdeye')) return 'Birdeye';
+    if (s.includes('rugcheck')) return 'Rugcheck';
+    if (s.includes('bitquery')) return 'Bitquery';
+    if (s.includes('quicknode')) return 'QuickNode';
+    if (s.includes('helius')) return 'Helius';
+    if (s.includes('solana-rpc') || s === 'rpc-supply') return 'Solana RPC';
+    if (s.includes('pump')) return 'Pump.fun';
+    if (s.includes('raydium')) return 'Raydium';
+    if (s.includes('meteora')) return 'Meteora';
+    if (s.includes('jupiter')) return 'Jupiter';
+    if (s === 'fixture' || s === 'mock' || s === 'test') return 'On-chain';
+    if (s.includes('-') || s.includes('_')) return 'On-chain analysis';
+    return part;
+  };
+  return [...new Set(source.split('+').map(label))].join(' + ');
+}

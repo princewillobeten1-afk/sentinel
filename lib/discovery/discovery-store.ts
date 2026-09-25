@@ -97,6 +97,14 @@ let snapshot: DiscoverySnapshot = emptySnapshot();
 let timer: ReturnType<typeof setInterval> | null = null;
 let subscribers = 0;
 const listeners = new Set<() => void>();
+const sectionSubscribers = new Map<DiscoverySection, number>();
+let tickInFlight = false;
+let rerunAfterFlight = false;
+let queryRevision = 0;
+
+function activeSections(): DiscoverySection[] {
+  return DISCOVERY_SECTIONS.filter((section) => (sectionSubscribers.get(section) ?? 0) > 0);
+}
 
 /**
  * The socket this file's header always claimed to have.
@@ -126,7 +134,18 @@ let pendingRefresh = false;
 /** Shortest gap between an event arriving and the fetch it triggers. */
 const NUDGE_DEBOUNCE_MS = 400;
 
-const DISCOVERY_TOPICS = DISCOVERY_SECTIONS.map((section) => `feed.discovery:${section}`);
+const subscribedTopics = new Set<string>();
+
+function reconcileTopics(): void {
+  if (!socketWelcomed || !socket || socket.readyState !== WebSocket.OPEN) return;
+  const wanted = new Set(activeSections().map((section) => `feed.discovery:${section}`));
+  const add = [...wanted].filter((topic) => !subscribedTopics.has(topic));
+  const remove = [...subscribedTopics].filter((topic) => !wanted.has(topic));
+  if (remove.length) socket.send(encodeClientMessage({ type: 'unsubscribe', topics: remove }));
+  if (add.length) socket.send(encodeClientMessage(subscribeMessage(add)));
+  subscribedTopics.clear();
+  for (const topic of wanted) subscribedTopics.add(topic);
+}
 
 const SECTION_ENDPOINTS: Partial<Record<DiscoverySection, string>> = {
   'top-gainers': 'movers',
@@ -148,7 +167,7 @@ function tokensFrom(body: FeedResponse): DiscoveryToken[] {
   return Array.isArray(rows) ? rows : [];
 }
 
-async function tick(): Promise<void> {
+async function tick(force = false): Promise<void> {
   if (paused) {
     pendingRefresh = true;
     snapshot = { ...snapshot, pendingRefresh: true };
@@ -160,10 +179,21 @@ async function tick(): Promise<void> {
   // cost, and the first tick on focus refreshes everything anyway.
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
 
+  if (tickInFlight) {
+    if (force) rerunAfterFlight = true;
+    return;
+  }
+  const requestedSections = activeSections();
+  if (requestedSections.length === 0) return;
+  tickInFlight = true;
+  const revision = queryRevision;
+
+  try {
+
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
   const results = await Promise.allSettled(
-    DISCOVERY_SECTIONS.map((section) =>
+    requestedSections.map((section) =>
       fetchOnce<FeedResponse>(
         `/api/v1/discovery/${SECTION_ENDPOINTS[section] ?? section}?chain=${chain}&timeWindow=${timeWindow}&limit=50` +
           (includeZeroLiquidity ? '&includeZeroLiquidity=true' : ''),
@@ -177,6 +207,10 @@ async function tick(): Promise<void> {
 
   // Freeze is an inspection boundary. An already-running request may finish
   // after it, but must not replace the rows the trader is inspecting.
+  if (revision !== queryRevision) {
+    rerunAfterFlight = true;
+    return;
+  }
   if (paused) {
     pendingRefresh = true;
     snapshot = { ...snapshot, pendingRefresh: true };
@@ -184,8 +218,8 @@ async function tick(): Promise<void> {
     return;
   }
 
-  const sections: Record<string, SectionSnapshot> = {};
-  DISCOVERY_SECTIONS.forEach((section, index) => {
+  const sections: Record<string, SectionSnapshot> = { ...snapshot.sections };
+  requestedSections.forEach((section, index) => {
     const result = results[index];
     const previous = snapshot.sections[section];
 
@@ -207,6 +241,13 @@ async function tick(): Promise<void> {
   pendingRefresh = false;
   snapshot = { sections, rttMs, at: now, hasLoaded: true, paused, pausedAt: snapshot.pausedAt, pendingRefresh };
   listeners.forEach((notify) => notify());
+  } finally {
+    tickInFlight = false;
+    if (rerunAfterFlight && timer && subscribers > 0) {
+      rerunAfterFlight = false;
+      void tick();
+    }
+  }
 }
 
 /**
@@ -220,7 +261,7 @@ function nudge(): void {
   if (nudgeTimer) return;
   nudgeTimer = setTimeout(() => {
     nudgeTimer = null;
-    void tick();
+    void tick(true);
   }, NUDGE_DEBOUNCE_MS);
 }
 
@@ -263,7 +304,7 @@ function connectSocket(): void {
     if (payload.type === 'welcome') {
       socketWelcomed = true;
       try {
-        next.send(encodeClientMessage(subscribeMessage(DISCOVERY_TOPICS)));
+        reconcileTopics();
       } catch {
         // The reconnect path covers it.
       }
@@ -285,6 +326,7 @@ function connectSocket(): void {
   next.onclose = () => {
     socket = null;
     socketWelcomed = false;
+    subscribedTopics.clear();
     reconnectState = reconnectReducer(reconnectState, { type: 'CLOSED' });
     if (reconnectState.status === 'reconnecting') scheduleReconnect();
     // `given_up` is not fatal: the 4s poll is still running, so the feed
@@ -306,6 +348,7 @@ function disconnectSocket(): void {
   const open = socket;
   socket = null;
   socketWelcomed = false;
+  subscribedTopics.clear();
   reconnectState = initialReconnectState();
 
   if (open) {
@@ -344,14 +387,25 @@ export function isDiscoverySocketLive(): boolean {
  * Subscribes to the shared feed. The timer runs only while something is
  * listening, so leaving Discover stops the polling.
  */
-export function subscribeToDiscovery(listener: () => void): () => void {
+export function subscribeToDiscovery(listener: () => void, section?: DiscoverySection): () => void {
   listeners.add(listener);
   subscribers += 1;
+  if (section) sectionSubscribers.set(section, (sectionSubscribers.get(section) ?? 0) + 1);
   if (subscribers === 1) start();
+  else if (section) {
+    reconcileTopics();
+    void tick(true);
+  }
 
   return () => {
     listeners.delete(listener);
     subscribers -= 1;
+    if (section) {
+      const remaining = (sectionSubscribers.get(section) ?? 1) - 1;
+      if (remaining > 0) sectionSubscribers.set(section, remaining);
+      else sectionSubscribers.delete(section);
+      reconcileTopics();
+    }
     if (subscribers === 0) stop();
   };
 }
@@ -363,7 +417,7 @@ export function getDiscoverySnapshot(): DiscoverySnapshot {
 export function getDiscoveryHealth(section?: DiscoverySection): DiscoveryHealth {
   if (snapshot.paused) return 'stale';
   if (reconnectState.status === 'connecting' || reconnectState.status === 'reconnecting') return 'reconnecting';
-  const sections = section ? [getSection(section)] : Object.values(snapshot.sections);
+  const sections = section ? [getSection(section)] : activeSections().map(getSection);
   if (!snapshot.hasLoaded || sections.some((item) => item.state === 'loading')) return 'reconnecting';
   if (sections.every((item) => item.state === 'stale' || item.at === 0)) return 'unavailable';
   if (sections.some((item) => item.state === 'stale')) return 'degraded';
@@ -423,9 +477,10 @@ export function setDiscoveryQuery(next: {
   chain = next.chain ?? chain;
   timeWindow = next.timeWindow ?? timeWindow;
   includeZeroLiquidity = next.includeZeroLiquidity ?? includeZeroLiquidity;
+  queryRevision += 1;
   snapshot = emptySnapshot();
   listeners.forEach((notify) => notify());
-  if (timer) void tick();
+  if (timer) void tick(true);
 }
 
 /** Forces a cycle now, for a manual refresh control. */
@@ -436,7 +491,7 @@ export function refreshDiscovery(): void {
     listeners.forEach((notify) => notify());
     return;
   }
-  void tick();
+  void tick(true);
 }
 
 /** Test seam. */
@@ -445,6 +500,10 @@ export function __resetDiscoveryStore(): void {
   snapshot = emptySnapshot();
   listeners.clear();
   subscribers = 0;
+  sectionSubscribers.clear();
+  tickInFlight = false;
+  rerunAfterFlight = false;
+  queryRevision = 0;
   chain = 'solana';
   timeWindow = '15m';
   includeZeroLiquidity = false;

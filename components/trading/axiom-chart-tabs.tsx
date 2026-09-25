@@ -44,6 +44,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AuditPills } from '@/components/ui/audit-pills';
 import { RugRiskPill } from '@/components/ui/rug-risk-pill';
+import { formatDisplaySource } from '@/lib/discovery/format';
 import { useTokenAudit } from '@/lib/hooks/use-token-audit';
 import { OpenOrdersDashboard } from '@/components/limit-orders/open-orders-dashboard';
 import { useAppState, useAppActions } from '@/lib/store';
@@ -1093,7 +1094,7 @@ export function AxiomChartTabs({
       <div className="flex flex-wrap items-center justify-between border-b border-sentinel-800 bg-sentinel-950/90 px-3 py-1.5 gap-2 select-none">
         
         {/* Left Side: Horizontal Tab List with indicators */}
-        <div className="terminal-detail-tabs flex min-w-0 max-w-full items-center gap-1 overflow-x-auto py-1" aria-label="Token details">
+        <div className="terminal-detail-tabs flex min-w-0 max-w-full items-center gap-1 overflow-x-auto py-1 scrollbar-none overscroll-x-contain" aria-label="Token details">
           {/* Trades Tab */}
           <button
             onClick={() => setActiveTab('trades')}
@@ -1192,6 +1193,7 @@ export function AxiomChartTabs({
           {/* Token Audit Tab */}
           <button
             onClick={() => setActiveTab('audit')}
+            aria-pressed={activeTab === 'audit'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'audit'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -1205,6 +1207,7 @@ export function AxiomChartTabs({
           {/* Holders Tab */}
           <button
             onClick={() => setActiveTab('holders')}
+            aria-pressed={activeTab === 'holders'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'holders'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -1218,6 +1221,7 @@ export function AxiomChartTabs({
           {/* Top Traders Tab */}
           <button
             onClick={() => setActiveTab('top-traders')}
+            aria-pressed={activeTab === 'top-traders'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'top-traders'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -1231,6 +1235,7 @@ export function AxiomChartTabs({
           {/* Dev Tokens Tab */}
           <button
             onClick={() => setActiveTab('dev-tokens')}
+            aria-pressed={activeTab === 'dev-tokens'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
               activeTab === 'dev-tokens'
                 ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
@@ -1726,9 +1731,11 @@ export function AxiomChartTabs({
                         </span>
                       </td>
                       <td className="py-2 px-2 font-bold text-slate-200">{tr.price}</td>
-                      <td className="py-2 px-2 font-bold text-white flex items-center gap-1">
+                      <td className="py-2 px-2">
+                        <div className="flex items-center gap-1 font-bold text-white">
                         {tr.amountSol}
                         {tr.isWhale && <span className="text-2xs" title="Whale Order">🐋</span>}
+                        </div>
                       </td>
                       <td className="py-2 px-2 text-slate-300 font-mono text-2xs">{tr.tokens}</td>
                       <td className="py-2 px-2 font-bold text-slate-100">{currencyMode === 'USD' ? tr.valueUsd : tr.amountSol}</td>
@@ -2457,7 +2464,7 @@ export function AxiomChartTabs({
                   return <Badge variant={variant} size="sm">{label} ({pct.toFixed(1)}% Top 10)</Badge>;
                 })()}
                 <p className="text-2xs text-slate-500 font-mono">Share of supply held by the ten largest accounts.</p>
-                <p className="text-2xs text-slate-500 break-words">{auditData.top10Evidence.source} · {auditData.top10Evidence.status}{auditData.top10Evidence.observedAt ? ` · ${new Date(auditData.top10Evidence.observedAt).toLocaleTimeString()}` : ''}</p>
+                <p className="text-2xs text-slate-500 break-words">{formatDisplaySource(auditData.top10Evidence.source)} · {auditData.top10Evidence.status}{auditData.top10Evidence.observedAt ? ` · ${new Date(auditData.top10Evidence.observedAt).toLocaleTimeString()}` : ''}</p>
               </div>
 
               {/* Organic Demand */}
@@ -2479,7 +2486,7 @@ export function AxiomChartTabs({
                   </div>
                 )}
                 <p className="text-2xs text-slate-500 font-mono">
-                  Jupiter&apos;s wash-trading filter{auditData.organicScoreLabel ? ` -- ${auditData.organicScoreLabel}` : ''}.
+                  Algorithmic wash-trading filter{auditData.organicScoreLabel ? ` -- ${auditData.organicScoreLabel}` : ''}.
                 </p>
               </div>
 
@@ -2496,7 +2503,7 @@ export function AxiomChartTabs({
                 </div>
                 <p className="text-2xs text-slate-500 font-mono">
                   {auditData.migrationRatePct === null
-                    ? 'Deployer mint history from Jupiter.'
+                    ? 'Deployer on-chain mint and migration history.'
                     : `${auditData.migrationRatePct.toFixed(2)}% of this deployer's launches migrated.`}
                 </p>
                 <p className="text-2xs text-slate-500">History: {auditData.historyEvidence.status}</p>
@@ -2514,7 +2521,7 @@ export function AxiomChartTabs({
                 <div className="text-sm font-bold font-numeric text-sky-300">
                   {totalLiquidityDisplay ?? 'Not available'}
                 </div>
-                <p className="text-2xs text-slate-500 font-mono">Aggregate, from Jupiter. Per-pool depth is not queried.</p>
+                <p className="text-2xs text-slate-500 font-mono">Aggregate pool liquidity across verified DEX pairs.</p>
               </div>
             </div>
 
@@ -2533,7 +2540,7 @@ export function AxiomChartTabs({
                 ] as const).map(([label, value, passLabel, failLabel, evidence]) => (
                   <div
                     key={label}
-                    title={evidence ? `${evidence.source} · ${evidence.status} · ${evidence.observedAt || 'No observation'}${evidence.reason ? ` · ${evidence.reason}` : ''}` : 'No verification is performed for this check.'}
+                    title={evidence ? `${formatDisplaySource(evidence.source)} · ${evidence.status} · ${evidence.observedAt || 'No observation'}` : 'No verification is performed for this check.'}
                     className={`flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border ${
                       value === null || evidence?.status !== 'measured' ? 'border-sentinel-800' : value ? 'border-emerald-900/60' : 'border-rose-900/60'
                     }`}
@@ -2574,9 +2581,8 @@ export function AxiomChartTabs({
                 evidenceByMetric={{ dev: auditData.devBalanceEvidence }}
                 alwaysShow
               />
-              <p className="text-2xs text-slate-400 break-words">{auditData.ownershipEvidence.source} · {auditData.ownershipEvidence.status}
+              <p className="text-2xs text-slate-400 break-words">{formatDisplaySource(auditData.ownershipEvidence.source)} · {auditData.ownershipEvidence.status}
                 {auditData.ownershipEvidence.observedAt ? ` · observed ${new Date(auditData.ownershipEvidence.observedAt).toLocaleTimeString()}` : ''}
-                {auditData.ownershipEvidence.reason ? ` · ${auditData.ownershipEvidence.reason}` : ''}
               </p>
               <RugRiskPill risk={auditData.rugRisk} ownershipEvidence={auditData.ownershipEvidence} securityEvidence={auditData.securityEvidence} liquidityEvidence={auditData.liquidityEvidence} />
             </div>

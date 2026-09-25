@@ -7,7 +7,16 @@ import {
   formatAge,
   shortenAddress,
   buyPressurePct,
+  formatDisplaySource,
 } from '../format';
+
+describe('provider provenance', () => {
+  it('shows each provider in a composed measured source', () => {
+    expect(formatDisplaySource('rugcheck-report+bitquery-balance-updates+solana-rpc-supply'))
+      .toBe('Rugcheck + Bitquery + Solana RPC');
+    expect(formatDisplaySource('birdeye-holder-profile')).toBe('Birdeye holders');
+  });
+});
 
 describe('formatCompactUsd', () => {
   it('abbreviates by magnitude', () => {
