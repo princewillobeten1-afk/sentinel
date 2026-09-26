@@ -232,11 +232,44 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     };
   }, [onVisibilityChange, token.mint]);
 
-  // Local live trade & price states updated via WebSocket
-  const [livePrice, setLivePrice] = useState<string | undefined>(token.priceUsd);
+  // Live price resolution: live WebSocket update and REST polling snapshot are compared by observation time
+  const activePriceUsd = useMemo(() => {
+    const livePrice = live?.priceUsd !== undefined && Number.isFinite(live.priceUsd) && live.priceUsd > 0
+      ? String(live.priceUsd)
+      : undefined;
+    const restPrice = token.priceUsd && token.priceUsd !== '' && Number.isFinite(Number(token.priceUsd)) && Number(token.priceUsd) > 0
+      ? token.priceUsd
+      : undefined;
+
+    if (livePrice && !restPrice) return livePrice;
+    if (!livePrice && restPrice) return restPrice;
+    if (!livePrice && !restPrice) return token.priceUsd;
+
+    const liveObservedAt = Date.parse(live?.fieldObservedAt?.priceUsd ?? live?.observedAt ?? '') || (live?.updatedAt ?? 0);
+    const restObservedAt = Date.parse(token.marketEvidence?.observedAt ?? '') || 0;
+
+    if (liveObservedAt >= restObservedAt) {
+      return livePrice!;
+    }
+    return restPrice!;
+  }, [live?.priceUsd, live?.fieldObservedAt?.priceUsd, live?.observedAt, live?.updatedAt, token.priceUsd, token.marketEvidence?.observedAt]);
+
+  // Flash border green on price increase, rose on price decrease
+  const previousPriceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!liveMarket?.priceUsd) setLivePrice(token.priceUsd);
-  }, [liveMarket?.priceUsd, token.priceUsd]);
+    const currentPriceNum = Number(activePriceUsd);
+    if (!Number.isFinite(currentPriceNum) || currentPriceNum <= 0) return;
+
+    if (previousPriceRef.current !== null && previousPriceRef.current !== currentPriceNum) {
+      const side = currentPriceNum > previousPriceRef.current ? 'BUY' : 'SELL';
+      setFlash(side);
+      const timer = setTimeout(() => setFlash(null), 850);
+      previousPriceRef.current = currentPriceNum;
+      return () => clearTimeout(timer);
+    }
+    previousPriceRef.current = currentPriceNum;
+  }, [activePriceUsd]);
+
   const initialBuys = timeWindow === '24h' ? token.buysCount24h : timeWindow === '1h' ? token.buysCount1h : token.buysCount5m;
   const initialSells = timeWindow === '24h' ? token.sellsCount24h : timeWindow === '1h' ? token.sellsCount1h : token.sellsCount5m;
   const [liveTxCount, setLiveTxCount] = useState<number | null>(() => {
@@ -349,10 +382,21 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   useEffect(() => {
     if (!live) return;
 
-    if (liveMarket?.priceUsd !== undefined) setLivePrice(String(liveMarket.priceUsd));
-    const exactTx = timeWindow === '24h' ? liveMarket?.txCount24h : timeWindow === '1h' ? liveMarket?.txCount1h : liveMarket?.txCount5m;
-    const exactBuys = timeWindow === '24h' ? liveMarket?.buysCount24h : timeWindow === '1h' ? liveMarket?.buysCount1h : liveMarket?.buysCount5m;
-    const exactSells = timeWindow === '24h' ? liveMarket?.sellsCount24h : timeWindow === '1h' ? liveMarket?.sellsCount1h : liveMarket?.sellsCount5m;
+    const exactTx = timeWindow === '24h'
+      ? (liveMarket?.txCount24h ?? live.txCount5m)
+      : timeWindow === '1h'
+        ? (liveMarket?.txCount1h ?? live.txCount5m)
+        : (liveMarket?.txCount5m ?? live.txCount5m);
+    const exactBuys = timeWindow === '24h'
+      ? (liveMarket?.buysCount24h ?? live.buysCount5m)
+      : timeWindow === '1h'
+        ? (liveMarket?.buysCount1h ?? live.buysCount5m)
+        : (liveMarket?.buysCount5m ?? live.buysCount5m);
+    const exactSells = timeWindow === '24h'
+      ? (liveMarket?.sellsCount24h ?? live.sellsCount5m)
+      : timeWindow === '1h'
+        ? (liveMarket?.sellsCount1h ?? live.sellsCount5m)
+        : (liveMarket?.sellsCount5m ?? live.sellsCount5m);
     if (exactTx !== undefined) setLiveTxCount(exactTx);
     if (exactBuys !== undefined) setLiveBuys(exactBuys);
     if (exactSells !== undefined) setLiveSells(exactSells);
@@ -372,11 +416,34 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     }
     // A market/evidence patch retains the last trade side, so only the trade's
     // own receipt stamp may increment counters or flash the card.
-  }, [live?.updatedAt, live?.lastTradeSide, live?.lastTradeUpdatedAt, live, liveMarket, timeWindow]);
+  }, [live?.updatedAt, live?.lastTradeSide, live?.lastTradeUpdatedAt, live?.priceUsd, live, liveMarket, timeWindow]);
 
   const isWatchlisted = checkWatchlisted(token.mint);
-  const marketCapUsd = liveMarket?.marketCapUsd ?? token.marketCapUsd;
-  const liquidityUsd = liveMarket?.liquidityUsd ?? token.liquidityUsd;
+  const marketCapUsd = useMemo(() => {
+    if (live?.marketCapUsd !== undefined && live.marketCapUsd !== '') {
+      return live.marketCapUsd;
+    }
+    if (liveMarket?.marketCapUsd !== undefined && liveMarket.marketCapUsd !== '') {
+      return liveMarket.marketCapUsd;
+    }
+    const tokenPriceNum = Number(token.priceUsd);
+    const tokenMcapNum = Number(token.marketCapUsd);
+    const activePriceNum = Number(activePriceUsd);
+    if (
+      Number.isFinite(activePriceNum) &&
+      activePriceNum > 0 &&
+      Number.isFinite(tokenPriceNum) &&
+      tokenPriceNum > 0 &&
+      Number.isFinite(tokenMcapNum) &&
+      tokenMcapNum > 0
+    ) {
+      const updatedMcap = tokenMcapNum * (activePriceNum / tokenPriceNum);
+      return String(Math.round(updatedMcap));
+    }
+    return token.marketCapUsd;
+  }, [live?.marketCapUsd, liveMarket?.marketCapUsd, activePriceUsd, token.priceUsd, token.marketCapUsd]);
+
+  const liquidityUsd = live?.liquidityUsd ?? liveMarket?.liquidityUsd ?? token.liquidityUsd;
 
   const handleOpenTrade = () => {
     setSelectedToken({
@@ -384,7 +451,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       symbol: token.symbol,
       name: token.name,
       logoUrl: token.logoURI,
-      priceUsd: livePrice || token.priceUsd,
+      priceUsd: activePriceUsd || token.priceUsd,
       marketCapUsd,
       liquidityUsd,
       chain: token.chain || 'solana',
@@ -419,7 +486,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       mint: token.mint,
       symbol: token.symbol,
       name: token.name,
-      priceUsd: formatSmartPrice(livePrice || token.priceUsd),
+      priceUsd: formatSmartPrice(activePriceUsd || token.priceUsd),
       priceChange24h: priceChange ?? undefined,
       marketCapUsd: formatCompactUSD(marketCapUsd),
       liquidityUsd: formatCompactUSD(liquidityUsd),
@@ -445,13 +512,13 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       name: token.name,
       symbol: token.symbol,
       mint: token.mint,
-      price: (livePrice || token.priceUsd),
+      price: (activePriceUsd || token.priceUsd),
       mcap: marketCapUsd,
       customAmountSol: quickBuyMode === 'sol' ? amount : undefined,
       customAmountUsd: quickBuyMode === 'usd' ? amount : undefined,
       liquidity: liquidityUsd,
-      volume24h: liveMarket?.volume24hUsd ?? token.volume24hUsd,
-      priceChange24h: liveMarket?.priceChange24h ?? token.priceChange24h,
+      volume24h: live?.volume24hUsd ?? liveMarket?.volume24hUsd ?? token.volume24hUsd,
+      priceChange24h: live?.priceChange24h ?? liveMarket?.priceChange24h ?? token.priceChange24h,
       holders: live?.holdersCount ?? token.holdersCount,
       logoURI: token.logoURI,
     });
@@ -567,11 +634,25 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
   // Market metrics
   const metricWindow = timeWindow === '1h' ? '1h' : timeWindow === '24h' ? '24h' : '5m';
-  const volumeDisplay = metricWindow === '1h'
-    ? liveMarket?.volume1hUsd ?? token.volume1hUsd
-    : metricWindow === '24h'
-      ? liveMarket?.volume24hUsd ?? token.volume24hUsd
-      : liveMarket?.volume5mUsd ?? token.volume5mUsd;
+  const volumeDisplay = useMemo(() => {
+    const liveVol = metricWindow === '1h'
+      ? (live?.volume1hUsd ?? liveMarket?.volume1hUsd)
+      : metricWindow === '24h'
+        ? (live?.volume24hUsd ?? liveMarket?.volume24hUsd)
+        : (live?.volume5mUsd ?? liveMarket?.volume5mUsd);
+    const restVol = metricWindow === '1h'
+      ? token.volume1hUsd
+      : metricWindow === '24h'
+        ? token.volume24hUsd
+        : token.volume5mUsd;
+    const volField = metricWindow === '1h' ? 'volume1hUsd' : metricWindow === '24h' ? 'volume24hUsd' : 'volume5mUsd';
+    const liveObservedAt = Date.parse(live?.fieldObservedAt?.[volField] ?? live?.observedAt ?? '') || (live?.updatedAt ?? 0);
+    const restObservedAt = Date.parse(token.activityEvidence?.observedAt ?? token.marketEvidence?.observedAt ?? '') || 0;
+    if (liveVol && liveObservedAt >= restObservedAt) {
+      return liveVol;
+    }
+    return restVol ?? liveVol;
+  }, [metricWindow, live?.volume1hUsd, live?.volume24hUsd, live?.volume5mUsd, liveMarket?.volume1hUsd, liveMarket?.volume24hUsd, liveMarket?.volume5mUsd, live?.fieldObservedAt, live?.observedAt, live?.updatedAt, token.volume1hUsd, token.volume24hUsd, token.volume5mUsd, token.activityEvidence?.observedAt, token.marketEvidence?.observedAt]);
   // Fees were `volume * 0.01` — an assumed 1% rate applied to every token
   // regardless of its actual fee configuration, rendered as a measured SOL
   // amount. Shown only when a real figure is supplied.
@@ -602,11 +683,11 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
   const solPriceUsd = useSolPrice();
   const priceInSol = useMemo(() => {
-    const numericPrice = Number(livePrice || token.priceUsd);
+    const numericPrice = Number(activePriceUsd || token.priceUsd);
     if (!Number.isFinite(numericPrice) || numericPrice <= 0) return null;
     const solRate = solPriceUsd && solPriceUsd > 0 ? solPriceUsd : 150;
     return numericPrice / solRate;
-  }, [livePrice, token.priceUsd, solPriceUsd]);
+  }, [activePriceUsd, token.priceUsd, solPriceUsd]);
   const solFloorPriceFormatted = useMemo(() => formatSolFloorPrice(priceInSol), [priceInSol]);
 
   /**
@@ -629,13 +710,27 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     return rate < 0.02 ? 'text-rose-400' : rate < 0.1 ? 'text-amber-400' : 'text-emerald-400';
   })();
 
-  const selectedPriceChange = metricWindow === '1h'
-    ? liveMarket?.priceChange1h ?? token.priceChange1h
-    : metricWindow === '24h'
-      ? liveMarket?.priceChange24h ?? token.priceChange24h
-      : liveMarket?.priceChange5m ?? token.priceChange5m;
-  const priceChange = Number.isFinite(selectedPriceChange) ? selectedPriceChange : null;
-  const isPositive = priceChange !== null && priceChange >= 0;
+  const selectedPriceChange = useMemo(() => {
+    const liveChange = metricWindow === '1h'
+      ? (live?.priceChange1h ?? liveMarket?.priceChange1h)
+      : metricWindow === '24h'
+        ? (live?.priceChange24h ?? liveMarket?.priceChange24h)
+        : (live?.priceChange5m ?? liveMarket?.priceChange5m);
+    const restChange = metricWindow === '1h'
+      ? token.priceChange1h
+      : metricWindow === '24h'
+        ? token.priceChange24h
+        : token.priceChange5m;
+    const changeField = metricWindow === '1h' ? 'priceChange1h' : metricWindow === '24h' ? 'priceChange24h' : 'priceChange5m';
+    const liveObservedAt = Date.parse(live?.fieldObservedAt?.[changeField] ?? live?.observedAt ?? '') || (live?.updatedAt ?? 0);
+    const restObservedAt = Date.parse(token.marketEvidence?.observedAt ?? '') || 0;
+    if (liveChange !== undefined && Number.isFinite(liveChange) && liveObservedAt >= restObservedAt) {
+      return liveChange;
+    }
+    return Number.isFinite(restChange) ? restChange : liveChange;
+  }, [metricWindow, live?.priceChange1h, live?.priceChange24h, live?.priceChange5m, liveMarket?.priceChange1h, liveMarket?.priceChange24h, liveMarket?.priceChange5m, live?.fieldObservedAt, live?.observedAt, live?.updatedAt, token.priceChange1h, token.priceChange24h, token.priceChange5m, token.marketEvidence?.observedAt]);
+  const priceChange: number | null = typeof selectedPriceChange === 'number' && Number.isFinite(selectedPriceChange) ? selectedPriceChange : null;
+  const isPositive = typeof priceChange === 'number' && priceChange >= 0;
   const hasLiquidity = Number.isFinite(Number(liquidityUsd)) && Number(liquidityUsd) > 0;
   const rugRisk = live?.rugRisk ?? token.rugRisk;
   const ownershipEvidence = effectiveEvidence(live?.ownershipEvidence ?? token.ownershipEvidence);

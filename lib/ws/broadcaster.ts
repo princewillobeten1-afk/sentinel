@@ -87,10 +87,11 @@ class WsBroadcaster {
         };
 
         broadcast(buildTopic('token.trade', event.mint), tradePayload);
-          updateTokenCard(event.mint, {
-            lastTradeSide: event.type,
-            lastTradeAmountUsd: event.amountUsd,
-          }, event.source ?? 'on-chain', 'fresh', new Date(event.timestamp).toISOString());
+        updateTokenCard(event.mint, {
+          lastTradeSide: event.type,
+          lastTradeAmountUsd: event.amountUsd,
+          ...(event.priceUsd !== undefined ? { priceUsd: String(event.priceUsd) } : {}),
+        }, event.source ?? 'on-chain', 'fresh', new Date(event.timestamp).toISOString());
         // Trades, prices and signals deliberately stay off `feed.discovery:*`.
         //
         // The Discover store treats any event on those topics as "this section

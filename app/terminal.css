@@ -66,8 +66,14 @@
   min-height: 134px;
 }
 .discovery-token-card:hover, .discovery-token-card:focus-within { background: theme('colors.slate.900'); }
-.discovery-token-card[data-trade-flash='BUY'] { box-shadow: inset 2px 0 theme('colors.emerald.500'); }
-.discovery-token-card[data-trade-flash='SELL'] { box-shadow: inset 2px 0 theme('colors.rose.500'); }
+.discovery-token-card[data-trade-flash='BUY'] {
+  border-color: rgba(16, 185, 129, 0.75) !important;
+  box-shadow: inset 2px 0 theme('colors.emerald.500'), 0 0 10px rgba(16, 185, 129, 0.25);
+}
+.discovery-token-card[data-trade-flash='SELL'] {
+  border-color: rgba(244, 63, 94, 0.75) !important;
+  box-shadow: inset 2px 0 theme('colors.rose.500'), 0 0 10px rgba(244, 63, 94, 0.25);
+}
 
 .discovery-card-media-col {
   display: flex;

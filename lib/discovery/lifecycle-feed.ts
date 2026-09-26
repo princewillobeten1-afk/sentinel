@@ -9,7 +9,7 @@ import type { DiscoveryToken } from './types';
 type Section = 'migrating' | 'graduated';
 // Live card patches update fast fields. This lookup decorates verified lifecycle
 // records; it must not erase a whole column during a brief Jupiter outage.
-const METADATA_TTL_MS = 60_000;
+const METADATA_TTL_MS = 10_000;
 const METADATA_RETENTION_MS = 60 * 60_000;
 const MAX_CACHED_MINTS = 2_000;
 type CachedMetadata = { token: JupiterToken; source: 'jupiter'; at: number }
