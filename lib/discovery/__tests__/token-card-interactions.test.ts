@@ -61,8 +61,34 @@ describe('compact Discover card interactions', () => {
     expect(actions.push).not.toHaveBeenCalled();
   });
 
-  it('does not enable Quick Buy without a confirmed venue', () => {
-    render(React.createElement(TokenDiscoveryCard, { token: { ...token, liquidityPoolAddress: undefined } }));
+  it('enables Quick Buy for new pairs and final stretch bonding curve tokens', () => {
+    const quickBuy = vi.fn();
+    render(React.createElement(TokenDiscoveryCard, {
+      token: {
+        ...token,
+        liquidityPoolAddress: undefined,
+        source: 'Pump.fun',
+        bondingCurveProgress: 85,
+      },
+      onQuickBuy: quickBuy,
+    }));
+    const buy = screen.getByRole('button', { name: 'Quick buy TEST for 0.05 SOL' });
+    expect((buy as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(buy);
+    expect(quickBuy).toHaveBeenCalled();
+  });
+
+  it('does not enable Quick Buy without a confirmed venue or mint', () => {
+    render(React.createElement(TokenDiscoveryCard, {
+      token: {
+        ...token,
+        mint: '',
+        source: 'Unknown' as any,
+        bondingCurveProgress: undefined,
+        liquidityPoolAddress: undefined,
+        liquidityUsd: '0',
+      },
+    }));
     const buy = screen.getByRole('button', { name: 'Quick buy TEST for 0.05 SOL' });
     expect((buy as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(buy);

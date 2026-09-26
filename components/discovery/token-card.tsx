@@ -645,7 +645,28 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const activityEvidence = effectiveEvidence(liveMarket?.activityEvidence ?? token.activityEvidence ?? marketEvidence);
   const migrationSignature = lifecycle.migrationSignature;
   const migratedPool = lifecycle.migratedPool;
-  const hasConfirmedVenue = hasLiquidity && Boolean(migratedPool || live?.liquidityPoolAddress || token.liquidityPoolAddress);
+  const isBondingCurve = !isMigrated && Boolean(
+    token.source === 'Pump.fun' ||
+    token.mint?.toLowerCase().endsWith('pump') ||
+    curvePct !== null ||
+    token.bondingCurveProgress != null ||
+    lifecycleState === 'new_pairs' ||
+    lifecycleState === 'final_stretch' ||
+    lifecycleState === 'migrating' ||
+    token.bondingStatus === 'bonding' ||
+    token.bondingStatus === 'migrating'
+  );
+  const hasConfirmedVenue = Boolean(
+    token.mint && token.mint.length >= 32 && (
+      isBondingCurve ||
+      lifecycleState === 'new_pairs' ||
+      lifecycleState === 'final_stretch' ||
+      migratedPool ||
+      live?.liquidityPoolAddress ||
+      token.liquidityPoolAddress ||
+      hasLiquidity
+    )
+  );
 
   // Filter hidden tokens
   const devAddress = live?.devAddress ?? token.devAddress;
@@ -997,7 +1018,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             disabled={!hasConfirmedVenue}
             className="discovery-quick-buy"
             aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode.toUpperCase()}`}
-            title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a liquidity pool is confirmed'}
+            title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a trading venue is confirmed'}
           >
             <Zap size={12} fill="currentColor" />
             <span>{quickBuyMode === 'sol' ? `${quickBuyPresets[0]} SOL` : `$${quickBuyPresets[0]}`}</span>
