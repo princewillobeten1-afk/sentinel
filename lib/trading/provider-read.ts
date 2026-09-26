@@ -31,4 +31,7 @@ export function evidence(source: string, ttlMs: number, reason?: string): Metric
   return { source, status: reason ? 'unavailable' : 'measured', observedAt: new Date(now).toISOString(), expiresAt: new Date(now + ttlMs).toISOString(), ...(reason ? {reason} : {}) };
 }
 export function failureReason(error: unknown): string { return error instanceof ProviderReadError ? error.reason : 'Provider data unavailable.'; }
-export function resetProviderCooldowns() { pauseUntil.clear(); }
+export function resetProviderCooldowns(provider?: string) {
+  if (provider) pauseUntil.delete(provider);
+  else pauseUntil.clear();
+}

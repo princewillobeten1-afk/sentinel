@@ -771,35 +771,38 @@ export function AxiomChartTabs({
           : n >= 1e3 ? `${(n / 1e3).toFixed(2)}K`
           : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 
+        const formatUsd = (val: number | null) => {
+          if (val === null || !Number.isFinite(val) || val <= 0) return '—';
+          if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`;
+          if (val >= 1e3) return `${(val / 1e3).toFixed(2)}K`;
+          if (val >= 1) return `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          if (val >= 0.0001) return `${val.toFixed(4)}`;
+          return '<$0.0001';
+        };
+
         setTopHolders(
-          payload.holders.map((h: any) => ({
-            rank: h.rank,
-            address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
-            fullAddress: h.address,
-            // Only the chain-supported label. "Whale #1" and "Smart Money"
-            // were invented; an unlabelled holder shows a dash.
-            tag: h.tag ?? '—',
-            balance: compact(Number(h.balance) || 0),
-            percent: h.percent === null ? '—' : `${Number(h.percent).toFixed(2)}%`,
-            // The endpoint has balances, not prices, so no USD value is
-            // claimed rather than one being derived from a stale price.
-            valueUsd: '—',
-            isContract: h.isContract,
-          })),
+          payload.holders.map((h: any) => {
+            const rawBal = Number(h.balance) || 0;
+            const usd = typeof currentPrice === 'number' && currentPrice > 0 ? rawBal * currentPrice : (safePrice > 0 ? rawBal * safePrice : null);
+            return {
+              rank: h.rank,
+              address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
+              fullAddress: h.address,
+              tag: h.tag ?? '—',
+              balance: compact(rawBal),
+              percent: h.percent === null ? '—' : `${Number(h.percent).toFixed(2)}%`,
+              valueUsd: formatUsd(usd),
+              isContract: h.isContract,
+            };
+          }),
         );
 
-        // The chain caps this view at 20 accounts, so the true holder count is
-        // not observable. It was previously `holders.length * 175` — a total
-        // manufactured by multiplying the row count by a constant.
-        // `getTokenLargestAccounts` caps at 20 and publishes no total, so this
-        // stays null and the badge simply reads "Holders".
         setHoldersTop10Pct(
           typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
         );
+        const total = typeof payload.totalHoldersCount === 'number' ? payload.totalHoldersCount : null;
         setHoldersDisplay(
-          typeof payload.totalHoldersCount === 'number'
-            ? payload.totalHoldersCount.toLocaleString()
-            : null,
+          total !== null ? compact(total) : null,
         );
       })
       .catch(() => {});

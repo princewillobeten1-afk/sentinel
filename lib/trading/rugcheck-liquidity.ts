@@ -1,8 +1,9 @@
 import 'server-only';
 
 import type { MetricEvidence } from '@/lib/discovery/types';
-import { evidence, failureReason, ProviderReadError, readProvider } from './provider-read';
+import { evidence, failureReason, ProviderReadError } from './provider-read';
 import { measuredNumber } from './sidebar-model';
+import { readRugcheckReport } from './rugcheck-report';
 
 export interface LiquidityLockSnapshot {
   lpLockedPct: number | null;
@@ -38,7 +39,7 @@ export async function getLiquidityLock(mint: string): Promise<LiquidityLockSnaps
 
   const work = (async (): Promise<LiquidityLockSnapshot> => {
     try {
-      const body = await readProvider('Rugcheck', `https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`);
+      const body = await readRugcheckReport(mint);
       const locked = parseLiquidityLock(body);
       if (locked === null) throw new ProviderReadError('Rugcheck returned no measured LP lock percentage.');
       return { lpLockedPct: locked, evidence: evidence('rugcheck-largest-pool-lock', 5 * 60_000) };

@@ -2,6 +2,7 @@ import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
 import { marketStreamManager } from '@/lib/market/live/stream-manager';
 import { quickNodeService } from '@/lib/server/quicknode';
+import { rugcheckAccessHealth } from '@/lib/trading/rugcheck-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ export async function GET() {
   try {
     marketStreamManager.start();
     const slot = await getCurrentSlot();
-    return jsonResponse({ ...marketStreamManager.getHealth(), slot });
+    return jsonResponse({ ...marketStreamManager.getHealth(), slot, rugcheck: rugcheckAccessHealth() });
   } catch (error) {
     return errorResponse(error instanceof Error ? error : new ApiError('Failed to read stream status', 500));
   }

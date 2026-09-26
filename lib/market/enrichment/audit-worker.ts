@@ -250,6 +250,86 @@ function rebuildQueue(): void {
  *
  * For callers that are not a rendered section — a token detail view, say.
  */
+export function publishAuditProfile(mint: string, profile: HolderProfile): void {
+  cache.set(mint, profile);
+  queued.delete(mint);
+  attempts.delete(mint);
+  const observedAt = new Date(profile.fetchedAt).toISOString();
+  const ownershipSource = profile.source ?? 'birdeye-holder-profile';
+  const security = getTokenCardPatch(mint)?.changedFields;
+  const ownershipTtl = profile.source && profile.source !== 'birdeye-holder-profile'
+    ? FALLBACK_TTL_MS : security?.lifecycleState === 'migrated'
+      ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+  const completeProfile = [profile.top10Pct, profile.totalHolders,
+    profile.snipersPct, profile.insidersPct, profile.bundlersPct,
+    profile.devPct, profile.proTraders, profile.kols].every((value) => value !== null);
+  const rugRisk = calculateRugRisk({
+    top10Pct: profile.top10Pct,
+    devPct: profile.devPct,
+    snipersPct: profile.snipersPct,
+    insidersPct: profile.insidersPct,
+    bundlersPct: profile.bundlersPct,
+    mintAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isMintRenounced : undefined,
+    freezeAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isFreezeDisabled : undefined,
+    liquidityLocked: currentEvidence(security?.liquidityEvidence).status === 'measured' ? security?.isLiquidityLocked : undefined,
+  });
+  updateTokenCard(mint, {
+    top10HoldingsPct: profile.top10Pct ?? undefined,
+    holdersCount: profile.totalHolders ?? undefined,
+    sniperPercentage: profile.snipersPct ?? undefined,
+    insiderHoldingsPct: profile.insidersPct ?? undefined,
+    bundlerPercentage: profile.bundlersPct ?? undefined,
+    devHoldingsPct: profile.devPct ?? undefined,
+    proTradersCount: profile.proTraders ?? undefined,
+    kolsCount: profile.kols ?? undefined,
+    auditPending: false,
+    auditVersion: RUG_RISK_VERSION,
+    rugRisk: rugRisk ?? undefined,
+    ownershipEvidence: {
+      status: 'measured',
+      source: ownershipSource,
+      observedAt,
+      expiresAt: new Date(profile.fetchedAt + ownershipTtl).toISOString(),
+      reason: completeProfile ? undefined : 'Some ownership classifications were not supplied by this provider; missing values remain unavailable.',
+    },
+  }, ownershipSource, 'fresh', observedAt);
+  void saveTokenCardEvidence(mint, 'ownership', {
+    source: ownershipSource,
+    top10HoldingsPct: profile.top10Pct,
+    holdersCount: profile.totalHolders,
+    sniperPercentage: profile.snipersPct,
+    insiderHoldingsPct: profile.insidersPct,
+    bundlerPercentage: profile.bundlersPct,
+    devHoldingsPct: profile.devPct,
+    proTradersCount: profile.proTraders,
+    kolsCount: profile.kols,
+    rugRisk,
+  }, observedAt, RUG_RISK_VERSION);
+  state.consecutiveFailures = 0;
+  state.rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+}
+
+export async function ensureAudit(mint: string, devAddress?: string | null): Promise<HolderProfile | null> {
+  const hit = getAudit(mint);
+  if (hit) return hit;
+  let profile: HolderProfile | null = null;
+  if (!quotaPaused() && !circuitOpen()) {
+    const primary = await fetchHolderProfileResult(mint);
+    if (primary.kind === 'ok') {
+      profile = await backfillMissingProfileFields(primary.profile, devAddress);
+    } else if (primary.kind === 'quota-exhausted') {
+      state.quotaExhaustedAt = Date.now();
+    }
+  }
+  if (!profile) {
+    profile = await resolveOwnershipFallback(mint, devAddress);
+  }
+  if (profile) {
+    publishAuditProfile(mint, profile);
+  }
+  return profile;
+}
+
 export function queueAudit(mints: string[]): void {
   for (const [mint, until] of detailTargets) if (until <= Date.now()) detailTargets.delete(mint);
   if ((quotaPaused() || circuitOpen()) && !hasOwnershipFallback()) {
@@ -344,62 +424,7 @@ async function drain(): Promise<void> {
       const result = alternate ? { kind: 'ok' as const, profile: alternate } : primaryResult;
 
       if (result.kind === 'ok') {
-        cache.set(mint, result.profile);
-        queued.delete(mint);
-        attempts.delete(mint);
-        const observedAt = new Date(result.profile.fetchedAt).toISOString();
-        const ownershipSource = result.profile.source ?? 'birdeye-holder-profile';
-        const security = getTokenCardPatch(mint)?.changedFields;
-        const ownershipTtl = result.profile.source && result.profile.source !== 'birdeye-holder-profile'
-          ? FALLBACK_TTL_MS : security?.lifecycleState === 'migrated'
-            ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
-        const completeProfile = [result.profile.top10Pct, result.profile.totalHolders,
-          result.profile.snipersPct, result.profile.insidersPct, result.profile.bundlersPct,
-          result.profile.devPct, result.profile.proTraders, result.profile.kols].every((value) => value !== null);
-        const rugRisk = calculateRugRisk({
-          top10Pct: result.profile.top10Pct,
-          devPct: result.profile.devPct,
-          snipersPct: result.profile.snipersPct,
-          insidersPct: result.profile.insidersPct,
-          bundlersPct: result.profile.bundlersPct,
-          mintAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isMintRenounced : undefined,
-          freezeAuthorityRevoked: currentEvidence(security?.securityEvidence).status === 'measured' ? security?.isFreezeDisabled : undefined,
-          liquidityLocked: currentEvidence(security?.liquidityEvidence).status === 'measured' ? security?.isLiquidityLocked : undefined,
-        });
-        updateTokenCard(mint, {
-          top10HoldingsPct: result.profile.top10Pct ?? undefined,
-          holdersCount: result.profile.totalHolders ?? undefined,
-          sniperPercentage: result.profile.snipersPct ?? undefined,
-          insiderHoldingsPct: result.profile.insidersPct ?? undefined,
-          bundlerPercentage: result.profile.bundlersPct ?? undefined,
-          devHoldingsPct: result.profile.devPct ?? undefined,
-          proTradersCount: result.profile.proTraders ?? undefined,
-          kolsCount: result.profile.kols ?? undefined,
-          auditPending: false,
-          auditVersion: RUG_RISK_VERSION,
-          rugRisk: rugRisk ?? undefined,
-          ownershipEvidence: {
-            status: 'measured',
-            source: ownershipSource,
-            observedAt,
-            expiresAt: new Date(result.profile.fetchedAt + ownershipTtl).toISOString(),
-            reason: completeProfile ? undefined : 'Some ownership classifications were not supplied by this provider; missing values remain unavailable.',
-          },
-        }, ownershipSource, 'fresh', observedAt);
-        void saveTokenCardEvidence(mint, 'ownership', {
-          source: ownershipSource,
-          top10HoldingsPct: result.profile.top10Pct,
-          holdersCount: result.profile.totalHolders,
-          sniperPercentage: result.profile.snipersPct,
-          insiderHoldingsPct: result.profile.insidersPct,
-          bundlerPercentage: result.profile.bundlersPct,
-          devHoldingsPct: result.profile.devPct,
-          proTradersCount: result.profile.proTraders,
-          kolsCount: result.profile.kols,
-          rugRisk,
-        }, observedAt, RUG_RISK_VERSION);
-        state.consecutiveFailures = 0;
-        state.rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
+        publishAuditProfile(mint, result.profile);
       } else if (result.kind === 'rate-limited') {
         // Requeue rather than discard: the token is fine, we asked too fast.
         // Discarding here is what left rows permanently unresolved while the
@@ -426,33 +451,32 @@ async function drain(): Promise<void> {
         await sleep(Math.max(state.rateLimitBackoffMs, result.retryAfterMs ?? 0));
         state.rateLimitBackoffMs = Math.min(MAX_RATE_LIMIT_BACKOFF_MS, state.rateLimitBackoffMs * 2);
       } else if (result.kind === 'quota-exhausted') {
-        // The provider is out of compute units, so every remaining mint will
-        // fail identically. Stop the pass and clear the queue rather than
-        // grinding through it re-failing — and say so once, plainly, because
-        // this reads as a generic 400 and is easy to mistake for a bug in the
-        // request.
-        const affected = [...new Set([mint, ...pending, ...queued])];
-        queued.delete(mint);
-        attempts.delete(mint);
         state.quotaExhaustedAt = Date.now();
-        pending.length = 0;
-        queued.clear();
-        const observedAt = new Date().toISOString();
-        for (const affectedMint of affected) {
-          updateTokenCard(affectedMint, {
-            auditPending: false,
-            ownershipEvidence: {
-              status: 'unavailable',
-              source: 'birdeye-holder-profile',
-              observedAt,
-              reason: 'Provider compute-unit quota is exhausted.',
-            },
-          }, 'birdeye-holder-profile', 'stale', observedAt);
-        }
-        logger.warn('[audit] Birdeye compute-unit quota exhausted — ownership audit paused', {
+        logger.warn('[audit] Birdeye compute-unit quota exhausted — ownership audit falling back', {
           retryAfterMs: QUOTA_RETRY_MS,
         });
-        return;
+        if (!hasOwnershipFallback()) {
+          const affected = [...new Set([mint, ...pending, ...queued])];
+          queued.delete(mint);
+          attempts.delete(mint);
+          pending.length = 0;
+          queued.clear();
+          const observedAt = new Date().toISOString();
+          for (const affectedMint of affected) {
+            updateTokenCard(affectedMint, {
+              auditPending: false,
+              ownershipEvidence: {
+                status: 'unavailable',
+                source: 'birdeye-holder-profile',
+                observedAt,
+                reason: 'Provider compute-unit quota is exhausted.',
+              },
+            }, 'birdeye-holder-profile', 'stale', observedAt);
+          }
+          return;
+        }
+        queued.delete(mint);
+        attempts.delete(mint);
       } else {
         // A hard failure will not improve by waiting. Nothing is cached, so the
         // card shows "not measured" rather than a reassuring zero.

@@ -31,6 +31,10 @@ export const env = {
   HELIUS_API_KEY: process.env.HELIUS_API_KEY ?? '',
   BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY ?? '',
   SOLANA_TRACKER_API_KEY: process.env.SOLANA_TRACKER_API_KEY ?? '',
+  RUGCHECK_API_KEY: process.env.RUGCHECK_API_KEY ?? '',
+  RUGCHECK_API_ENDPOINT: process.env.RUGCHECK_API_ENDPOINT ?? '',
+  // Rugcheck Shield key or full https://shield.rugcheck.xyz?key=... URL (server-only).
+  RUGCHECK_SHIELD_KEY: process.env.RUGCHECK_SHIELD_KEY ?? '',
   HELIUS_WS_URL: process.env.HELIUS_WS_URL ?? 'wss://devnet.helius-rpc.com',
   // Mainnet RPC for the parsed-transaction enricher. Separate from
   // NEXT_PUBLIC_SOLANA_RPC_URL, which stays on devnet because wallet transfers

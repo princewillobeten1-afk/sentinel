@@ -54,4 +54,29 @@ describe('parseRugcheckOwnership', () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.devPct).toBeNull();
   });
+
+  it('derives insiders, bundlers, and snipers when risk and graph analysis is present', () => {
+    const rawReport = {
+      mint: 'test-mint',
+      creator: 'CreatorWalletAddress123',
+      totalHolders: 1000,
+      graphInsidersDetected: 0,
+      risks: [
+        { name: 'High holder correlation', value: '(3)', description: '3 top users hold identical amounts' },
+      ],
+      topHolders: [
+        { address: 'Holder1', amount: '5000', pct: 0.5, insider: false },
+        { address: 'Holder2', amount: '5000', pct: 0.5, insider: false },
+        { address: 'Holder3', amount: '5000', pct: 0.5, insider: false },
+        { address: 'Holder4', amount: '1000', pct: 0.1, insider: false },
+      ],
+    };
+
+    const parsed = parseRugcheckOwnership('test-mint', rawReport);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.insidersPct).toBe(0);
+    expect(parsed?.bundlersPct).toBe(1.5);
+    expect(parsed?.snipersPct).toBe(0);
+    expect(parsed?.proTraders).toBe(0);
+  });
 });

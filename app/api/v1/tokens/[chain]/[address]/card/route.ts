@@ -5,10 +5,10 @@ import { fetchJupiterTokensByMint, mapJupiterToken } from '@/lib/discovery/jupit
 import { mergeTokenCardSnapshot } from '@/lib/discovery/card-snapshot';
 import { fetchDexPaidStatus } from '@/lib/discovery/dexscreener-orders';
 import { getTokenCardPatch, hydrateTokenCards } from '@/lib/market/live/card-cache';
-import { queueAudit } from '@/lib/market/enrichment/audit-worker';
+import { queueAudit, ensureAudit } from '@/lib/market/enrichment/audit-worker';
 import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
 import type { TradeSidebarSnapshot } from '@/lib/trading/sidebar-model';
-import { queueSidebarEnrichment } from '@/lib/trading/sidebar-enrichment';
+import { queueSidebarEnrichment, enrichSidebar } from '@/lib/trading/sidebar-enrichment';
 import { getLiquidityLock } from '@/lib/trading/rugcheck-liquidity';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,12 @@ export async function GET(_request: Request, { params }: { params: { chain: stri
       const lock = lockResult.status === 'fulfilled' ? lockResult.value : null;
       const token = tokens.find(token => token.id === mint);
       const mapped = token ? mapJupiterToken(token) : null;
-      const extras = queueSidebarEnrichment(mint, mapped?.devAddress, mapped?.logoURI);
+      const extras = typeof enrichSidebar === 'function'
+        ? await enrichSidebar(mint, mapped?.devAddress, mapped?.logoURI)
+        : queueSidebarEnrichment(mint, mapped?.devAddress, mapped?.logoURI);
+      if (typeof ensureAudit === 'function') {
+        await ensureAudit(mint, mapped?.devAddress);
+      }
       const activityMeasured = token?.stats5m && [token.stats5m.buyVolume, token.stats5m.sellVolume, token.stats5m.numBuys, token.stats5m.numSells]
         .some(value => typeof value === 'number' && Number.isFinite(value));
       const observedAt = new Date().toISOString();

@@ -29,7 +29,12 @@ export function mergeOwnershipProfiles(base: HolderProfile | null, next: HolderP
 }
 
 function needsMore(profile: HolderProfile | null, devAddress?: string | null): boolean {
-  return !profile || profile.top10Pct === null || profile.totalHolders === null
+  return !profile
+    || profile.top10Pct === null
+    || profile.totalHolders === null
+    || profile.snipersPct === null
+    || profile.insidersPct === null
+    || profile.bundlersPct === null
     || Boolean(devAddress && profile.devPct === null);
 }
 

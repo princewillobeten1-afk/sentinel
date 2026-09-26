@@ -51,8 +51,10 @@ describe('ownership fallback orchestrator', () => {
     expect(result).not.toBeNull();
     expect(result?.top10Pct).toBe(25.5);
     expect(result?.source).toBe('solana-tracker-token-risk');
-    expect(mocks.rugcheck).not.toHaveBeenCalled();
-    expect(mocks.onchain).not.toHaveBeenCalled();
+    // Tracker left bundle classification unknown, so the later providers are
+    // consulted without replacing its measured fields.
+    expect(mocks.rugcheck).toHaveBeenCalledOnce();
+    expect(mocks.onchain).toHaveBeenCalledOnce();
   });
 
   it('falls back to Rugcheck when tracker is not configured', async () => {
@@ -78,7 +80,8 @@ describe('ownership fallback orchestrator', () => {
     expect(result?.top10Pct).toBe(35.0);
     expect(result?.devPct).toBe(1.5);
     expect(result?.source).toBe('rugcheck-report');
-    expect(mocks.onchain).not.toHaveBeenCalled();
+    // Rugcheck did not classify snipers or bundlers in this fixture.
+    expect(mocks.onchain).toHaveBeenCalledOnce();
   });
 
   it('falls back to on-chain RPC when Rugcheck is unavailable', async () => {
