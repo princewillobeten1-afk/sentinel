@@ -84,7 +84,7 @@ export class PgWalletRepository {
         [userId],
       );
       const isPrimary = Number(countRows[0]?.count ?? 0) === 0;
-      const balanceSol = Math.round((Math.random() * 15 + 1) * 100) / 100;
+      const balanceSol = 0.0;
       const walletId = generateId('w');
 
       const { rows } = await client.query<WalletRow>(

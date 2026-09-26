@@ -24,6 +24,10 @@ import {
   EyeOff,
   Search,
   Sparkles,
+  Download,
+  ArrowLeft,
+  Check,
+  ShieldAlert,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -31,10 +35,19 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useWalletState, useWalletActions, useNotificationsActions } from '@/lib/store';
 import { WalletProviderId } from '@/lib/wallet/types';
+import { INSTALL_URLS } from '@/lib/wallet/solana-adapter';
 import { DepositTab } from '@/components/wallet/deposit-tab';
 import { WithdrawTab } from '@/components/wallet/withdraw-tab';
 import { WalletHistoryTab } from '@/components/wallet/wallet-history-tab';
 import { WalletMark } from '@/components/wallet/wallet-mark';
+
+const WALLET_CATALOG: Array<{ id: WalletProviderId; name: string; desc: string }> = [
+  { id: 'phantom', name: 'Phantom Wallet', desc: 'Solana & Multi-Chain Standard' },
+  { id: 'solflare', name: 'Solflare Wallet', desc: 'Solana Web3 & Hardware Compatible' },
+  { id: 'backpack', name: 'Backpack Wallet', desc: 'xNFT & High-Performance Solana' },
+  { id: 'okx', name: 'OKX Wallet', desc: 'Multi-Chain Web3 & DEX Trading' },
+  { id: 'coinbase', name: 'Coinbase Wallet', desc: 'Coinbase Solana Web3 Extension' },
+];
 
 export function WalletModal() {
   const {
@@ -49,6 +62,8 @@ export function WalletModal() {
     primaryWallet,
     authError,
     activeWalletTab,
+    isRefreshingBalance,
+    lastBalanceRefreshedAt,
   } = useWalletState();
 
   const {
@@ -64,6 +79,8 @@ export function WalletModal() {
     unlinkWallet,
     disconnectWallet,
     resetAuthError,
+    refreshWalletBalance,
+    checkExtensionAvailability,
   } = useWalletActions();
 
   const { addNotification } = useNotificationsActions();
@@ -71,16 +88,68 @@ export function WalletModal() {
   const [customAddressInput, setCustomAddressInput] = useState('');
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [exportedKey, setExportedKey] = useState<string | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [installTargetWallet, setInstallTargetWallet] = useState<{
+    id: WalletProviderId;
+    name: string;
+    desc: string;
+  } | null>(null);
+  const [isCheckingInstall, setIsCheckingInstall] = useState(false);
 
   const handleSelectAdapter = async (adapterId: WalletProviderId) => {
     resetAuthError();
+
+    // Check if browser extension is installed
+    const adapter = adapters.find((a) => a.id === adapterId);
+    const isInstalled = adapter?.checkInstalled ? adapter.checkInstalled() : adapter?.installed;
+
+    if (!isInstalled && adapterId !== 'embedded' && adapterId !== 'manual') {
+      const meta = WALLET_CATALOG.find((w) => w.id === adapterId) || {
+        id: adapterId,
+        name: adapter?.name || adapterId,
+        desc: 'Solana Wallet Extension',
+      };
+      setInstallTargetWallet(meta);
+      return;
+    }
+
+    setInstallTargetWallet(null);
     await connectWallet(adapterId);
   };
 
+  const handleRetryDetection = async () => {
+    if (!installTargetWallet) return;
+    setIsCheckingInstall(true);
+    checkExtensionAvailability();
+
+    setTimeout(async () => {
+      setIsCheckingInstall(false);
+      const adapter = adapters.find((a) => a.id === installTargetWallet.id);
+      const isNowInstalled = adapter?.checkInstalled ? adapter.checkInstalled() : adapter?.installed;
+
+      if (isNowInstalled) {
+        addNotification({
+          title: 'Wallet Extension Detected',
+          message: `${installTargetWallet.name} was successfully detected! Connecting...`,
+          type: 'system',
+        });
+        setInstallTargetWallet(null);
+        await connectWallet(installTargetWallet.id);
+      } else {
+        addNotification({
+          title: 'Extension Not Detected',
+          message: `${installTargetWallet.name} is not active. Please ensure the extension is enabled in your browser, then retry.`,
+          type: 'system',
+        });
+      }
+    }, 700);
+  };
+
   const handleConnectCustomAddress = async () => {
-    if (!customAddressInput.trim()) return;
+    const trimmed = customAddressInput.trim();
+    if (!trimmed) return;
     resetAuthError();
-    await connectWallet('manual', customAddressInput.trim());
+    await connectWallet('manual', trimmed);
   };
 
   const handleAuthenticate = async () => {
@@ -96,6 +165,8 @@ export function WalletModal() {
 
   const handleCopyAddress = (addr: string) => {
     navigator.clipboard.writeText(addr);
+    setCopiedAddress(true);
+    setTimeout(() => setCopiedAddress(false), 2000);
     addNotification({
       title: 'Address Copied',
       message: `${addr.slice(0, 6)}...${addr.slice(-6)} copied to clipboard.`,
@@ -111,10 +182,28 @@ export function WalletModal() {
     }
   };
 
+  const handleManualBalanceRefresh = async () => {
+    if (primaryWallet?.address) {
+      const bal = await refreshWalletBalance(primaryWallet.address);
+      addNotification({
+        title: 'Balance Synchronized',
+        message: `Current on-chain balance: ${bal.toFixed(4)} SOL`,
+        type: 'system',
+      });
+    }
+  };
+
+  const isSmartWallet = Boolean(
+    primaryWallet && (primaryWallet.id.startsWith('w_smart_') || selectedAdapter?.id === 'embedded')
+  );
+
   return (
     <Modal
       isOpen={isWalletModalOpen}
-      onClose={() => setWalletModalOpen(false)}
+      onClose={() => {
+        setInstallTargetWallet(null);
+        setWalletModalOpen(false);
+      }}
       title={
         <span className="flex items-center gap-2">
           <Wallet className="h-5 w-5 text-sky-400" />
@@ -122,12 +211,16 @@ export function WalletModal() {
             ? 'Wallet & Funds Management'
             : status === 'authenticating'
             ? 'Sign-In With Solana (SIWS)'
+            : installTargetWallet
+            ? `Install ${installTargetWallet.name}`
             : 'Connect Solana Wallet'}
         </span>
       }
       subtitle={
         status === 'authenticated'
           ? `Connected Wallet: ${primaryWallet ? `${primaryWallet.address.slice(0, 6)}...${primaryWallet.address.slice(-6)}` : 'Active'}`
+          : installTargetWallet
+          ? `Browser extension required to connect ${installTargetWallet.name}`
           : 'Connect your Solana wallet or generate an instant non-custodial Smart Wallet'
       }
       size="lg"
@@ -146,11 +239,14 @@ export function WalletModal() {
 
       {/* VIEW 1: Connecting Status */}
       {status === 'connecting' ? (
-        <div className="py-10 space-y-4 text-center">
-          <RefreshCw className="h-10 w-10 text-sky-400 animate-spin mx-auto drop-shadow-[0_0_12px_rgba(56,189,248,0.5)]" />
+        <div className="py-12 space-y-4 text-center">
+          <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-sky-500/20 animate-ping" />
+            <RefreshCw className="h-10 w-10 text-sky-400 animate-spin relative z-10 drop-shadow-[0_0_16px_rgba(56,189,248,0.6)]" />
+          </div>
           <h4 className="text-base font-bold text-slate-100">Connecting to {selectedAdapter?.name || 'Wallet'}...</h4>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Please approve the connection popup in your wallet extension.
+          <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+            Please approve the connection popup in your wallet extension to establish a secure link.
           </p>
           <div className="pt-2">
             <Button
@@ -185,7 +281,7 @@ export function WalletModal() {
             <div className="rounded-lg bg-sentinel-950/80 p-2.5 border border-amber-500/30 flex items-start gap-2 text-2xs text-amber-200">
               <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
               <span>
-                <strong className="text-amber-300">Security Guarantee:</strong> This off-chain message proves wallet ownership ONLY. Zero gas fees. Does NOT authorize any blockchain transactions or token approvals.
+                <strong className="text-amber-300">Security Guarantee:</strong> This off-chain message proves wallet ownership ONLY. Zero gas fees. Does NOT authorize any blockchain transactions or token transfers.
               </span>
             </div>
           </div>
@@ -278,19 +374,25 @@ export function WalletModal() {
           {/* TAB 1: OVERVIEW */}
           {activeWalletTab === 'overview' && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 space-y-3">
+              {/* Wallet Header & Live Balance Hero */}
+              <div className="rounded-2xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/30 via-sentinel-900/90 to-sentinel-950 p-5 space-y-4 shadow-[0_0_25px_rgba(16,185,129,0.12)]">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="text-sm font-bold text-slate-100">{primaryWallet.label}</span>
                   </div>
-                  <Badge variant="success" size="sm">Connected & Active</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="success" size="sm" className="font-mono text-2xs">
+                      Connected & Active
+                    </Badge>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between bg-sentinel-950/90 p-3 rounded-lg border border-sentinel-800">
+                {/* Solana Public Address Bar */}
+                <div className="flex items-center justify-between bg-sentinel-950/95 p-3 rounded-xl border border-sentinel-800/80 shadow-inner">
                   <div className="overflow-hidden mr-2">
-                    <p className="text-2xs uppercase text-slate-500 font-mono">Solana Address</p>
-                    <p className="text-xs font-numeric font-bold text-sky-300 mt-0.5 font-mono truncate">
+                    <p className="text-2xs uppercase tracking-wider text-slate-400 font-mono font-bold">Solana Address</p>
+                    <p className="text-xs font-numeric font-bold text-sky-300 mt-0.5 font-mono truncate select-all">
                       {primaryWallet.address}
                     </p>
                   </div>
@@ -299,15 +401,16 @@ export function WalletModal() {
                       onClick={() => handleCopyAddress(primaryWallet.address)}
                       variant="ghost"
                       size="xs"
-                      leftIcon={<Copy className="h-3.5 w-3.5" />}
+                      className="text-slate-300 hover:text-white"
+                      leftIcon={copiedAddress ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                     >
-                      Copy
+                      {copiedAddress ? 'Copied' : 'Copy'}
                     </Button>
                     <a
                       href={`https://solscan.io/account/${primaryWallet.address}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-1 text-slate-400 hover:text-white rounded hover:bg-sentinel-800 transition"
+                      className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-sentinel-800 transition"
                       title="View on Solscan"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
@@ -315,65 +418,127 @@ export function WalletModal() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-400 font-medium">Available Balance:</span>
-                  <span className="font-numeric font-bold text-emerald-400 text-lg">
-                    {primaryWallet.balanceSol.toFixed(4)} SOL
-                  </span>
-                </div>
-              </div>
+                {/* Real-Time Live On-Chain Balance Card */}
+                <div className="rounded-xl border border-sentinel-800/90 bg-sentinel-950/90 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xs uppercase tracking-wider text-slate-400 font-mono font-bold">
+                        Available Balance
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-3xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live On-Chain
+                      </span>
+                    </div>
 
-              {/* Smart Wallet Export Key Section */}
-              <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-                    <Key className="h-3.5 w-3.5 text-sky-400" />
-                    <span>Non-Custodial Key Security</span>
+                    <button
+                      onClick={handleManualBalanceRefresh}
+                      disabled={isRefreshingBalance}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-mono text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 border border-sky-500/30 transition disabled:opacity-50"
+                      title="Fetch live balance from Solana RPC"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isRefreshingBalance ? 'animate-spin text-sky-300' : ''}`} />
+                      <span>{isRefreshingBalance ? 'Querying...' : 'Sync'}</span>
+                    </button>
                   </div>
-                  <Button
-                    onClick={handleExportKey}
-                    variant="outline"
-                    size="xs"
-                    leftIcon={showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                  >
-                    {showPrivateKey ? 'Hide Key' : 'Export Private Key'}
-                  </Button>
-                </div>
 
-                {showPrivateKey && exportedKey && (
-                  <div className="space-y-2 pt-1 border-t border-sentinel-800">
-                    <p className="text-2xs text-amber-300 font-mono">
-                      ⚠️ Never share this private key. Anyone with it has full custody of this wallet.
-                    </p>
-                    <div className="flex items-center gap-2 bg-sentinel-900 p-2 rounded border border-sentinel-700">
-                      <input
-                        type="password"
-                        readOnly
-                        value={exportedKey}
-                        className="bg-transparent font-mono text-2xs text-sky-300 w-full outline-none"
-                      />
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => handleCopyAddress(exportedKey)}
-                        leftIcon={<Copy className="h-3 w-3" />}
-                      >
-                        Copy
-                      </Button>
+                  <div className="flex items-baseline justify-between pt-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-numeric font-extrabold text-emerald-400 text-2xl tracking-tight">
+                        {primaryWallet.balanceSol.toFixed(4)}
+                      </span>
+                      <span className="text-sm font-bold text-emerald-500/80 font-mono">SOL</span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-xs font-mono font-bold text-slate-400">
+                        ≈ ${(primaryWallet.balanceSol * 145).toFixed(2)} USD
+                      </span>
+                      {lastBalanceRefreshedAt && (
+                        <p className="text-3xs text-slate-400 font-mono mt-0.5">
+                          Synced {new Date(lastBalanceRefreshedAt).toLocaleTimeString()}
+                        </p>
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
 
+              {/* Context-Aware Security Section */}
+              {isSmartWallet ? (
+                /* Sentinel Non-Custodial Smart Web Wallet Export Key */
+                <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                      <Key className="h-3.5 w-3.5 text-sky-400" />
+                      <span>Non-Custodial Key Security</span>
+                    </div>
+                    <Button
+                      onClick={handleExportKey}
+                      variant="outline"
+                      size="xs"
+                      leftIcon={showPrivateKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    >
+                      {showPrivateKey ? 'Hide Key' : 'Export Private Key'}
+                    </Button>
+                  </div>
+
+                  {showPrivateKey && exportedKey && (
+                    <div className="space-y-2 pt-1 border-t border-sentinel-800">
+                      <p className="text-2xs text-amber-300 font-mono">
+                        ⚠️ Never share this private key. Anyone with it has full custody of this wallet.
+                      </p>
+                      <div className="flex items-center gap-2 bg-sentinel-900 p-2 rounded border border-sentinel-700">
+                        <input
+                          type="password"
+                          readOnly
+                          value={exportedKey}
+                          className="bg-transparent font-mono text-2xs text-sky-300 w-full outline-none"
+                        />
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => handleCopyAddress(exportedKey)}
+                          leftIcon={<Copy className="h-3 w-3" />}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Browser Extension Custody Info */
+                <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-3.5 flex items-start gap-3">
+                  <ShieldCheck className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 text-xs">
+                    <p className="font-bold text-slate-200">Extension-Managed Custody</p>
+                    <p className="text-2xs text-slate-400 leading-relaxed">
+                      Your private keys are securely encrypted inside your browser extension. Sentinel is 100% self-custodial and never has access to your private key or seed phrases.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
               <div className="flex items-center justify-between pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveWalletTab('deposit')}
-                  leftIcon={<ArrowDownToLine className="h-3.5 w-3.5 text-emerald-400" />}
-                >
-                  Deposit SOL
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveWalletTab('deposit')}
+                    leftIcon={<ArrowDownToLine className="h-3.5 w-3.5 text-emerald-400" />}
+                  >
+                    Deposit SOL
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveWalletTab('withdraw')}
+                    leftIcon={<ArrowUpFromLine className="h-3.5 w-3.5 text-rose-400" />}
+                  >
+                    Withdraw
+                  </Button>
+                </div>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -462,8 +627,88 @@ export function WalletModal() {
             </div>
           )}
         </div>
+      ) : installTargetWallet ? (
+        /* VIEW 4: Missing Wallet Download Guide Prompt */
+        <div className="space-y-5 py-2">
+          <button
+            onClick={() => setInstallTargetWallet(null)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition font-mono"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Back to Wallets
+          </button>
+
+          <div className="rounded-2xl border border-sky-500/30 bg-gradient-to-b from-sky-950/30 via-sentinel-900/90 to-sentinel-950 p-6 text-center space-y-4 shadow-[0_0_30px_rgba(56,189,248,0.1)]">
+            <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-2xl bg-sky-500/20 blur-md" />
+              <WalletMark id={installTargetWallet.id} name={installTargetWallet.name} size={48} className="relative z-10" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-bold text-white tracking-wide">
+                {installTargetWallet.name} Not Detected
+              </h3>
+              <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
+                The {installTargetWallet.name} browser extension was not found in this browser. To trade on Sentinel using this wallet, install the official extension.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/90 p-3.5 max-w-md mx-auto text-left space-y-2 text-2xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span>Official verified extension from {installTargetWallet.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span>100% self-custodial — keys stay encrypted on your device</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span>Instant trading & low-latency execution on Sentinel</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <a
+                href={INSTALL_URLS[installTargetWallet.id] || 'https://phantom.app/download'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.4)] transition"
+              >
+                <Download className="h-4 w-4" />
+                Download {installTargetWallet.name} ↗
+              </a>
+
+              <Button
+                variant="outline"
+                size="md"
+                onClick={handleRetryDetection}
+                disabled={isCheckingInstall}
+                leftIcon={<RefreshCw className={`h-4 w-4 ${isCheckingInstall ? 'animate-spin text-sky-400' : ''}`} />}
+              >
+                {isCheckingInstall ? 'Checking Browser...' : "Check Again / I've Installed It"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Alternative 1-click option */}
+          <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="h-4 w-4 text-sky-400" />
+              <span className="text-slate-300">Don't want to install an extension?</span>
+            </div>
+            <button
+              onClick={() => {
+                setInstallTargetWallet(null);
+                fastConnectSmartWallet();
+              }}
+              className="text-sky-400 hover:text-sky-300 font-bold font-mono transition"
+            >
+              Use 1-Click Smart Wallet ⚡
+            </button>
+          </div>
+        </div>
       ) : (
-        /* VIEW 4: Unauthenticated Connect Options */
+        /* VIEW 5: Unauthenticated Connect Options */
         <div className="space-y-4">
           {/* Quick Connect Hero Option: Sentinel Smart Wallet */}
           <div className="rounded-2xl border border-sky-500/40 bg-gradient-to-br from-sky-950/40 via-sentinel-900/90 to-indigo-950/40 p-4 space-y-3 shadow-[0_0_20px_rgba(56,189,248,0.15)] relative overflow-hidden">
@@ -500,14 +745,9 @@ export function WalletModal() {
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {[
-                { id: 'phantom' as WalletProviderId, name: 'Phantom Wallet', desc: 'Solana & Multi-Chain' },
-                { id: 'solflare' as WalletProviderId, name: 'Solflare Wallet', desc: 'Solana Web3' },
-                { id: 'backpack' as WalletProviderId, name: 'Backpack Wallet', desc: 'xNFT & Solana' },
-                { id: 'okx' as WalletProviderId, name: 'OKX Wallet', desc: 'Web3 & DEX Trading' },
-              ].map((w) => {
+              {WALLET_CATALOG.map((w) => {
                 const adapter = adapters.find((a) => a.id === w.id);
-                const isInstalled = adapter?.installed;
+                const isInstalled = adapter?.checkInstalled ? adapter.checkInstalled() : adapter?.installed;
 
                 return (
                   <button
@@ -525,9 +765,13 @@ export function WalletModal() {
                       </div>
                     </div>
                     {isInstalled ? (
-                      <Badge variant="success" size="sm">Detected</Badge>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Detected
+                      </span>
                     ) : (
-                      <span className="text-2xs font-mono text-sky-400 group-hover:underline">Connect</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-mono text-sky-400 bg-sky-500/10 border border-sky-500/20 group-hover:border-sky-500/40">
+                        <Download className="h-3 w-3" /> Install
+                      </span>
                     )}
                   </button>
                 );

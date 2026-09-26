@@ -16,6 +16,9 @@ interface SolanaProvider {
   signMessage(message: Uint8Array, encoding?: string): Promise<{ signature: Uint8Array } | Uint8Array>;
   signTransaction?(transaction: any): Promise<any>;
   signAllTransactions?(transactions: any[]): Promise<any[]>;
+  on?(event: string, handler: (...args: any[]) => void): void;
+  removeListener?(event: string, handler: (...args: any[]) => void): void;
+  addListener?(event: string, handler: (...args: any[]) => void): void;
 }
 
 declare global {
@@ -53,12 +56,13 @@ export const INSTALL_URLS: Record<string, string | undefined> = {
   solflare: 'https://solflare.com/download',
   backpack: 'https://backpack.app/download',
   okx: 'https://www.okx.com/web3',
+  coinbase: 'https://www.coinbase.com/wallet',
 };
 
 const SMART_WALLET_STORAGE_KEY = 'sentinel_smart_wallet_key';
 
 /**
- * Native Browser Extension Wallet Adapter (Phantom, Solflare, Backpack, OKX, etc.)
+ * Native Browser Extension Wallet Adapter (Phantom, Solflare, Backpack, OKX, Coinbase, etc.)
  */
 export class SolanaWalletAdapterImpl implements WalletProvider {
   id: WalletProviderId;
@@ -81,6 +85,10 @@ export class SolanaWalletAdapterImpl implements WalletProvider {
   }
 
   get installed(): boolean {
+    return this.checkInstalled();
+  }
+
+  checkInstalled(): boolean {
     return this.getProvider() !== null;
   }
 
@@ -99,8 +107,49 @@ export class SolanaWalletAdapterImpl implements WalletProvider {
     if (this.id === 'okx') {
       return window.okxwallet?.solana || null;
     }
+    if (this.id === 'coinbase') {
+      return window.coinbaseSolana || null;
+    }
 
     return window.solana ?? null;
+  }
+
+  onAccountChange(callback: (newPubkey: string) => void): () => void {
+    const provider = this.getProvider();
+    if (!provider || typeof provider.on !== 'function') return () => {};
+
+    const handler = (pk: any) => {
+      const pubkeyStr = pk?.toBase58 ? pk.toBase58() : String(pk ?? '');
+      if (pubkeyStr) {
+        this.publicKey = pubkeyStr;
+        callback(pubkeyStr);
+      }
+    };
+
+    provider.on('accountChanged', handler);
+    return () => {
+      if (typeof provider.removeListener === 'function') {
+        provider.removeListener('accountChanged', handler);
+      }
+    };
+  }
+
+  onDisconnect(callback: () => void): () => void {
+    const provider = this.getProvider();
+    if (!provider || typeof provider.on !== 'function') return () => {};
+
+    const handler = () => {
+      this.publicKey = null;
+      this.status = 'disconnected';
+      callback();
+    };
+
+    provider.on('disconnect', handler);
+    return () => {
+      if (typeof provider.removeListener === 'function') {
+        provider.removeListener('disconnect', handler);
+      }
+    };
   }
 
   getAddress(): string | null {
@@ -410,6 +459,7 @@ export function getAvailableSolanaAdapters(): WalletProvider[] {
     new SolanaWalletAdapterImpl('solflare', 'Solflare Wallet', '🔥', 'extension'),
     new SolanaWalletAdapterImpl('backpack', 'Backpack Wallet', '🎒', 'extension'),
     new SolanaWalletAdapterImpl('okx', 'OKX Wallet', '⚡', 'extension'),
+    new SolanaWalletAdapterImpl('coinbase', 'Coinbase Wallet', '🔵', 'extension'),
     new ManualWalletAdapterImpl(),
   ];
 }

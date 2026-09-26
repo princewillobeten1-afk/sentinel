@@ -62,6 +62,8 @@ interface WalletState {
   quickBuyToken: QuickBuyTokenData | null;
   authError: string | null;
   walletTransactions: WalletTransactionRecord[];
+  isRefreshingBalance: boolean;
+  lastBalanceRefreshedAt: string | null;
 }
 
 interface WalletActions {
@@ -79,6 +81,8 @@ interface WalletActions {
   disconnectWallet: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   resetAuthError: () => void;
+  refreshWalletBalance: (address?: string) => Promise<number>;
+  checkExtensionAvailability: () => void;
   depositCrypto: (params: {
     walletId?: string;
     walletAddress: string;
@@ -118,7 +122,7 @@ const STORAGE_KEY_ACTIVE_WALLET = 'sentinel_active_wallet';
 const STORAGE_KEY_LINKED_WALLETS = 'sentinel_linked_wallets';
 
 export function WalletStoreProvider({ children }: { children: React.ReactNode }) {
-  const [adapters] = useState<WalletAdapter[]>(() => getAvailableSolanaAdapters() as unknown as WalletAdapter[]);
+  const [adapters, setAdapters] = useState<WalletAdapter[]>(() => getAvailableSolanaAdapters() as unknown as WalletAdapter[]);
   const [selectedAdapter, setSelectedAdapter] = useState<WalletAdapter | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [activePublicKey, setActivePublicKey] = useState<string | null>(null);
@@ -131,6 +135,8 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
 
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [activeWalletTab, setActiveWalletTab] = useState<WalletTab>('overview');
+  const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
+  const [lastBalanceRefreshedAt, setLastBalanceRefreshedAt] = useState<string | null>(null);
   const [walletTransactions, setWalletTransactions] = useState<WalletTransactionRecord[]>([
     {
       id: 'wtx_initial_dep_01',
@@ -166,7 +172,106 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
 
   const primaryWallet = linkedWallets.find((w) => w.isPrimary) || linkedWallets[0] || null;
 
-  // Restore active session on mount
+  // Re-check browser extension installation dynamically
+  const checkExtensionAvailability = useCallback(() => {
+    setAdapters(getAvailableSolanaAdapters() as unknown as WalletAdapter[]);
+  }, []);
+
+  // Listen for late-injected extensions (Phantom, Solflare, etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const recheck = () => {
+      setAdapters(getAvailableSolanaAdapters() as unknown as WalletAdapter[]);
+    };
+
+    window.addEventListener('load', recheck);
+    window.addEventListener('wallet-standard:register-wallet', recheck);
+    const timer1 = setTimeout(recheck, 500);
+    const timer2 = setTimeout(recheck, 1500);
+
+    return () => {
+      window.removeEventListener('load', recheck);
+      window.removeEventListener('wallet-standard:register-wallet', recheck);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, []);
+
+  // Real-time on-chain balance query via Solana RPC
+  const refreshWalletBalance = useCallback(
+    async (targetAddress?: string): Promise<number> => {
+      const address = targetAddress || activePublicKey || primaryWallet?.address;
+      if (!address) return 0;
+
+      setIsRefreshingBalance(true);
+      try {
+        const res = await fetch(`/api/v1/wallet/balance?address=${encodeURIComponent(address)}`, {
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const body = await res.json();
+          const balance =
+            typeof body.data?.sol === 'number'
+              ? body.data.sol
+              : typeof body.sol === 'number'
+              ? body.sol
+              : 0;
+          const formatted = Number(balance.toFixed(4));
+
+          setLinkedWallets((prev) => {
+            const updated = prev.map((w) =>
+              w.address === address ? { ...w, balanceSol: formatted } : w
+            );
+            localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(updated));
+            return updated;
+          });
+
+          try {
+            const activeStr = localStorage.getItem(STORAGE_KEY_ACTIVE_WALLET);
+            if (activeStr) {
+              const active = JSON.parse(activeStr);
+              if (active.address === address) {
+                active.balanceSol = formatted;
+                localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(active));
+              }
+            }
+          } catch (e) {}
+
+          setLastBalanceRefreshedAt(new Date().toISOString());
+          return formatted;
+        }
+      } catch (err) {
+        console.warn('[WalletStore] API balance query failed, trying client fallback:', err);
+      } finally {
+        setIsRefreshingBalance(false);
+      }
+
+      // Secondary client RPC fallback
+      try {
+        const { Connection, PublicKey } = await import('@solana/web3.js');
+        const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const lamports = await connection.getBalance(new PublicKey(address));
+        const balance = Number((lamports / 1e9).toFixed(4));
+
+        setLinkedWallets((prev) => {
+          const updated = prev.map((w) =>
+            w.address === address ? { ...w, balanceSol: balance } : w
+          );
+          localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(updated));
+          return updated;
+        });
+        setLastBalanceRefreshedAt(new Date().toISOString());
+        return balance;
+      } catch (err) {
+        return 0;
+      }
+    },
+    [activePublicKey, primaryWallet]
+  );
+
+  // Restore active session on mount & purge any stale mock balances
   useEffect(() => {
     async function recoverSession() {
       if (typeof window === 'undefined') return;
@@ -177,10 +282,20 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         const cachedLinkedStr = localStorage.getItem(STORAGE_KEY_LINKED_WALLETS);
         if (cachedWalletStr) {
           const cachedWallet = JSON.parse(cachedWalletStr) as LinkedWallet;
-          const cachedLinked = cachedLinkedStr ? JSON.parse(cachedLinkedStr) : [cachedWallet];
-          setLinkedWallets(cachedLinked);
+          // Sanitize old mock numbers (15, 12.5, 5, 8.5)
+          if ([15, 12.5, 5, 8.5].includes(cachedWallet.balanceSol)) {
+            cachedWallet.balanceSol = 0;
+          }
+          const rawLinked = cachedLinkedStr ? JSON.parse(cachedLinkedStr) : [cachedWallet];
+          const cleanLinked = rawLinked.map((w: LinkedWallet) =>
+            [15, 12.5, 5, 8.5].includes(w.balanceSol) ? { ...w, balanceSol: 0 } : w
+          );
+          setLinkedWallets(cleanLinked);
           setActivePublicKey(cachedWallet.address);
           setStatus('authenticated');
+
+          // Trigger live on-chain balance sync immediately
+          refreshWalletBalance(cachedWallet.address);
         }
       } catch (e) {
         // ignore parse error
@@ -215,6 +330,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
             setActivePublicKey(data.primaryWallet.address);
             localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(data.primaryWallet));
             setStatus('authenticated');
+            refreshWalletBalance(data.primaryWallet.address);
           }
         }
       } catch (err) {
@@ -222,7 +338,28 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       }
     }
     recoverSession();
-  }, []);
+  }, [refreshWalletBalance]);
+
+  // Auto-refresh balance in background while connected & on window focus
+  useEffect(() => {
+    if (status !== 'authenticated' || !activePublicKey) return;
+
+    refreshWalletBalance(activePublicKey);
+
+    const interval = setInterval(() => {
+      refreshWalletBalance(activePublicKey);
+    }, 20000);
+
+    const onFocus = () => {
+      refreshWalletBalance(activePublicKey);
+    };
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [status, activePublicKey, refreshWalletBalance]);
 
   const resetAuthError = useCallback(() => setAuthError(null), []);
 
@@ -263,7 +400,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         network: 'solana',
         label: 'Sentinel Smart Wallet',
         isPrimary: true,
-        balanceSol: 12.50,
+        balanceSol: 0.0,
         status: 'active',
         createdAt: new Date().toISOString(),
       };
@@ -278,6 +415,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(walletRecord));
       setStatus('authenticated');
       setIsWalletModalOpen(false);
+      refreshWalletBalance(publicKey);
 
       // Request SIWS in background to obtain session token
       try {
@@ -319,7 +457,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       setStatus('error');
       setAuthError(err.message || 'Failed to initialize Smart Wallet.');
     }
-  }, [adapters]);
+  }, [adapters, refreshWalletBalance]);
 
   // Initiate wallet connection
   const connectWallet = useCallback(
@@ -351,7 +489,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
             network: 'solana',
             label: 'Custom Solana Wallet',
             isPrimary: true,
-            balanceSol: 5.00,
+            balanceSol: 0.0,
             status: 'active',
             createdAt: new Date().toISOString(),
           };
@@ -366,6 +504,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(walletRecord));
           setStatus('authenticated');
           setIsWalletModalOpen(false);
+          refreshWalletBalance(publicKey);
           return;
         } catch (err: any) {
           setStatus('error');
@@ -374,7 +513,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         }
       }
 
-      // 3. Browser extension wallets (Phantom, Solflare, Backpack, OKX)
+      // 3. Browser extension wallets (Phantom, Solflare, Backpack, OKX, Coinbase)
       const adapter = adapters.find((a) => a.id === adapterId);
       if (!adapter) {
         setStatus('error');
@@ -404,13 +543,14 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
             network: 'solana',
             label: `${adapter.name}`,
             isPrimary: true,
-            balanceSol: 15.00,
+            balanceSol: 0.0,
             status: 'active',
             createdAt: new Date().toISOString(),
           };
           setLinkedWallets((prev) => [fallbackWallet, ...prev.filter((w) => w.address !== publicKey)]);
           localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(fallbackWallet));
           setStatus('authenticated');
+          refreshWalletBalance(publicKey);
           return;
         }
 
@@ -424,7 +564,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         setAuthError(err.message || `Failed to connect to ${adapter.name}.`);
       }
     },
-    [adapters, fastConnectSmartWallet]
+    [adapters, fastConnectSmartWallet, refreshWalletBalance]
   );
 
   // Authenticate SIWS challenge signature
@@ -470,7 +610,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           network: 'solana',
           label: selectedAdapter.name,
           isPrimary: true,
-          balanceSol: 15.00,
+          balanceSol: 0.0,
           status: 'active',
           createdAt: new Date().toISOString(),
         },
@@ -498,6 +638,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       setStatus('authenticated');
       setActiveChallenge(null);
       setIsWalletModalOpen(false);
+      refreshWalletBalance(activePublicKey);
     } catch (err: any) {
       // In dev/test fallback, still link the wallet so user isn't stuck
       const fallbackWallet: LinkedWallet = {
@@ -506,7 +647,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         network: 'solana',
         label: selectedAdapter.name,
         isPrimary: true,
-        balanceSol: 15.00,
+        balanceSol: 0.0,
         status: 'active',
         createdAt: new Date().toISOString(),
       };
@@ -515,8 +656,9 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       setStatus('authenticated');
       setActiveChallenge(null);
       setIsWalletModalOpen(false);
+      refreshWalletBalance(activePublicKey);
     }
-  }, [selectedAdapter, activePublicKey, activeChallenge]);
+  }, [selectedAdapter, activePublicKey, activeChallenge, refreshWalletBalance]);
 
   // Link secondary wallet
   const linkSecondaryWallet = useCallback(
@@ -561,7 +703,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           network: 'solana',
           label: adapter.name,
           isPrimary: false,
-          balanceSol: 8.50,
+          balanceSol: 0.0,
           status: 'active',
           createdAt: new Date().toISOString(),
         };
@@ -571,11 +713,12 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(updated));
           return updated;
         });
+        refreshWalletBalance(pubKey);
       } catch (err: any) {
         setAuthError(err.message || 'Could not link wallet.');
       }
     },
-    [adapters, sessionToken]
+    [adapters, sessionToken, refreshWalletBalance]
   );
 
   // Set primary wallet
@@ -694,6 +837,44 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
     setStatus('disconnected');
     setIsWalletModalOpen(false);
   }, [selectedAdapter, sessionToken]);
+
+  // Listen for real-time wallet events (account changes & disconnects from extension)
+  useEffect(() => {
+    if (!selectedAdapter || typeof selectedAdapter.onAccountChange !== 'function') return;
+
+    const unAccount = selectedAdapter.onAccountChange((newPubkey) => {
+      setActivePublicKey(newPubkey);
+      setLinkedWallets((prev) => {
+        const found = prev.find((w) => w.address === newPubkey);
+        if (found) {
+          return prev.map((w) => ({ ...w, isPrimary: w.address === newPubkey }));
+        }
+        const newWallet: LinkedWallet = {
+          id: `w_${selectedAdapter.id}_${newPubkey.slice(0, 8)}`,
+          address: newPubkey,
+          network: 'solana',
+          label: selectedAdapter.name,
+          isPrimary: true,
+          balanceSol: 0.0,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        };
+        return [newWallet, ...prev.map((w) => ({ ...w, isPrimary: false }))];
+      });
+      refreshWalletBalance(newPubkey);
+    });
+
+    const unDisconnect = selectedAdapter.onDisconnect
+      ? selectedAdapter.onDisconnect(() => {
+          disconnectWallet();
+        })
+      : () => {};
+
+    return () => {
+      unAccount();
+      unDisconnect();
+    };
+  }, [selectedAdapter, refreshWalletBalance, disconnectWallet]);
 
   // Account Deletion Workflow
   const deleteAccount = useCallback(async () => {
@@ -1055,6 +1236,8 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         quickBuyToken,
         authError,
         walletTransactions,
+        isRefreshingBalance,
+        lastBalanceRefreshedAt,
       }}
     >
       <WalletActionsContext.Provider
@@ -1073,6 +1256,8 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           disconnectWallet,
           deleteAccount,
           resetAuthError,
+          refreshWalletBalance,
+          checkExtensionAvailability,
           depositCrypto,
           withdrawCrypto,
           fetchWalletTransactions,

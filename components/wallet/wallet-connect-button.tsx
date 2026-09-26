@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Wallet, LogOut, ChevronDown, Copy, Check } from 'lucide-react';
+import { Wallet, LogOut, ChevronDown, Copy, Check, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useWalletState, useWalletActions } from '@/lib/store';
 
@@ -20,8 +20,8 @@ export function WalletConnectButton({
 }: WalletConnectButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { primaryWallet, status } = useWalletState();
-  const { setWalletModalOpen, disconnectWallet } = useWalletActions();
+  const { primaryWallet, status, isRefreshingBalance } = useWalletState();
+  const { setWalletModalOpen, disconnectWallet, refreshWalletBalance } = useWalletActions();
 
   const handleCopy = (address: string) => {
     navigator.clipboard.writeText(address);
@@ -33,6 +33,13 @@ export function WalletConnectButton({
     await disconnectWallet();
     onDisconnect?.();
     setIsOpen(false);
+  };
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (primaryWallet?.address) {
+      await refreshWalletBalance(primaryWallet.address);
+    }
   };
 
   if (primaryWallet && status === 'authenticated') {
@@ -53,17 +60,29 @@ export function WalletConnectButton({
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-2 w-60 p-2.5 rounded-2xl bg-sentinel-900 border border-sentinel-700/80 shadow-2xl backdrop-blur-xl z-50 font-mono text-xs space-y-2">
-            <div className="p-2 bg-sentinel-950/80 rounded-xl border border-sentinel-800">
-              <span className="text-2xs text-slate-500 block uppercase font-bold">Active Solana Wallet</span>
-              <p className="font-bold text-white truncate text-2xs mt-0.5">{primaryWallet.address}</p>
-              <div className="flex items-center justify-between text-2xs text-emerald-400 font-bold mt-1">
-                <span>Balance:</span>
+          <div className="absolute right-0 mt-2 w-64 p-2.5 rounded-2xl bg-sentinel-900 border border-sentinel-700/80 shadow-2xl backdrop-blur-xl z-50 font-mono text-xs space-y-2">
+            <div className="p-2.5 bg-sentinel-950/80 rounded-xl border border-sentinel-800 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-3xs text-slate-400 block uppercase font-bold tracking-wider">Active Solana Wallet</span>
+                <span className="text-3xs text-emerald-400 font-bold">● Mainnet</span>
+              </div>
+              <p className="font-bold text-white truncate text-2xs">{primaryWallet.address}</p>
+              <div className="flex items-center justify-between text-2xs text-emerald-400 font-bold pt-1 border-t border-sentinel-800/80">
+                <span>On-Chain Balance:</span>
                 <span>{primaryWallet.balanceSol.toFixed(4)} SOL</span>
               </div>
             </div>
 
             <div className="space-y-1">
+              <button
+                onClick={(e) => handleRefresh(e)}
+                disabled={isRefreshingBalance}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-300 hover:bg-sentinel-800 hover:text-sky-300 transition text-left"
+              >
+                <span>Sync On-Chain Balance</span>
+                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingBalance ? 'animate-spin text-sky-400' : 'text-slate-400'}`} />
+              </button>
+
               <button
                 onClick={() => handleCopy(primaryWallet.address)}
                 className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-300 hover:bg-sentinel-800 transition text-left"

@@ -1,4 +1,4 @@
-export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'okx' | 'embedded' | 'manual' | 'standard';
+export type WalletProviderId = 'phantom' | 'solflare' | 'backpack' | 'okx' | 'coinbase' | 'embedded' | 'manual' | 'standard';
 
 export type WalletType = 'extension' | 'standard' | 'embedded' | 'manual';
 
@@ -23,10 +23,16 @@ export interface WalletAdapter {
   signTransaction?(transaction: any): Promise<any>;
   /** Whether the wallet is actually present in this browser right now. */
   isAvailable?(): boolean;
+  /** Check and re-evaluate installation state dynamically */
+  checkInstalled?(): boolean;
   /** Official download page, so "not installed" can be made actionable. */
   getInstallUrl?(): string | undefined;
   /** Export private key for embedded smart wallets */
   exportPrivateKey?(): string | null;
+  /** Listen for account change events in real time */
+  onAccountChange?(callback: (newPubkey: string) => void): () => void;
+  /** Listen for disconnect events in real time */
+  onDisconnect?(callback: () => void): () => void;
 }
 
 export interface LinkedWallet {

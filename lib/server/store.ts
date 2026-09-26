@@ -263,7 +263,7 @@ class ServerStore {
 
     const user: DbUser = { id: userId, displayName: `Sentinel User (${shortAddress})`, role: 'user', status: 'active', createdAt: now, updatedAt: now };
     const wallet: DbWallet = {
-      id: walletId, userId, address, network: 'solana', label, isPrimary: true, balanceSol: 24.5,
+      id: walletId, userId, address, network: 'solana', label, isPrimary: true, balanceSol: 0.0,
       status: 'active', firstSeenAt: now, lastSeenAt: now, createdAt: now, updatedAt: now,
     };
     const defaultPrefs: DbUserPreferences = {
@@ -298,7 +298,7 @@ class ServerStore {
 
     const wallet: DbWallet = {
       id: walletId, userId, address, network: 'solana', label, isPrimary,
-      balanceSol: Math.round((Math.random() * 15 + 1) * 100) / 100,
+      balanceSol: 0.0,
       status: 'active', firstSeenAt: now, lastSeenAt: now, createdAt: now, updatedAt: now,
     };
 
