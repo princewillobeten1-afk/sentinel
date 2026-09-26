@@ -3,8 +3,6 @@ import { env } from '@/lib/server/env';
 import { ApiError } from '@/lib/server/errors';
 import { acquireBirdeyeSlot } from '@/lib/market/enrichment/birdeye-limiter';
 import { getGeckoChartHistory } from './geckoterminal-chart';
-import { getBitqueryChartHistory } from './bitquery-chart';
-import { getBitqueryDexChartHistory } from './bitquery-dex-chart';
 import { BIRDEYE_CHART_INTERVAL, parseProviderCandle, type ChartSnapshot, type ChartTimeframe } from './chart-model';
 
 const cache = new Map<string, { snapshot: ChartSnapshot; until: number }>();
@@ -18,16 +16,10 @@ export async function getChartHistory(address: string, timeframe: ChartTimeframe
   if (cached && cached.until > Date.now()) return cached.snapshot;
   const pending = requests.get(key);
   if (pending) return pending;
-  const alternate = async (): Promise<ChartSnapshot | null> => {
-    // Bitquery's Tokens cube is a token-wide USD series, like Birdeye's
-    // aggregate. A GeckoTerminal pool series is the last resort for a cold chart.
-    const bitquery = await getBitqueryChartHistory(address, timeframe, limit, before);
-    if (bitquery?.candles.length) return bitquery;
-    const dex = await getBitqueryDexChartHistory(address, timeframe, limit, before);
-    if (dex?.candles.length) return dex;
-    const gecko = await getGeckoChartHistory(address, timeframe, limit, before);
-    return gecko?.candles.length ? gecko : bitquery ?? dex ?? gecko;
-  };
+  // The existing fallback is explicitly pool-scoped; never mix its bars with
+  // Birdeye's token-aggregate history.
+  const alternate = (): Promise<ChartSnapshot | null> =>
+    getGeckoChartHistory(address, timeframe, limit, before);
   const unavailable = async (reason: string): Promise<ChartSnapshot> => {
     const fallback = await alternate();
     if (fallback?.candles.length || (fallback && !cached)) {
@@ -44,8 +36,8 @@ export async function getChartHistory(address: string, timeframe: ChartTimeframe
   if (!apiKey) return unavailable('Candle provider credential is not configured.');
   const providerInterval = BIRDEYE_CHART_INTERVAL[timeframe];
   const work = (async () => {
-    // Birdeye remains the primary token-wide candle source. Bitquery fills
-    // missing history; pool-specific Gecko/QuickNode is a labeled last resort.
+    // Birdeye remains primary; GeckoTerminal history and QuickNode streaming
+    // provide the existing, explicitly labeled pool-specific fallback.
     if (Date.now() < pausedUntil) return unavailable(pauseReason);
     if (!apiKey) return unavailable('Candle provider credential is not configured.');
     const controller = new AbortController();

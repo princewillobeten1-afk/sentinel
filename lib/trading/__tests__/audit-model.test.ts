@@ -39,7 +39,7 @@ describe('audit evidence contract', () => {
       mint: 'mint', top10Pct: 42, totalHolders: 20, devPct: null,
       snipersPct: null, insidersPct: null, bundlersPct: null,
       proTraders: null, kols: null, fetchedAt: now - 1_000,
-      source: 'bitquery-balance-updates+solana-rpc-supply',
+      source: 'rugcheck-report+solana-rpc-supply',
     };
     const data = composeTokenAudit('mint', undefined, holder, null, evidence, false, now);
     expect(data.top10HoldersPct).toBe(42);

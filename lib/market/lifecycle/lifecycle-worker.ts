@@ -8,7 +8,6 @@ import { bondingCurveAddress, decodeBondingCurve, PUMPFUN_PROGRAM_ID } from './b
 import { fetchConfirmedSignatures, fetchMigrationWithFailover } from './migration-rpc';
 import { MigrationHistory } from './migration-history';
 import { fetchJupiterFeed, hasReadableCurve, type JupiterToken } from '@/lib/discovery/jupiter-feed';
-import { getBitqueryRecentLaunches } from '@/lib/discovery/bitquery-launch-feed';
 import {
   applyCurveReading,
   evictStale,
@@ -279,15 +278,6 @@ class LifecycleWorker {
         fetchJupiterFeed('toporganicscore', { limit: 100, window: '5m' }),
         fetchJupiterFeed('toporganicscore', { limit: 100, window: '1h' }),
       ]);
-
-      // When Jupiter's recent endpoint is quota-limited, confirmed Pump.fun
-      // creations from Bitquery still enter the curve-read queue. Creation
-      // alone never promotes a token into Final Stretch.
-      if (results[0].status !== 'fulfilled' || results[0].value.length === 0) {
-        void getBitqueryRecentLaunches().then((launches) => {
-          for (const { raw } of launches) recordPairCreated(raw.id, 'pump.fun', Date.parse(raw.createdAt ?? '') || Date.now());
-        }).catch(() => logger.debug('[lifecycle] Bitquery launch fallback unavailable'));
-      }
 
       const historicalCandidates: Array<{ mint: string; pool: string }> = [];
       for (const result of results) {

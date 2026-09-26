@@ -12,8 +12,8 @@ import {
 
 describe('provider provenance', () => {
   it('shows each provider in a composed measured source', () => {
-    expect(formatDisplaySource('rugcheck-report+bitquery-balance-updates+solana-rpc-supply'))
-      .toBe('Rugcheck + Bitquery + Solana RPC');
+    expect(formatDisplaySource('rugcheck-report+solana-rpc-supply'))
+      .toBe('Rugcheck + Solana RPC');
     expect(formatDisplaySource('birdeye-holder-profile')).toBe('Birdeye holders');
   });
 });

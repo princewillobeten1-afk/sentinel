@@ -424,7 +424,7 @@ export async function fetchJupiterFeed(
   const path = feed === 'recent' ? 'recent' : `${feed}/${window}`;
   // The lite host can return 429 while the public API host still serves the
   // same recent launch feed. Do not turn a host-specific quota into an empty
-  // New Pairs column; the Bitquery creation feed remains the next fallback.
+  // New Pairs column; cached launches remain available during an outage.
   const hosts = feed === 'recent' ? [JUPITER_RECENT_BASE, JUPITER_BASE] : [JUPITER_BASE];
   let lastError: Error | null = null;
   for (const host of hosts) {

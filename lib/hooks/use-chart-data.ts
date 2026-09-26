@@ -59,7 +59,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
         || frame.observedAt > Date.now() + 5_000 || frame.candle.time > Date.now() / 1000 + 5
         || (message.sequence !== undefined && message.sequence <= sequence.current)) return;
       const frameIdentity = frame.market === 'pool' ? `pool:${frame.poolAddress}` : 'token-aggregate';
-      // Keep a healthy aggregate Birdeye/Bitquery series primary. A QuickNode
+      // Keep a healthy aggregate Birdeye series primary. A QuickNode
       // pool trade belongs only on a pool-specific fallback series.
       if (seriesIdentity && seriesIdentity !== frameIdentity) {
         if (frame.source !== 'birdeye-price-ws' || !seriesIdentity.startsWith('pool:')) return;
@@ -70,9 +70,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
       }
       seriesIdentity ??= frameIdentity;
       if (frame.market === 'pool') { setMarket('pool'); setPoolAddress(frame.poolAddress ?? null); }
-      if (frame.source === 'bitquery-ohlcv-rest') setSource('bitquery-token-ohlcv');
-      else if (frame.source === 'bitquery-dex-ohlcv-rest') setSource('bitquery-dex-ohlcv');
-      else if (frame.source === 'birdeye-price-ws' || frame.source === 'birdeye-ohlcv-rest') setSource('birdeye-ohlcv-v3');
+      if (frame.source === 'birdeye-price-ws' || frame.source === 'birdeye-ohlcv-rest') setSource('birdeye-ohlcv-v3');
       else if (frame.source === 'geckoterminal-pool-rest') setSource('geckoterminal-pool-ohlcv');
       if (message.sequence !== undefined) sequence.current = message.sequence;
       if (frame.observedAt < (revisions.get(frame.candle.time) ?? 0)) return;
@@ -118,7 +116,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
         if (!snapshot) throw new Error('Chart provider returned an invalid candle snapshot.');
         if (!active) return;
         // A stale aggregate cache must not displace a fresh pool stream, but a
-        // measured Birdeye/Bitquery response takes precedence immediately.
+        // measured Birdeye response takes precedence immediately.
         if (snapshot.market === 'token-aggregate' && seriesIdentity?.startsWith('pool:')
           && snapshot.status !== 'measured' && Date.now() - lastStream < 5 * 60_000) return;
         if (snapshot.market === 'pool' && seriesIdentity === 'token-aggregate'

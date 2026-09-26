@@ -238,7 +238,6 @@ export function formatDisplaySource(source?: string | null): string {
     if (s.includes('birdeye') && s.includes('holder')) return 'Birdeye holders';
     if (s.includes('birdeye')) return 'Birdeye';
     if (s.includes('rugcheck')) return 'Rugcheck';
-    if (s.includes('bitquery')) return 'Bitquery';
     if (s.includes('quicknode')) return 'QuickNode';
     if (s.includes('helius')) return 'Helius';
     if (s.includes('solana-rpc') || s === 'rpc-supply') return 'Solana RPC';

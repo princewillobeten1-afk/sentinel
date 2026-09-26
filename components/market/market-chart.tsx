@@ -10,8 +10,9 @@ interface MarketChartProps {
   chain?: string;
   symbol?: string;
   initialInterval?: CandleInterval;
+  supply?: number;
 }
 
-export function MarketChart({ tokenMint, chain = 'solana', symbol, initialInterval = '1h' }: MarketChartProps) {
-  return <CandlestickChart symbol={tokenMint} tokenSymbol={symbol} chain={chain} initialTimeframe={initialInterval} />;
+export function MarketChart({ tokenMint, chain = 'solana', symbol, initialInterval = '1h', supply }: MarketChartProps) {
+  return <CandlestickChart symbol={tokenMint} tokenSymbol={symbol} chain={chain} initialTimeframe={initialInterval} supply={supply} />;
 }

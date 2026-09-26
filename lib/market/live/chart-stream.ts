@@ -42,9 +42,7 @@ export function publishPolledCandle(snapshot: ChartSnapshot): ChartFrame | null 
     || (previous.source === 'quicknode-pool-ws' && Date.now() - previous.observedAt < 20_000))) return null;
   const frame: ChartFrame = { address: measured.address, timeframe: measured.timeframe,
     candle, observedAt: measured.observedAt,
-    source: measured.market === 'pool' ? 'geckoterminal-pool-rest'
-      : measured.source === 'bitquery-token-ohlcv' ? 'bitquery-ohlcv-rest'
-        : measured.source === 'bitquery-dex-ohlcv' ? 'bitquery-dex-ohlcv-rest' : 'birdeye-ohlcv-rest',
+    source: measured.market === 'pool' ? 'geckoterminal-pool-rest' : 'birdeye-ohlcv-rest',
     market: measured.market, ...(measured.poolAddress ? { poolAddress: measured.poolAddress } : {}) };
   saveFrame(target, frame);
   return frame;
@@ -62,7 +60,7 @@ export function publishQuickNodeTrade(mint: string, poolAddress: string, priceUs
     const time = Math.floor(observedAt / 1000 / seconds) * seconds;
     const previous = state.frames.get(target);
     if (previous && previous.candle.time > time) continue;
-    // A pool swap must never displace a healthy Birdeye or Bitquery
+    // A pool swap must never displace a healthy Birdeye
     // token-aggregate candle. Pool updates are only valid for a pool series.
     if (previous?.market === 'token-aggregate') continue;
     if (previous?.source === 'quicknode-pool-ws' && previous.candle.time === time

@@ -636,6 +636,7 @@ export function TradeView({
             timeframe={timeframe}
             symbol={currentToken.mint}
             tokenSymbol={currentToken.symbol}
+            supply={currentToken.supply ?? (currentToken.marketCapUsd && currentToken.priceUsd ? currentToken.marketCapUsd / currentToken.priceUsd : undefined)}
             onTimeframeChange={setTimeframe}
           />
         </div>

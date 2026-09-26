@@ -4,7 +4,6 @@ import type { HolderProfile } from './holder-profile';
 import { fetchTrackerOwnership, trackerConfigured } from '@/lib/trading/solana-tracker';
 import { fetchRugcheckOwnership } from '@/lib/trading/rugcheck-ownership';
 import { fetchOnChainOwnership } from '@/lib/trading/onchain-ownership';
-import { fetchBitqueryOwnership } from './bitquery-ownership';
 
 const FIELDS = ['top10Pct', 'totalHolders', 'snipersPct', 'insidersPct',
   'bundlersPct', 'devPct', 'proTraders', 'kols'] as const;
@@ -49,8 +48,6 @@ export function hasOwnershipFallback(): boolean {
  * 2. Rugcheck report (public API, provides top-account concentration and
  *    creator percentage only when the creator is in the returned list)
  * 3. On-chain Solana RPC (direct getTokenLargestAccounts + getTokenSupply)
- * 4. Bitquery recent balance updates, accepted only when their balances
- *    reconcile to independently measured on-chain supply.
  */
 export async function resolveOwnershipFallback(
   mint: string,
@@ -81,12 +78,6 @@ export async function resolveOwnershipFallback(
     catch { /* Continue with independent providers. */ }
   }
 
-  // 4. Bitquery is most useful for holder count on new tokens that Rugcheck
-  // has not indexed. An incomplete 8-hour window remains unknown.
-  if (needsMore(result, devAddress)) {
-    try { result = mergeOwnershipProfiles(result, await fetchBitqueryOwnership(mint, devAddress)); }
-    catch { /* Failed coverage must not erase measured values. */ }
-  }
   return result;
 }
 

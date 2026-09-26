@@ -14,7 +14,6 @@ const LIFECYCLE_FIELDS = new Set(['lifecycleState', 'bondingCurveProgress', 'mig
 function marketSourcePriority(source: string | undefined): number {
   if (!source) return 0;
   if (/birdeye|jupiter/.test(source)) return 3;
-  if (source.includes('bitquery')) return 2;
   if (source.includes('dexscreener')) return 1;
   return 0;
 }
@@ -29,7 +28,7 @@ export function mergeTokenCardSnapshot(token: DiscoveryToken, patch: TokenCardPa
       ? (['volume5mUsd', 'buyVolume5mUsd', 'sellVolume5mUsd', 'priceChange5m', 'txCount5m', 'buysCount5m', 'sellsCount5m', 'activityEvidence'].includes(key) ? 'activityEvidence' : 'marketEvidence')
       : OWNERSHIP_FIELDS.has(key) ? 'ownershipEvidence' : LIFECYCLE_FIELDS.has(key) ? 'lifecycleEvidence' : null;
     if (!group) return true;
-    // Provider fallback is per field, not per whole card. A later Bitquery
+    // Provider fallback is per field, not per whole card. A later fallback
     // observation must fill unknown REST values, never replace a measured
     // primary field merely because its request completed later.
     const fallback = patch.fieldSources?.[key as keyof TokenCardFields];

@@ -11,7 +11,6 @@ import {
   type JupiterToken,
 } from './jupiter-feed';
 import { getLifecycleDiscoveryTokens } from './lifecycle-feed';
-import { getBitqueryRecentLaunches } from './bitquery-launch-feed';
 import { getLifecycle } from '@/lib/market/lifecycle/lifecycle-engine';
 import { hydrateTokenCards, getTokenCardPatch, updateTokenCard } from '@/lib/market/live/card-cache';
 import { mergeTokenCardSnapshot } from './card-snapshot';
@@ -115,11 +114,7 @@ async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
  * Fresh launches for New Pairs. Lifecycle columns have their own evidence feed.
  */
 async function recentTokens(): Promise<{ token: DiscoveryToken; raw: JupiterToken }[]> {
-  const { raw, mapped, error } = await loadFeed('recent');
-  if (error) {
-    const alternate = await getBitqueryRecentLaunches();
-    if (alternate.length) return alternate;
-  }
+  const { raw, mapped } = await loadFeed('recent');
   return mapped.map((token, index) => ({
     token: withCurrentAge(token, launchMs.get(raw[index]) ?? null),
     raw: raw[index],
@@ -287,13 +282,8 @@ export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>):
         // engine and Jupiter's own graduation fact both outrank listing age.
         return (!state || state === 'NEW_PAIR') && !hasGraduated(raw);
       });
-      const verifiedCreations = rows.length > 0 && rows.every(({ token }) =>
-        token.lifecycleEvidence?.source === 'bitquery-pump-creation');
       const collapsed = collapseDuplicateLaunches(rows.map((r) => r.token), {
-        // A confirmed pump creation is a legitimate New Pair even before
-        // DexScreener indexes its curve. Keep liquidity unknown and trading
-        // disabled; do not make the whole column disappear during Jupiter 429s.
-        includeZeroLiquidity: filter?.includeZeroLiquidity || verifiedCreations,
+        includeZeroLiquidity: filter?.includeZeroLiquidity,
       });
       tokens = apply(collapsed).sort((a, b) => a.ageMinutes - b.ageMinutes);
       break;

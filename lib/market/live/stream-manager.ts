@@ -22,11 +22,6 @@ import { getChartDemand, onChartDemand } from './chart-stream';
 import { ChartPoller } from './chart-poller';
 import { QuickNodeChartClient } from './quicknode-chart-client';
 import { quickNodeService } from '@/lib/server/quicknode';
-import { getBitqueryChartHealth } from '@/lib/market/bitquery-chart';
-import { bitqueryDexChartHealth } from '@/lib/market/bitquery-dex-chart';
-import { bitqueryActivityHealth, queueBitqueryActivity } from '@/lib/market/bitquery-activity';
-import { bitqueryLimiterStats } from '@/lib/market/bitquery-limiter';
-import { bitqueryLaunchHealth } from '@/lib/discovery/bitquery-launch-feed';
 import { redis } from '@/lib/server/redis';
 import { capabilityHealth } from './capability-health';
 import { realtimeRepository } from '@/lib/server/db/realtime-repository';
@@ -78,11 +73,6 @@ export interface StreamManagerHealth {
   birdeyeRestLimiter: ReturnType<typeof birdeyeLimiterStats>;
   evidencePersistence: ReturnType<typeof tokenCardPersistenceHealth>;
   chartPolling: ReturnType<ChartPoller['getHealth']>;
-  bitqueryChart: ReturnType<typeof getBitqueryChartHealth>;
-  bitqueryDexChart: ReturnType<typeof bitqueryDexChartHealth>;
-  bitqueryActivity: ReturnType<typeof bitqueryActivityHealth>;
-  bitqueryLimiter: ReturnType<typeof bitqueryLimiterStats>;
-  bitqueryLaunches: ReturnType<typeof bitqueryLaunchHealth>;
   chartStreaming: ReturnType<QuickNodeChartClient['getHealth']>;
   capabilities: ReturnType<typeof capabilityHealth>;
 }
@@ -201,7 +191,6 @@ class StreamManager {
       // list can steal its quota from what the user is looking at.
       setAuditTargets('visible', visibleMints);
       setSecurityTargets(visibleMints);
-      queueBitqueryActivity(visibleMints);
     };
 
     this.unsubscribeDemand?.();
@@ -223,7 +212,6 @@ class StreamManager {
       setAuditTargets('visible', visibleMints);
       setSecurityTargets(visibleMints);
       queueDexMarketReconciliation(visibleMints);
-      queueBitqueryActivity(visibleMints);
     }, 15_000);
     this.refreshTimer.unref?.();
   }
@@ -288,11 +276,6 @@ class StreamManager {
       birdeyeRestLimiter: birdeyeLimiterStats(),
       evidencePersistence: tokenCardPersistenceHealth(),
       chartPolling,
-      bitqueryChart: getBitqueryChartHealth(),
-      bitqueryDexChart: bitqueryDexChartHealth(),
-      bitqueryActivity: bitqueryActivityHealth(),
-      bitqueryLimiter: bitqueryLimiterStats(),
-      bitqueryLaunches: bitqueryLaunchHealth(),
       chartStreaming: this.quickNodeCharts.getHealth(),
       capabilities: capabilityHealth({ birdeye, chainLogs: helius, chainLogProvider,
         quickNode, chartPolling, chartStreaming: this.quickNodeCharts.getHealth(),

@@ -5,7 +5,7 @@ import type { Chart, Crosshair, DataLoaderGetBarsParams, DeepPartial, KLineData,
 import { BarChart3, ChevronDown, RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useChartData } from '@/lib/hooks/use-chart-data';
 import { CHART_TIMEFRAMES, isChartTimeframe, chartPrecision, type ChartTimeframe } from '@/lib/market/chart-model';
-import { barsAfterLoaded, sameKLineData, toKLineDataList } from '@/lib/market/kline-adapter';
+import { barsAfterLoaded, sameKLineData, toKLineDataList, type PriceDisplayUnit } from '@/lib/market/kline-adapter';
 
 export interface CandlestickChartProps {
   /** Token mint, retained under the original prop name for compatibility. */
@@ -17,10 +17,24 @@ export interface CandlestickChartProps {
   onTimeframeChange?: (tf: string) => void;
   compact?: boolean;
   height?: string;
+  supply?: number;
+  initialDisplayUnit?: PriceDisplayUnit;
+  displayUnit?: PriceDisplayUnit;
+  onDisplayUnitChange?: (unit: PriceDisplayUnit) => void;
 }
 
 const control = 'min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8 rounded-md px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50';
+const PRICE_UNIT_STORAGE_KEY = 'sentinel.chart.price_unit.v1';
 const formatPrice = (value: number) => '$' + value.toLocaleString('en-US', { maximumSignificantDigits: 8 });
+const formatDisplayValue = (value: number, unit: PriceDisplayUnit = 'price') => {
+  if (unit === 'mcap') {
+    if (value >= 1e9) return '$' + (value / 1e9).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'B';
+    if (value >= 1e6) return '$' + (value / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'M';
+    if (value >= 1e3) return '$' + (value / 1e3).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'K';
+    return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return '$' + value.toLocaleString('en-US', { maximumSignificantDigits: 8 });
+};
 const formatVolume = (value: number) => '$' + new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value);
 type ChartIndicator = 'VOL' | 'EMA' | 'BOLL' | 'RSI';
 const INDICATORS: { name: ChartIndicator; label: string; minBars: number; description: string }[] = [
@@ -156,15 +170,37 @@ export function CandlestickChart(props: CandlestickChartProps) {
   const [selected, setSelected] = useState(props.initialTimeframe || '1m');
   const requested = props.timeframe ?? selected;
   const timeframe = isChartTimeframe(requested) ? requested : '1m';
-  // A new instrument/interval owns a fresh canvas, request lifecycle, and stream revision map.
-  return <ChartWorkspace key={`${props.chain || 'solana'}:${props.symbol}:${timeframe}`} {...props}
+
+  const [selectedUnit, setSelectedUnit] = useState<PriceDisplayUnit>(() => {
+    if (props.initialDisplayUnit) return props.initialDisplayUnit;
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(PRICE_UNIT_STORAGE_KEY);
+        if (saved === 'price' || saved === 'mcap') return saved;
+      } catch { /* session fallback */ }
+    }
+    return 'mcap';
+  });
+  const displayUnit = props.displayUnit ?? selectedUnit;
+  const setDisplayUnit = (unit: PriceDisplayUnit) => {
+    setSelectedUnit(unit);
+    props.onDisplayUnitChange?.(unit);
+    try { localStorage.setItem(PRICE_UNIT_STORAGE_KEY, unit); } catch { /* session fallback */ }
+  };
+
+  // A new instrument/interval/unit owns a fresh canvas, request lifecycle, and stream revision map.
+  return <ChartWorkspace key={`${props.chain || 'solana'}:${props.symbol}:${timeframe}:${displayUnit}`} {...props}
+    displayUnit={displayUnit} setDisplayUnit={setDisplayUnit}
     selectedTimeframe={timeframe} selectTimeframe={tf => { setSelected(tf); props.onTimeframeChange?.(tf); }} />;
 }
 
-function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = false, height,
+function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = false, height, supply,
+  displayUnit = 'mcap', setDisplayUnit,
   selectedTimeframe: timeframe, selectTimeframe }: CandlestickChartProps & {
+    displayUnit: PriceDisplayUnit; setDisplayUnit: (unit: PriceDisplayUnit) => void;
     selectedTimeframe: ChartTimeframe; selectTimeframe: (tf: ChartTimeframe) => void;
   }) {
+  const tokenSupply = (typeof supply === 'number' && Number.isFinite(supply) && supply > 0) ? supply : 1_000_000_000;
   const feed = useChartData(symbol, chain, timeframe);
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<Chart | null>(null);
@@ -198,7 +234,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
     let disposed = false;
     let disposeChart: (() => void) | undefined;
     // KLineChart requires a mounted DOM container. Keep the rendering package out of server evaluation.
-    void import('klinecharts').then(({ init, dispose }) => {
+    void import('klinecharts').then(({ init, dispose, utils }) => {
       if (disposed) return;
       const api = init(element, {
         layout: {
@@ -215,9 +251,23 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
         timezone: 'Etc/UTC',
         styles: chartStyles,
         // KLineChart's string-based defaults preserve every configured price digit.
-        // Number(...).toLocaleString() rounds micro-priced tokens to "0".
-        thousandsSeparator: { sign: ',' },
-        decimalFold: { threshold: 3 },
+        // In MCAP mode, format as compact currency ($24.4K, $1.2M).
+        thousandsSeparator: {
+          sign: ',',
+          format: (value: string | number) => {
+            if (displayUnit === 'mcap') {
+              const num = Number(value);
+              if (Number.isFinite(num)) {
+                if (Math.abs(num) >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
+                if (Math.abs(num) >= 1e6) return '$' + (num / 1e6).toFixed(2) + 'M';
+                if (Math.abs(num) >= 1e3) return '$' + (num / 1e3).toFixed(2) + 'K';
+                return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+              }
+            }
+            return utils?.formatThousands ? utils.formatThousands(value, ',') : String(value);
+          },
+        },
+        decimalFold: { threshold: displayUnit === 'mcap' ? 6 : 3 },
         zoomAnchor: { main: 'last_bar', xAxis: 'last_bar' },
         hotkey: {
           enabled: true,
@@ -247,8 +297,16 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
         setHoverTime(typeof crosshair?.timestamp === 'number' ? crosshair.timestamp / 1000 : null);
       });
       const existing = feedRef.current.candles;
-      const precision = existing.length ? chartPrecision(Math.min(...existing.map(c => c.low))).precision : 12;
-      api.setSymbol({ ticker: tokenSymbol || displaySymbol(symbol), pricePrecision: precision, volumePrecision: 4 });
+      const precision = existing.length
+        ? (displayUnit === 'mcap'
+            ? (Math.min(...existing.map(c => c.low)) * tokenSupply < 1 ? 4 : 2)
+            : chartPrecision(Math.min(...existing.map(c => c.low))).precision)
+        : (displayUnit === 'mcap' ? 2 : 12);
+      api.setSymbol({
+        ticker: `${tokenSymbol || displaySymbol(symbol)}${displayUnit === 'mcap' ? ' (MCAP)' : ''}`,
+        pricePrecision: precision,
+        volumePrecision: 4
+      });
       api.setPeriod(periodFor(timeframe));
       api.setDataLoader({
         getBars: ({ type, callback }) => {
@@ -258,7 +316,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           if (current.loading) { pendingInit.current = callback; return; }
           queueMicrotask(() => {
             if (disposed) return;
-            callback(toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token'), false);
+            callback(toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply), false);
             const restore = restoreTimestamp.current;
             restoreTimestamp.current = null;
             if (restore !== null) requestAnimationFrame(() => { if (!disposed) api.scrollToTimestamp(restore, 0); });
@@ -270,7 +328,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           queueMicrotask(() => {
             if (disposed || onBar.current !== callback) return;
             for (const bar of barsAfterLoaded(api.getDataList(),
-              toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token'))) callback(bar);
+              toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply))) callback(bar);
           });
         },
         unsubscribeBar: () => { onBar.current = null; },
@@ -311,22 +369,30 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
     const api = chart.current;
     if (!api) return;
     if (pendingInit.current && !feed.loading) {
-      const precision = feed.candles.length ? chartPrecision(Math.min(...feed.candles.map(c => c.low))).precision : 12;
+      const precision = feed.candles.length
+        ? (displayUnit === 'mcap'
+            ? (Math.min(...feed.candles.map(c => c.low)) * tokenSupply < 1 ? 4 : 2)
+            : chartPrecision(Math.min(...feed.candles.map(c => c.low))).precision)
+        : (displayUnit === 'mcap' ? 2 : 12);
       const callback = pendingInit.current;
       pendingInit.current = null;
       if (api.getSymbol()?.pricePrecision !== precision) {
         // setSymbol starts a fresh init. Complete the old loader request first,
         // otherwise KLineChart may retain an unresolved pending callback.
         callback([], false);
-        api.setSymbol({ ticker: tokenSymbol || displaySymbol(symbol), pricePrecision: precision, volumePrecision: 4 });
+        api.setSymbol({
+          ticker: `${tokenSymbol || displaySymbol(symbol)}${displayUnit === 'mcap' ? ' (MCAP)' : ''}`,
+          pricePrecision: precision,
+          volumePrecision: 4
+        });
         return;
       }
       queueMicrotask(() => { if (chart.current === api) callback(toKLineDataList(feedRef.current.candles,
-        feedRef.current.market === 'pool' ? 'usd' : 'token'), false); });
+        feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply), false); });
       return;
     }
     const current = api.getDataList();
-    const next = toKLineDataList(feed.candles, feed.market === 'pool' ? 'usd' : 'token');
+    const next = toKLineDataList(feed.candles, feed.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply);
     if (!next.length) return;
     if (!current.length) { api.resetData(); return; }
     const first = current[0].timestamp;
@@ -345,7 +411,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
     }
     if (!onBar.current) return;
     for (const row of barsAfterLoaded(current, next)) onBar.current(row);
-  }, [feed.candles, feed.market, feed.loading, feed.loadingOlder, feed.hasMore, feed.olderError, symbol, tokenSymbol]);
+  }, [feed.candles, feed.market, feed.loading, feed.loadingOlder, feed.hasMore, feed.olderError, symbol, tokenSymbol, displayUnit, tokenSupply]);
 
   const hoveredIndex = feed.candles.findIndex(c => c.time === hoverTime);
   const activeIndex = hoveredIndex >= 0 ? hoveredIndex : feed.candles.length - 1;
@@ -355,10 +421,8 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
   const empty = !feed.candles.length;
   const updated = Math.max(feed.observedAt, feed.streamAt);
   const sourceName = feed.source === 'geckoterminal-pool-ohlcv' ? 'GeckoTerminal'
-    : feed.source === 'bitquery-token-ohlcv' ? 'Bitquery'
-      : feed.source === 'bitquery-dex-ohlcv' ? 'Bitquery DEX'
-      : feed.source === 'birdeye-ohlcv-v3' ? 'Birdeye'
-        : feed.liveSource === 'quicknode' ? 'QuickNode live' : 'Provider pending';
+    : feed.source === 'birdeye-ohlcv-v3' ? 'Birdeye'
+      : feed.liveSource === 'quicknode' ? 'QuickNode live' : 'Provider pending';
   const sourceLabel = feed.market === 'pool'
     ? `${sourceName} · pool ${displaySymbol(feed.poolAddress || '')} · USD`
     : `${sourceName} · token aggregate · USD`;
@@ -369,7 +433,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sentinel-800 bg-[#101721] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <BarChart3 className="h-4 w-4 shrink-0 text-sky-400" aria-hidden="true" />
-          <span className="truncate text-xs font-semibold tracking-wide text-slate-100">{displaySymbol(tokenSymbol || symbol)} / USD</span>
+          <span className="truncate text-xs font-semibold tracking-wide text-slate-100">{displaySymbol(tokenSymbol || symbol)} / {displayUnit === 'mcap' ? 'MCAP' : 'USD'}</span>
           <span role="status" title={updated ? `${sourceLabel} · observed ${new Date(updated).toLocaleTimeString()}` : 'Waiting for market data'}
             className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${visualStatus === 'Live'
               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
@@ -380,27 +444,63 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
             {visualStatus}
           </span>
         </div>
-        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-sentinel-800 bg-sentinel-950 p-0.5" aria-label="Chart timeframe">
-          {CHART_TIMEFRAMES.map(tf => (
+        <div className="flex items-center gap-2">
+          {/* Price / MCAP Unit Switcher */}
+          <div className="flex items-center rounded-md border border-sentinel-800 bg-sentinel-950 p-0.5" role="group" aria-label="Price scale unit">
             <button
-              key={tf}
               type="button"
-              aria-pressed={tf === timeframe}
-              onClick={() => selectTimeframe(tf)}
-              className={`min-h-9 min-w-9 shrink-0 rounded px-2 font-mono text-[11px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 ${tf === timeframe
-                ? 'bg-sky-500/20 text-sky-200 shadow-inner'
-                : 'text-slate-400 hover:bg-sentinel-800 hover:text-slate-100'}`}
+              aria-pressed={displayUnit === 'mcap'}
+              onClick={() => setDisplayUnit('mcap')}
+              title="Market Cap scale"
+              className={`min-h-7 rounded px-2.5 font-mono text-[11px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 ${
+                displayUnit === 'mcap'
+                  ? 'bg-emerald-500/20 text-emerald-300 shadow-inner'
+                  : 'text-slate-400 hover:bg-sentinel-800 hover:text-slate-100'
+              }`}
             >
-              {tf}
+              MCAP
             </button>
-          ))}
+            <button
+              type="button"
+              aria-pressed={displayUnit === 'price'}
+              onClick={() => setDisplayUnit('price')}
+              title="USD Price scale"
+              className={`min-h-7 rounded px-2.5 font-mono text-[11px] font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 ${
+                displayUnit === 'price'
+                  ? 'bg-sky-500/20 text-sky-300 shadow-inner'
+                  : 'text-slate-400 hover:bg-sentinel-800 hover:text-slate-100'
+              }`}
+            >
+              USD
+            </button>
+          </div>
+
+          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-sentinel-800 bg-sentinel-950 p-0.5" aria-label="Chart timeframe">
+            {CHART_TIMEFRAMES.map(tf => (
+              <button
+                key={tf}
+                type="button"
+                aria-pressed={tf === timeframe}
+                onClick={() => selectTimeframe(tf)}
+                className={`min-h-9 min-w-9 shrink-0 rounded px-2 font-mono text-[11px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 ${tf === timeframe
+                  ? 'bg-sky-500/20 text-sky-200 shadow-inner'
+                  : 'text-slate-400 hover:bg-sentinel-800 hover:text-slate-100'}`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-sentinel-800/80 px-4 py-3">
         <div className="flex items-end gap-3">
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{hoveredIndex >= 0 ? 'Selected close' : 'Last close'}</div>
-            <div className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">{active ? formatPrice(active.close) : '—'}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              {hoveredIndex >= 0 ? (displayUnit === 'mcap' ? 'Selected MCAP' : 'Selected close') : (displayUnit === 'mcap' ? 'Market Cap' : 'Last close')}
+            </div>
+            <div className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
+              {active ? formatDisplayValue(active.close * (displayUnit === 'mcap' ? tokenSupply : 1), displayUnit) : '—'}
+            </div>
           </div>
           {change !== null && <span className={`mb-1 rounded px-1.5 py-0.5 font-numeric text-xs font-semibold ${change >= 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}
             title={`Change from the previous ${timeframe} candle`}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</span>}
@@ -408,7 +508,14 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
         <div data-testid="chart-ohlcv" className="flex min-w-0 max-w-full flex-nowrap items-center gap-x-3 overflow-x-auto whitespace-nowrap font-mono text-[11px] text-slate-500 sm:flex-wrap sm:gap-y-1 sm:overflow-visible sm:whitespace-normal">
           {active ? <>
             <span className="text-slate-400">{new Date(active.time * 1000).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })} UTC</span>
-            {(['open', 'high', 'low', 'close'] as const).map(field => <span key={field}>{field[0].toUpperCase()} <b className="font-medium text-slate-200">{formatPrice(active[field])}</b></span>)}
+            {(['open', 'high', 'low', 'close'] as const).map(field => (
+              <span key={field}>
+                {field[0].toUpperCase()}{' '}
+                <b className="font-medium text-slate-200">
+                  {formatDisplayValue(active[field] * (displayUnit === 'mcap' ? tokenSupply : 1), displayUnit)}
+                </b>
+              </span>
+            ))}
             <span>Vol <b className="font-medium text-slate-200">{active.volumeUsd !== null ? formatVolume(active.volumeUsd) : '—'}</b></span>
           </> : <span>OHLCV awaits market data</span>}
         </div>

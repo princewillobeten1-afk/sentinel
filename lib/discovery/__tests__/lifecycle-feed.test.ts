@@ -4,9 +4,8 @@ import { INITIAL_REAL_TOKEN_RESERVES } from '@/lib/market/lifecycle/bonding-curv
 import type { BondingCurveState } from '@/lib/market/lifecycle/types';
 import { __resetLifecycleFeed } from '../lifecycle-feed';
 import { __resetLiveSolanaFeedForTests, getLiveDiscoveryTokens } from '../live-solana-feed';
-import { fetchJupiterFeed, fetchJupiterTokensByMint, mapJupiterToken, type JupiterToken } from '../jupiter-feed';
+import { fetchJupiterFeed, fetchJupiterTokensByMint, type JupiterToken } from '../jupiter-feed';
 import { fetchDexPairSnapshots } from '../dexscreener-market';
-import { getBitqueryRecentLaunches } from '../bitquery-launch-feed';
 
 vi.mock('../jupiter-feed', async (original) => ({
   ...await original<typeof import('../jupiter-feed')>(),
@@ -15,7 +14,6 @@ vi.mock('../jupiter-feed', async (original) => ({
 vi.mock('../dexscreener-market', async (original) => ({
   ...await original<typeof import('../dexscreener-market')>(), fetchDexPairSnapshots: vi.fn(),
 }));
-vi.mock('../bitquery-launch-feed', () => ({ getBitqueryRecentLaunches: vi.fn() }));
 
 const now = Date.parse('2026-09-21T10:00:00Z');
 const token = (id: string, extras: Partial<JupiterToken> = {}): JupiterToken => ({
@@ -38,7 +36,6 @@ beforeEach(() => {
   vi.mocked(fetchJupiterTokensByMint).mockImplementation(async (mints) => mints.map((mint) => token(mint)));
   vi.mocked(fetchJupiterFeed).mockResolvedValue([token('ordinary-dex', { launchpad: undefined })]);
   vi.mocked(fetchDexPairSnapshots).mockResolvedValue(new Map());
-  vi.mocked(getBitqueryRecentLaunches).mockResolvedValue([]);
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
@@ -150,17 +147,16 @@ describe('real Discover endpoint column selection', () => {
     expect(fetchJupiterFeed).toHaveBeenCalledWith('recent', { limit: 30 });
   });
 
-  it('uses measured Bitquery pump launches only when Jupiter recent is unavailable', async () => {
+  it('retains the last New Pairs snapshot if Jupiter becomes unavailable', async () => {
+    expect((await getLiveDiscoveryTokens({ section: 'new' })).map(row => row.mint)).toEqual(['ordinary-dex']);
+    await vi.advanceTimersByTimeAsync(5_000);
     vi.mocked(fetchJupiterFeed).mockRejectedValue(new Error('Jupiter HTTP 429'));
-    const raw = token('bitquery-launch', { createdAt: new Date(now - 5_000).toISOString(), liquidity: undefined });
-    const mapped = mapJupiterToken(raw);
-    mapped.lifecycleEvidence = { status: 'measured', source: 'bitquery-pump-creation', observedAt: raw.createdAt! };
-    vi.mocked(getBitqueryRecentLaunches).mockResolvedValue([{ raw, token: mapped }]);
-    const rows = await getLiveDiscoveryTokens({ section: 'new' });
-    expect(rows.map(row => row.mint)).toEqual(['bitquery-launch']);
-    expect(rows[0].liquidityUsd).toBe('');
-    expect(rows[0].lifecycleEvidence?.source).toBe('bitquery-pump-creation');
-    expect(getBitqueryRecentLaunches).toHaveBeenCalledOnce();
+    expect((await getLiveDiscoveryTokens({ section: 'new' })).map(row => row.mint)).toEqual(['ordinary-dex']);
+  });
+
+  it('does not fabricate New Pairs on a cold provider failure', async () => {
+    vi.mocked(fetchJupiterFeed).mockRejectedValue(new Error('Jupiter unavailable'));
+    expect(await getLiveDiscoveryTokens({ section: 'new' })).toEqual([]);
   });
 
   it('never repeats a known final-stretch or migrated mint in New Pairs', async () => {

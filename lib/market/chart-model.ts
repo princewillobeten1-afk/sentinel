@@ -24,7 +24,7 @@ export interface ChartSnapshot {
   hasMore: boolean;
   oldestTime: number | null;
   observedAt: number;
-  source: 'birdeye-ohlcv-v3' | 'bitquery-token-ohlcv' | 'bitquery-dex-ohlcv' | 'geckoterminal-pool-ohlcv';
+  source: 'birdeye-ohlcv-v3' | 'geckoterminal-pool-ohlcv';
   status: 'measured' | 'stale';
   reason?: string;
 }
@@ -33,7 +33,7 @@ export interface ChartFrame {
   timeframe: ChartTimeframe;
   candle: ChartCandle;
   observedAt: number;
-  source: 'birdeye-price-ws' | 'birdeye-ohlcv-rest' | 'bitquery-ohlcv-rest' | 'bitquery-dex-ohlcv-rest' | 'geckoterminal-pool-rest' | 'quicknode-pool-ws';
+  source: 'birdeye-price-ws' | 'birdeye-ohlcv-rest' | 'geckoterminal-pool-rest' | 'quicknode-pool-ws';
   market?: 'token-aggregate' | 'pool';
   poolAddress?: string;
   /** Live swap-derived OHLC is provisional until a provider reconciles it. */
@@ -68,7 +68,7 @@ export function mergeChartCandles(current: ChartCandle[], incoming: ChartCandle[
 export function parseChartFrame(value: unknown): ChartFrame | null {
   const frame = value as ChartFrame | null;
   if (!frame || typeof frame.address !== 'string' || !isSolanaMint(frame.address) || !isChartTimeframe(frame.timeframe)
-    || !['birdeye-price-ws', 'birdeye-ohlcv-rest', 'bitquery-ohlcv-rest', 'bitquery-dex-ohlcv-rest', 'geckoterminal-pool-rest', 'quicknode-pool-ws'].includes(frame.source)
+    || !['birdeye-price-ws', 'birdeye-ohlcv-rest', 'geckoterminal-pool-rest', 'quicknode-pool-ws'].includes(frame.source)
     || ((frame.source === 'quicknode-pool-ws' || frame.source === 'geckoterminal-pool-rest')
       ? frame.market !== 'pool' || !isSolanaMint(frame.poolAddress ?? '')
       : frame.market === 'pool')
@@ -88,7 +88,7 @@ export function chartPrecision(price: number): { precision: number; minMove: num
 export function parseChartSnapshot(value: unknown, address: string, timeframe: ChartTimeframe): ChartSnapshot | null {
   const s = value as ChartSnapshot | null;
   if (!s || s.address !== address || s.timeframe !== timeframe || s.chain !== 'solana' || s.currency !== 'usd'
-    || !((s.market === 'token-aggregate' && ['birdeye-ohlcv-v3', 'bitquery-token-ohlcv', 'bitquery-dex-ohlcv'].includes(s.source))
+    || !((s.market === 'token-aggregate' && ['birdeye-ohlcv-v3'].includes(s.source))
       || (s.market === 'pool' && s.source === 'geckoterminal-pool-ohlcv' && isSolanaMint(s.poolAddress ?? '')))
     || !Number.isFinite(s.observedAt)
     || s.observedAt <= 0 || !['measured', 'stale'].includes(s.status) || !Array.isArray(s.candles)

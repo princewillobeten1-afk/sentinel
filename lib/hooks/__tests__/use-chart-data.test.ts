@@ -27,7 +27,7 @@ it('labels real REST fallback Polling, never Live just because the socket connec
 it('backfills a sparse fallback with full pool history instead of polling two bars forever', async () => {
   const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';
   const history = Array.from({ length: 75 }, (_, index) => candle(time - (74 - index) * 900, 3 + index / 100));
-  const fetcher = vi.fn().mockResolvedValueOnce(response(snapshot([candle()], { source: 'bitquery-token-ohlcv' })))
+  const fetcher = vi.fn().mockResolvedValueOnce(response(snapshot([candle()], { source: 'birdeye-ohlcv-v3' })))
     .mockResolvedValue(response(snapshot(history, { market: 'pool', poolAddress,
       source: 'geckoterminal-pool-ohlcv' })));
   vi.stubGlobal('fetch', fetcher);
@@ -48,11 +48,11 @@ it('uses measured server-poll frames without labeling them provider WebSocket Li
   expect(result.current.status).toBe('Polling');
   expect(result.current.streamAt).toBe(0);
 });
-it('exposes Bitquery as the measured aggregate source without claiming a live stream', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(snapshot([candle()], { source: 'bitquery-token-ohlcv' }))));
+it('exposes Birdeye as the measured aggregate source without claiming a live stream', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(snapshot([candle()], { source: 'birdeye-ohlcv-v3' }))));
   const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
   await act(async () => {});
-  expect(result.current.source).toBe('bitquery-token-ohlcv');
+  expect(result.current.source).toBe('birdeye-ohlcv-v3');
   expect(result.current.status).toBe('Polling');
 });
 it('recovers from a failed history request when a measured server-poll candle arrives', async () => {

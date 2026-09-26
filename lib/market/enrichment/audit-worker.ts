@@ -8,7 +8,6 @@ import { saveTokenCardEvidence } from '@/lib/server/db/token-card-evidence-repos
 import { redis } from '@/lib/server/redis';
 import { currentEvidence } from '@/lib/discovery/audit-freshness';
 import { resolveOwnershipFallback, backfillMissingProfileFields, hasOwnershipFallback } from './ownership-fallback';
-import { bitqueryOwnershipHealth } from './bitquery-ownership';
 
 /**
  * Fills the ownership audit behind the feed, off the fast path.
@@ -518,7 +517,6 @@ export function auditStats() {
     circuitRetryAfterMs: circuitOpen() ? Math.max(0, state.circuitOpenUntil - Date.now()) : 0,
     rateLimitBackoffMs: state.rateLimitBackoffMs,
     requestGapMs: REQUEST_GAP_MS,
-    bitqueryOwnership: bitqueryOwnershipHealth(),
   };
 }
 

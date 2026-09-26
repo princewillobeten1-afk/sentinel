@@ -2,19 +2,15 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('@/lib/server/env', () => ({ env: { BIRDEYE_API_KEY: 'test-server-secret' } }));
 vi.mock('@/lib/market/enrichment/birdeye-limiter', () => ({ acquireBirdeyeSlot: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../geckoterminal-chart', () => ({ getGeckoChartHistory: vi.fn() }));
-vi.mock('../bitquery-chart', () => ({ getBitqueryChartHistory: vi.fn() }));
-vi.mock('../bitquery-dex-chart', () => ({ getBitqueryDexChartHistory: vi.fn() }));
 import { getChartHistory, resetChartHistoryForTests } from '../chart-history';
 import { getGeckoChartHistory } from '../geckoterminal-chart';
-import { getBitqueryChartHistory } from '../bitquery-chart';
-import { getBitqueryDexChartHistory } from '../bitquery-dex-chart';
 import { chartPrecision, mergeChartCandles, parseProviderCandle, parseChartTarget } from '../chart-model';
 const mint = 'So11111111111111111111111111111111111111112';
 const time = 1790089560;
 const row = (unix_time = time) => ({ address: mint, unix_time, o: 116.50, h: 117.17, l: 116.44, c: 117.14,
   v: 34232.52, v_usd: 4002689.17, type: '1m', currency: 'usd' });
 const ok = (items: unknown[] = [row()]) => ({ ok: true, json: async () => ({ success: true, data: { items } }) });
-beforeEach(() => { resetChartHistoryForTests(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-22T16:00:00Z')); vi.stubEnv('BIRDEYE_API_KEY', 'test-server-secret'); vi.mocked(getGeckoChartHistory).mockReset().mockResolvedValue(null); vi.mocked(getBitqueryChartHistory).mockReset().mockResolvedValue(null); vi.mocked(getBitqueryDexChartHistory).mockReset().mockResolvedValue(null); });
+beforeEach(() => { resetChartHistoryForTests(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-22T16:00:00Z')); vi.stubEnv('BIRDEYE_API_KEY', 'test-server-secret'); vi.mocked(getGeckoChartHistory).mockReset().mockResolvedValue(null); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 it('requests real unpadded USD history with a server-only key, deduplicates inflight requests and caches', async () => {
@@ -56,31 +52,23 @@ it('never fabricates candles for an empty successful response', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok([])));
   expect(await getChartHistory(mint, '1m')).toMatchObject({ candles: [], hasMore: false, status: 'measured' });
 });
-it('uses measured Bitquery token-wide candles when Birdeye returns no bars', async () => {
+it('falls back for an empty initial chart without mixing pool bars into exhausted aggregate history', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok([])));
-  vi.mocked(getBitqueryChartHistory).mockResolvedValue({ address: mint, chain: 'solana', timeframe: '1m', currency: 'usd',
-    market: 'token-aggregate', source: 'bitquery-token-ohlcv', status: 'measured', observedAt: Date.now(),
+  vi.mocked(getGeckoChartHistory).mockResolvedValue({ address: mint, chain: 'solana', timeframe: '1m', currency: 'usd',
+    market: 'pool', poolAddress: '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq',
+    source: 'geckoterminal-pool-ohlcv', status: 'measured', observedAt: Date.now(),
     candles: [{ time, open: 2, high: 3, low: 1, close: 2.5, volume: null, volumeUsd: 10 }],
-    oldestTime: time, hasMore: false });
-  expect(await getChartHistory(mint, '1m')).toMatchObject({ source: 'bitquery-token-ohlcv', candles: [{ volumeUsd: 10 }] });
-  expect(getGeckoChartHistory).not.toHaveBeenCalled();
-});
-it('uses Bitquery raw DEX candles when the token-wide price cube has no new-launch bars', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok([])));
-  vi.mocked(getBitqueryDexChartHistory).mockResolvedValue({ address: mint, chain: 'solana', timeframe: '1m', currency: 'usd',
-    market: 'token-aggregate', source: 'bitquery-dex-ohlcv', status: 'measured', observedAt: Date.now(),
-    candles: [{ time, open: 2, high: 3, low: 1, close: 2.5, volume: 100, volumeUsd: 10 }],
-    oldestTime: time, hasMore: false });
-  expect(await getChartHistory(mint, '1m')).toMatchObject({ source: 'bitquery-dex-ohlcv', candles: [{ volume: 100 }] });
-  expect(getGeckoChartHistory).not.toHaveBeenCalled();
-});
-it('uses Bitquery before switching to a pool fallback after Birdeye quota exhaustion', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 429, headers: new Headers() }));
-  vi.mocked(getBitqueryChartHistory).mockResolvedValue({ address: mint, chain: 'solana', timeframe: '15m', currency: 'usd',
-    market: 'token-aggregate', source: 'bitquery-token-ohlcv', status: 'measured', observedAt: Date.now(),
-    candles: [{ time: Math.floor(time / 900) * 900, open: 2, high: 3, low: 1, close: 2.5, volume: null, volumeUsd: 10 }],
-    oldestTime: Math.floor(time / 900) * 900, hasMore: false });
-  expect(await getChartHistory(mint, '15m')).toMatchObject({ source: 'bitquery-token-ohlcv', market: 'token-aggregate' });
+    oldestTime: time, hasMore: true });
+  expect(await getChartHistory(mint, '1m')).toMatchObject({
+    source: 'geckoterminal-pool-ohlcv', market: 'pool', candles: [{ volumeUsd: 10 }],
+  });
+  expect(getGeckoChartHistory).toHaveBeenCalledWith(mint, '1m', 150, undefined);
+  // An exhausted primary historical page remains exhausted; do not stitch pool
+  // history into a token-aggregate series.
+  expect(await getChartHistory(mint, '1m', 150, time)).toMatchObject({
+    source: 'birdeye-ohlcv-v3', market: 'token-aggregate', candles: [], hasMore: false,
+  });
+  expect(getGeckoChartHistory).toHaveBeenCalledTimes(1);
 });
 it('rejects malformed provider payloads rather than pretending the market is empty', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok([{ ...row(), address: 'wrong' }])));

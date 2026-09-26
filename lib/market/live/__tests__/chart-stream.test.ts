@@ -58,13 +58,13 @@ it('fans out only measured REST candles and does not overwrite a fresh WebSocket
   expect(publishPolledCandle({ ...snapshot, observedAt: observedAt + 1000 })).toBeNull();
   expect(getChartFrame(`${mint}:15m`)?.source).toBe('birdeye-price-ws');
 });
-it('labels Bitquery REST reconciliation without treating it as a live socket', () => {
+it('labels Birdeye REST reconciliation without treating it as a live socket', () => {
   noteChartTopics([topic], 1);
   const snapshot = { address: mint, timeframe: '15m' as const, chain: 'solana' as const, currency: 'usd' as const,
-    market: 'token-aggregate' as const, source: 'bitquery-token-ohlcv' as const,
+    market: 'token-aggregate' as const, source: 'birdeye-ohlcv-v3' as const,
     observedAt: Date.now(), status: 'measured' as const, hasMore: false, oldestTime: time,
     candles: [{ time, open: 2, high: 4, low: 1, close: 3, volume: null, volumeUsd: 30 }] };
-  expect(publishPolledCandle(snapshot)).toMatchObject({ source: 'bitquery-ohlcv-rest', candle: { volume: null, volumeUsd: 30 } });
+  expect(publishPolledCandle(snapshot)).toMatchObject({ source: 'birdeye-ohlcv-rest', candle: { volume: null, volumeUsd: 30 } });
 });
 it('streams provisional pool prices without inventing volume and reconciles through the same pool', () => {
   const poolAddress = '844a7Qqt5h8La7w3ZBqxUMbC6Hzoan4JWijeLqXJd6tq';

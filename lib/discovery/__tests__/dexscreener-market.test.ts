@@ -8,7 +8,7 @@ vi.mock('@/lib/market/live/card-cache', () => ({
 
 beforeEach(() => { vi.clearAllMocks(); cards.get.mockReturnValue(undefined); });
 
-it('fills measured five-minute transactions when Birdeye and Bitquery have no value', async () => {
+it('fills measured five-minute transactions when Birdeye has no value', async () => {
   const mint = '4NLjoZAt6Sd47oTs2hb2JRA7qiJzHmWQfDeNvtJPpump';
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [{
     chainId: 'solana', baseToken: { address: mint }, priceUsd: '0.001',
