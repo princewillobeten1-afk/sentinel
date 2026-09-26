@@ -118,7 +118,7 @@ export function TransactionPreviewModal({
               <Route className="h-3.5 w-3.5 text-sky-400" />
               <span>Smart Order Route</span>
             </span>
-            <span className="text-2xs text-slate-500">{quote.provider}</span>
+            <span className="text-2xs text-slate-500">Automatic routing</span>
           </div>
 
           <div className="flex items-center gap-2 text-2xs text-slate-300">
@@ -127,7 +127,7 @@ export function TransactionPreviewModal({
             </span>
             <span className="text-slate-500">→</span>
             <span className="px-2 py-0.5 rounded bg-white/5 text-slate-400">
-              {quote.route[0]?.dex || 'Provider route unavailable'}
+              {quote.route[0]?.dex || 'Route unavailable'}
             </span>
             <span className="text-slate-500">→</span>
             <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">

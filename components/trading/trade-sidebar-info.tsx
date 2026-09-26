@@ -78,7 +78,7 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
         evidence={data.ownershipEvidence?.status === 'measured' || data.ownershipEvidence?.status === 'stale'
           ? data.ownershipEvidence : data.marketEvidence ?? data.ownershipEvidence} loading={loading} />
       <AuditTile label="Pro Traders" value={data.proTradersCount} icon={Trophy} percent={false} evidence={data.ownershipEvidence} loading={loading} />
-      <div className="flex flex-col items-center justify-center gap-1 rounded border border-slate-800 p-1" title="Approved DexScreener profile order; not a boost.">
+      <div className="flex flex-col items-center justify-center gap-1 rounded border border-slate-800 p-1" title="Approved token profile order; not a boost.">
         <span className={`flex items-center gap-1 ${data.isDexPaid === true ? 'text-emerald-400' : data.isDexPaid === false ? 'text-rose-400' : 'text-slate-500'}`}><BadgeDollarSign className="h-3 w-3" />{typeof data.isDexPaid !== 'boolean' ? '—' : data.isDexPaid ? 'Paid' : 'Unpaid'}</span>
         <span className="text-slate-500">Dex Paid</span>
       </div>

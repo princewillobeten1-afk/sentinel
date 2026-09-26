@@ -55,18 +55,18 @@ export function FooterStatusBar() {
 
         const body = await res.json();
         const health = body?.data ?? body;
-        const helius = health?.helius ?? {};
+        const stream = health?.stream ?? {};
 
-        const lastAt = helius.lastMessageAt ? Date.parse(helius.lastMessageAt) : NaN;
+        const lastAt = stream.lastMessageAt ? Date.parse(stream.lastMessageAt) : NaN;
         const ageSec = Number.isFinite(lastAt) ? Math.max(0, (Date.now() - lastAt) / 1000) : null;
 
         const marketHealthy = health?.capabilities?.marketStreaming?.state === 'healthy';
         const state: 'LIVE' | 'DEGRADED' | 'DELAYED' | 'RECONNECTING' | 'OFFLINE' =
-          helius.state === 'open'
+          stream.state === 'open'
             ? ageSec !== null && ageSec > 30
               ? 'DELAYED'
               : marketHealthy ? 'LIVE' : 'DEGRADED'
-            : helius.state === 'connecting'
+            : stream.state === 'connecting'
               ? 'RECONNECTING'
               : 'OFFLINE';
 

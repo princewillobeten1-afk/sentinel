@@ -234,8 +234,35 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
     let disposed = false;
     let disposeChart: (() => void) | undefined;
     // KLineChart requires a mounted DOM container. Keep the rendering package out of server evaluation.
-    void import('klinecharts').then(({ init, dispose, utils }) => {
+    void import('klinecharts').then(({ init, dispose, utils, registerYAxis }) => {
       if (disposed) return;
+      try {
+        registerYAxis({
+          name: 'sentinel_mcap_y_axis',
+          displayValueToText: (value: number) => {
+            if (!Number.isFinite(value)) return '$0';
+            const abs = Math.abs(value);
+            if (abs >= 1e9) return '$' + (value / 1e9).toFixed(2) + 'B';
+            if (abs >= 1e6) return '$' + (value / 1e6).toFixed(2) + 'M';
+            if (abs >= 1e3) return '$' + (value / 1e3).toFixed(1) + 'K';
+            return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+          },
+        });
+        registerYAxis({
+          name: 'sentinel_price_y_axis',
+          displayValueToText: (value: number, precision: number) => {
+            if (!Number.isFinite(value)) return '$0';
+            if (value < 0.0001 && value > 0) {
+              return '$' + value.toFixed(Math.max(6, Math.min(precision || 8, 10)));
+            }
+            return '$' + value.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: Math.max(2, Math.min(precision || 6, 8)),
+            });
+          },
+        });
+      } catch { /* already registered */ }
+
       const api = init(element, {
         layout: {
           barSpaceLimit: { min: 2, max: 45 },
@@ -286,6 +313,10 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
       });
       if (!api) { setChartError('The chart could not initialize.'); return; }
       chart.current = api;
+      api.overrideYAxis({
+        name: displayUnit === 'mcap' ? 'sentinel_mcap_y_axis' : 'sentinel_price_y_axis',
+        paneId: 'candle_pane',
+      });
       const syncChartSize = () => api.resize();
       const observer = new ResizeObserver(syncChartSize);
       observer.observe(element);
@@ -498,8 +529,17 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
               {hoveredIndex >= 0 ? (displayUnit === 'mcap' ? 'Selected MCAP' : 'Selected close') : (displayUnit === 'mcap' ? 'Market Cap' : 'Last close')}
             </div>
-            <div className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
-              {active ? formatDisplayValue(active.close * (displayUnit === 'mcap' ? tokenSupply : 1), displayUnit) : '—'}
+            <div className="flex items-baseline gap-2.5">
+              <span className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
+                {active ? formatDisplayValue(active.close * (displayUnit === 'mcap' ? tokenSupply : 1), displayUnit) : '—'}
+              </span>
+              {active && (
+                <span className="font-mono text-xs text-slate-400 font-medium">
+                  {displayUnit === 'mcap'
+                    ? `Price: ${formatDisplayValue(active.close, 'price')}`
+                    : `MCAP: ${formatDisplayValue(active.close * tokenSupply, 'mcap')}`}
+                </span>
+              )}
             </div>
           </div>
           {change !== null && <span className={`mb-1 rounded px-1.5 py-0.5 font-numeric text-xs font-semibold ${change >= 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}

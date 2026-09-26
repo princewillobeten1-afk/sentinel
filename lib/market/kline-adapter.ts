@@ -9,9 +9,12 @@ export function toKLineData(
   candle: ChartCandle,
   volumeUnit: 'token' | 'usd' = 'token',
   displayUnit: PriceDisplayUnit = 'price',
-  supply = 1_000_000_000
+  supply?: number
 ): KLineData {
-  const multiplier = displayUnit === 'mcap' && supply > 0 ? supply : 1;
+  if (displayUnit === 'mcap' && !(typeof supply === 'number' && Number.isFinite(supply) && supply > 0)) {
+    throw new Error('Market-cap conversion requires a measured supply basis.');
+  }
+  const multiplier = displayUnit === 'mcap' ? supply! : 1;
   const chartVolume = volumeUnit === 'usd' ? candle.volumeUsd : candle.volume;
   return {
     timestamp: candle.time * 1000,
@@ -30,7 +33,7 @@ export function toKLineDataList(
   candles: ChartCandle[],
   volumeUnit: 'token' | 'usd' = 'token',
   displayUnit: PriceDisplayUnit = 'price',
-  supply = 1_000_000_000
+  supply?: number
 ): KLineData[] {
   const byTimestamp = new Map(candles.map(candle => {
     const bar = toKLineData(candle, volumeUnit, displayUnit, supply);

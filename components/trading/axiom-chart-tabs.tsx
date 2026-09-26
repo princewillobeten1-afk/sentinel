@@ -137,7 +137,7 @@ export interface MapClusterNode {
   // `/bubble-map` only ever distinguishes a pool account from any other
   // holder -- see the legend fix above. `dev`/`whale`/`insider`/`sniper`
   // were never actually assigned by the backend.
-  tag: 'dex' | 'holder';
+  tag: 'dex' | 'holder' | 'dev';
   address: string;
   balanceTokens: string;
   supplyPct: number | null;
@@ -1376,7 +1376,10 @@ export function AxiomChartTabs({
             <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-sentinel-950 border border-sentinel-800">
               <button
                 type="button"
-                onClick={() => setInstantTradeSide('buy')}
+                onClick={() => {
+                  setInstantTradeSide('buy');
+                  onQuickTrade?.('buy', parseFloat(instantSolAmount) || 0.1);
+                }}
                 className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
                   instantTradeSide === 'buy'
                     ? 'bg-emerald-500 text-slate-950 shadow-glow-buy'
@@ -1388,7 +1391,10 @@ export function AxiomChartTabs({
               </button>
               <button
                 type="button"
-                onClick={() => setInstantTradeSide('sell')}
+                onClick={() => {
+                  setInstantTradeSide('sell');
+                  onQuickTrade?.('sell', parseFloat(instantSolAmount) || 0.1);
+                }}
                 className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
                   instantTradeSide === 'sell'
                     ? 'bg-rose-500 text-white shadow-glow-sell'
@@ -1416,7 +1422,10 @@ export function AxiomChartTabs({
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setInstantSolAmount(preset)}
+                        onClick={() => {
+                          setInstantSolAmount(preset);
+                          onQuickTrade?.('buy', parseFloat(preset) || 0.1);
+                        }}
                         className={`px-2 py-1.5 rounded-lg text-xs font-bold font-mono transition ${
                           instantSolAmount === preset
                             ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-glow-buy'
@@ -1702,13 +1711,14 @@ export function AxiomChartTabs({
                     <th className="py-1.5 px-2">Total Value</th>
                     <th className="py-1.5 px-2">Maker</th>
                     <th className="py-1.5 px-2 text-right">Age</th>
+                    <th className="py-1.5 px-2 text-center">Trade</th>
                     <th className="py-1.5 px-2 text-right">Tx</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sentinel-800/60">
                   {filteredTrades.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-xs font-mono text-slate-500">
+                      <td colSpan={9} className="py-8 text-center text-xs font-mono text-slate-500">
                         {tradesState === 'loading'
                           ? 'Loading trades…'
                           : tradesState === 'error'
@@ -1719,26 +1729,40 @@ export function AxiomChartTabs({
                       </td>
                     </tr>
                   )}
-                  {filteredTrades.map((tr) => (
+                  {filteredTrades.map((tr) => {
+                    const parsedSol = Math.max(0.01, parseFloat((tr.amountSol || '').replace(/[^0-9.]/g, '')) || 0.1);
+                    return (
                     <tr key={tr.id} className="hover:bg-sentinel-800/50 transition-colors group">
                       <td className="py-2 px-2 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 font-bold font-mono px-2 py-0.5 rounded text-2xs uppercase ${
-                            tr.type === 'buy'
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                          }`}
+                        <button
+                          type="button"
+                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
+                          title={`Click to fill ${tr.type.toUpperCase()} ${tr.amountSol} SOL in Order Form`}
+                          className="cursor-pointer focus:outline-none"
                         >
-                          {tr.type === 'buy' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                          {tr.type}
-                        </span>
+                          <span
+                            className={`inline-flex items-center gap-1 font-bold font-mono px-2 py-0.5 rounded text-2xs uppercase transition active:scale-95 ${
+                              tr.type === 'buy'
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 hover:border-emerald-500/50'
+                                : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 hover:border-rose-500/50'
+                            }`}
+                          >
+                            {tr.type === 'buy' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                            {tr.type}
+                          </span>
+                        </button>
                       </td>
                       <td className="py-2 px-2 font-bold text-slate-200">{tr.price}</td>
                       <td className="py-2 px-2">
-                        <div className="flex items-center gap-1 font-bold text-white">
-                        {tr.amountSol}
-                        {tr.isWhale && <span className="text-2xs" title="Whale Order">🐋</span>}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
+                          title={`Click to load ${parsedSol} SOL into Order Form`}
+                          className="flex items-center gap-1 font-bold text-white hover:text-sky-300 transition cursor-pointer"
+                        >
+                          <span>{tr.amountSol}</span>
+                          {tr.isWhale && <span className="text-2xs" title="Whale Order">🐋</span>}
+                        </button>
                       </td>
                       <td className="py-2 px-2 text-slate-300 font-mono text-2xs">{tr.tokens}</td>
                       <td className="py-2 px-2 font-bold text-slate-100">{currencyMode === 'USD' ? tr.valueUsd : tr.amountSol}</td>
@@ -1756,6 +1780,21 @@ export function AxiomChartTabs({
                         </button>
                       </td>
                       <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{tr.timestamp ? tapeAge(tr.timestamp) : tr.time}</td>
+                      <td className="py-2 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
+                          title={`Quick Trade: Load ${tr.type.toUpperCase()} ${parsedSol} SOL into Order Form`}
+                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition shadow-sm ${
+                            tr.type === 'buy'
+                              ? 'bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30'
+                          }`}
+                        >
+                          <Zap className="h-2.5 w-2.5 fill-current" />
+                          <span>{tr.type === 'buy' ? 'Buy' : 'Sell'}</span>
+                        </button>
+                      </td>
                       <td className="py-2 px-2 text-right font-mono text-2xs">
                         {/* A trade still confirming has no signature yet, and
                             an explorer link built from a fabricated one leads
@@ -1775,7 +1814,8 @@ export function AxiomChartTabs({
                         )}
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>
@@ -2148,6 +2188,7 @@ export function AxiomChartTabs({
                       these with no wallet ever classified into them. */}
                   <div className="flex items-center gap-2 text-2xs font-mono text-slate-400">
                     <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> DEX Pool</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-400" /> Dev / Creator</span>
                     <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" /> Holder</span>
                   </div>
                 </div>
@@ -2159,15 +2200,40 @@ export function AxiomChartTabs({
                       <pattern id="grid_tabs" width="20" height="20" patternUnits="userSpaceOnUse">
                         <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
                       </pattern>
+                      <marker id="inflow_arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 8 5 L 0 9 z" fill="#a855f7" />
+                      </marker>
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid_tabs)" />
 
-                    {/* No connection lines: drawing one between two wallets
-                        asserts a funding relationship between them, and
-                        `/bubble-map` explicitly does not determine that --
-                        see its `fundingSource: null`. These three used to be
-                        fixed coordinates drawn for every token regardless of
-                        which wallets, if any, were actually related. */}
+                    {/* Real Genesis Inflow Vectors for Funded Wallets */}
+                    {mapClusterNodes.filter((n) => Boolean(n.fundingSource)).map((node) => (
+                      <g key={`inflow_${node.id}`} className="transition-opacity hover:opacity-100">
+                        <line
+                          x1={node.x - 48}
+                          y1={node.y - 36}
+                          x2={node.x - (node.r + 3)}
+                          y2={node.y - 3}
+                          stroke="#a855f7"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                          markerEnd="url(#inflow_arrow)"
+                          className="opacity-75 animate-pulse"
+                        />
+                        <circle cx={node.x - 48} cy={node.y - 36} r="3" fill="#a855f7" />
+                        <text
+                          x={node.x - 50}
+                          y={node.y - 42}
+                          fill="#c084fc"
+                          fontSize="7.5"
+                          fontWeight="bold"
+                          fontFamily="monospace"
+                          textAnchor="middle"
+                        >
+                          Genesis Inflow
+                        </text>
+                      </g>
+                    ))}
 
                     {/* Render Cluster Bubbles */}
                     {mapClusterNodes.map((node) => {
@@ -2250,11 +2316,27 @@ export function AxiomChartTabs({
                           <span className="text-slate-400">Value (USD):</span>
                           <span className="text-slate-500 font-bold">{selectedMapNode.valueUsd ?? 'Not available'}</span>
                         </div>
-                        <div className="flex justify-between pt-1 border-t border-sentinel-800">
+                        <div className="flex justify-between items-center pt-1 border-t border-sentinel-800">
                           <span className="text-slate-400">Inflow Route:</span>
-                          <span className="text-slate-500 text-2xs">
-                            {selectedMapNode.fundingSource ?? 'Not mapped'}
-                          </span>
+                          {selectedMapNode.fundingSource ? (
+                            <span className="text-purple-300 font-mono text-2xs font-bold inline-flex items-center gap-1">
+                              <span>{selectedMapNode.fundingSource.slice(0, 4)}…{selectedMapNode.fundingSource.slice(-4)}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(selectedMapNode.fundingSource!)}
+                                className="hover:text-white transition"
+                                title="Copy genesis funder address"
+                              >
+                                {copiedAddress === selectedMapNode.fundingSource ? (
+                                  <Check className="h-2.5 w-2.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="h-2.5 w-2.5 text-slate-400 hover:text-white" />
+                                )}
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 text-2xs">Not mapped</span>
+                          )}
                         </div>
                       </div>
                     </div>

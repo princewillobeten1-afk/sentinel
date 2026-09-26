@@ -1,5 +1,7 @@
 import { ApiError } from './errors';
 import { logger } from './logger';
+import { randomUUID } from 'node:crypto';
+import { publicData, publicMessage } from './public-data';
 
 export type ApiResponse<T> = {
   success: boolean;
@@ -12,7 +14,7 @@ export type ApiResponse<T> = {
 };
 
 export function jsonResponse<T>(data: T, status = 200, headers?: Record<string, string>) {
-  const body = JSON.stringify({ success: true, data }, (_, value) =>
+  const body = JSON.stringify({ success: true, data: publicData(data) }, (_, value) =>
     typeof value === 'bigint' ? value.toString() : value,
   );
   return new Response(body, {
@@ -22,17 +24,19 @@ export function jsonResponse<T>(data: T, status = 200, headers?: Record<string, 
 }
 
 export function errorResponse(error: ApiError | Error) {
+  const reference = randomUUID();
   if (error instanceof ApiError) {
-    logger.warn('API error response', { statusCode: error.statusCode, code: error.code, message: error.message });
+    logger.warn('API error response', { reference, statusCode: error.statusCode, code: error.code, message: error.message });
 
     return new Response(
       JSON.stringify(
         {
           success: false,
           error: {
-            message: error.message,
-            code: error.code,
-            details: error.details,
+            message: publicMessage(error.message),
+            code: publicMessage(error.code, 'DATA_UNAVAILABLE'),
+            reference,
+            details: publicData(error.details),
           },
         },
         (_, value) => (typeof value === 'bigint' ? value.toString() : value),
@@ -44,7 +48,7 @@ export function errorResponse(error: ApiError | Error) {
     );
   }
 
-  logger.error('Unhandled API error', { message: error instanceof Error ? error.message : String(error) });
+  logger.error('Unhandled API error', { reference, message: error instanceof Error ? error.message : String(error) });
 
   return new Response(
     JSON.stringify({
@@ -52,6 +56,7 @@ export function errorResponse(error: ApiError | Error) {
       error: {
         message: 'Internal server error',
         code: 'INTERNAL_ERROR',
+        reference,
       },
     }),
     {

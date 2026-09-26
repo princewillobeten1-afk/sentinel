@@ -64,7 +64,7 @@ export function AdminTradingTab({ onInspectOrder }: AdminTradingTabProps) {
 
           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-white">Jupiter Smart Router</span>
+              <span className="text-xs font-bold text-white">Smart Router</span>
               <span className="text-xs font-mono text-sky-400">36.4%</span>
             </div>
             <p className="text-2xs text-slate-500 font-mono">Latency: 145ms • Errors: 0.004%</p>

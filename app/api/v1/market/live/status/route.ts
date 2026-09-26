@@ -46,7 +46,18 @@ export async function GET() {
   try {
     marketStreamManager.start();
     const slot = await getCurrentSlot();
-    return jsonResponse({ ...marketStreamManager.getHealth(), slot, rugcheck: rugcheckAccessHealth() });
+    const health = marketStreamManager.getHealth();
+    const audit = rugcheckAccessHealth();
+    return jsonResponse({ slot, startedAt: health.startedAt,
+      stream: { state: health.helius.state, lastMessageAt: health.helius.lastMessageAt },
+      capabilities: {
+        marketStreaming: { state: health.capabilities.marketStreaming.state },
+        blockchain: { state: health.capabilities.chainEvents.state },
+        chart: { state: health.capabilities.chartLive.state },
+        audit: { state: audit.authenticatedAccess === 'verified' ? 'healthy' : 'degraded',
+          lastSuccessAt: audit.lastSuccessAt ?? null },
+      },
+    });
   } catch (error) {
     return errorResponse(error instanceof Error ? error : new ApiError('Failed to read stream status', 500));
   }

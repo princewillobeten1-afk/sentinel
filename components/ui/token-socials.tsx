@@ -203,14 +203,14 @@ export function TokenSocials({
       {/* DexScreener Chart Link (if mint provided) */}
       {mint && (
         <a
-          href={`https://dexscreener.com/solana/${mint}`}
+          href={`/trade/solana/${mint}`}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition text-2xs font-mono"
-          title="View on DexScreener"
+          title="Open token chart"
         >
           <BarChart2 className="h-2.5 w-2.5 text-emerald-400" />
-          {showHandles && <span className="font-semibold">DexScreener</span>}
+          {showHandles && <span className="font-semibold">Chart</span>}
         </a>
       )}
 

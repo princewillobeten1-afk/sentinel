@@ -228,9 +228,6 @@ export function formatBoostCountdown(remainingSec: number | undefined | null): s
   return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
-/**
- * Keep provider provenance readable without exposing raw internal route slugs.
- */
 export function formatDisplaySource(source?: string | null): string {
   if (!source) return 'On-chain';
   const label = (part: string): string => {

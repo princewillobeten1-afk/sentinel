@@ -271,9 +271,9 @@ export function TradingPanel({
       </div>
       <div className="flex flex-wrap gap-x-2 text-[11px] text-slate-500">
         <span title="Network fee from the current quote">Fee {quote?.networkFeeSol != null ? `${new Decimal(quote.networkFeeSol).formatToken(6)} SOL` : '—'}</span>
-        <span title="Custom priority fees are not supported by the current quote API">Priority: provider</span>
+        <span title="Priority fees are calculated automatically">Priority: auto</span>
         <span title="Jito tip configuration is not connected">Tip: —</span>
-        <span title="MEV protection status is not supplied by the execution provider">MEV: —</span>
+        <span title="MEV protection status is not available for this route">MEV: —</span>
       </div>
       {showSettings && <div className="mt-2 space-y-2 rounded-md border border-sentinel-800 p-2">
         <span className="text-[11px] text-slate-400">Slippage tolerance</span>
@@ -284,7 +284,7 @@ export function TradingPanel({
           <button type="button" aria-pressed={isCustomSlippage} onClick={() => setIsCustomSlippage(true)} className="rounded border border-sentinel-800 text-[11px] text-slate-300">Custom</button>
         </div>
         {isCustomSlippage && <Input aria-label="Custom slippage percent" type="number" min="0.01" max="50" step="0.1" value={customSlippage} onChange={e => setCustomSlippage(e.target.value)} placeholder="Slippage %" />}
-        <p className="text-[11px] text-slate-500">Priority fees are provider-managed. Custom tips and MEV controls are not connected.</p>
+        <p className="text-[11px] text-slate-500">Priority fees are calculated automatically. Custom tips and MEV controls are not connected.</p>
       </div>}
       {!validSlippage && <p role="alert" className="mt-1 text-[11px] text-amber-400">Enter slippage greater than 0 and at most 15%.</p>}
       {isHighSlippage && <p role="status" className="mt-1 text-[11px] text-amber-400">High slippage increases execution risk.</p>}
@@ -312,7 +312,7 @@ export function TradingPanel({
           Quote details<ChevronDown className="h-3 w-3" />
         </button>
         {showAdvancedRoute && <dl className="mt-1 grid grid-cols-2 gap-1 text-slate-400">
-          <dt>Provider</dt><dd className="text-right">{quote.provider}</dd>
+          <dt>Routing</dt><dd className="text-right">Automatic</dd>
           <dt>Minimum received</dt><dd className="text-right">{new Decimal(quote.minimumReceived).formatToken(4)}</dd>
           <dt>Price impact</dt><dd className="text-right">{quote.priceImpactMeasured === false ? 'Unavailable' : `${quote.priceImpact}%`}</dd>
         </dl>}

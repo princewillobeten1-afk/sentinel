@@ -96,8 +96,8 @@ export function TradeDetailsModal({ isOpen, onClose, trade }: TradeDetailsModalP
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-slate-400">Provider:</span>
-            <span className="text-slate-200 font-bold">{trade.provider}</span>
+            <span className="text-slate-400">Execution:</span>
+            <span className="text-slate-200 font-bold">On-chain swap</span>
           </div>
         </div>
 

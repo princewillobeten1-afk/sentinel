@@ -14,6 +14,7 @@ import { parseTopic, TOPIC_SCOPES } from './topics';
 import { liveMarketCache } from '@/lib/market/live/live-cache';
 import { getTokenCardPatch } from '@/lib/market/live/card-cache';
 import { getChartFrame, noteChartTopics } from '@/lib/market/live/chart-stream';
+import { publicData, publicMessage } from '@/lib/server/public-data';
 import { parseChartTarget } from '@/lib/market/chart-model';
 import {
   noteClientConnected,
@@ -82,6 +83,10 @@ if (process.env.NODE_ENV !== 'production') globalForWsConnections.__sentinelWsCo
 
 function send(connection: Connection, message: ServerMessage): void {
   if (connection.socket.readyState !== 1 /* OPEN */) return;
+  // Project before buffering, so live events, replay and backpressure drains
+  // all cross exactly the same public-data boundary.
+  if (message.type === 'event') message = { ...message, data: publicData(message.data) };
+  else if (message.type === 'error') message = { ...message, message: publicMessage(message.message) };
 
   // Only `event` payloads are ever coalesced — control-plane messages
   // (welcome/subscribed/error/pong) always go out immediately.
