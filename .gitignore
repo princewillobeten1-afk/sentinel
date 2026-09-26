@@ -3,7 +3,9 @@ node_modules/
 
 # Next.js build output
 .next/
+.next-dev/
 .next-ui-preview/
+.next-recovery-*/
 out/
 dist/
 build/
@@ -24,6 +26,7 @@ build/
 # Test/build artifacts
 coverage/
 artifacts/ui-cleanup/
+artifacts/ui-audit/
 *.tsbuildinfo
 
 # Editor/OS noise

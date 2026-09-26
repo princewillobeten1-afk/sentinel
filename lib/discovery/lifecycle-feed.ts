@@ -1,11 +1,10 @@
 import 'server-only';
 
-import { CURVE_FRESHNESS_MS, finalStretch, getLifecycle, migrated } from '@/lib/market/lifecycle/lifecycle-engine';
+import { CURVE_FRESHNESS_MS, FINAL_STRETCH_LIMIT, MIGRATED_LIMIT, finalStretch, getLifecycle, migrated } from '@/lib/market/lifecycle/lifecycle-engine';
 import type { TokenLifecycle } from '@/lib/market/lifecycle/types';
 import { fetchJupiterTokensByMint, mapJupiterToken, type JupiterToken } from './jupiter-feed';
 import { fetchDexPairSnapshots, finite, type DexPair } from './dexscreener-market';
 import type { DiscoveryToken } from './types';
-import { ApiError } from '@/lib/server/errors';
 
 type Section = 'migrating' | 'graduated';
 // Live card patches update fast fields. This lookup decorates verified lifecycle
@@ -139,16 +138,19 @@ export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecy
     migrationSignature: undefined, migratedAt: undefined, migratedPool: undefined,
     migratedDex: padConfig.destinationDex,
     lifecycleEvidence: {
-      status: 'measured', source: 'solana-bonding-curve',
+      status: Date.now() - curve.readAt <= CURVE_FRESHNESS_MS ? 'measured' : 'stale',
+      source: 'solana-bonding-curve',
       observedAt: new Date(curve.readAt).toISOString(),
       expiresAt: new Date(curve.readAt + CURVE_FRESHNESS_MS).toISOString(),
+      ...(Date.now() - curve.readAt > CURVE_FRESHNESS_MS
+        ? { reason: 'The last verified bonding-curve reading is delayed.' } : {}),
     },
   };
 }
 
 export async function getLifecycleDiscoveryTokens(section: Section): Promise<DiscoveryToken[]> {
   const select = section === 'migrating' ? finalStretch : migrated;
-  const records = select().slice(0, 100);
+  const records = select().slice(0, section === 'migrating' ? FINAL_STRETCH_LIMIT : MIGRATED_LIMIT);
   if (!records.length) return [];
   await loadMetadata(records.map((record) => record.mint));
   // A curve can complete while the metadata request is in flight. Re-check
@@ -158,22 +160,27 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
   for (const record of records) {
     const cached = metadata.get(record.mint);
     const current = getLifecycle(record.mint);
-    if (!eligible.has(record.mint) || !current || !cached) continue;
-    const token = cached.source === 'jupiter' ? mapJupiterToken(cached.token)
-      : mapDexLifecycleToken(record.mint, cached.token, cached.at);
+    if (!eligible.has(record.mint) || !current) continue;
+    // A metadata index lag must not remove a confirmed lifecycle row. Identity
+    // falls back to the mint; every unmeasured market field stays unknown.
+    const token = cached?.source === 'jupiter' ? mapJupiterToken(cached.token)
+      : cached?.source === 'dexscreener' ? mapDexLifecycleToken(record.mint, cached.token, cached.at)
+        : mapJupiterToken({ id: record.mint, launchpad: record.launchpad });
+    if (!cached) {
+      token.ageMinutes = Number.NaN;
+      token.ageFormatted = '—';
+      token.marketEvidence = { status: 'unavailable', source: 'lifecycle-metadata',
+        observedAt: new Date().toISOString(), reason: 'Token metadata has not been indexed yet.' };
+    }
     // Mapping is pure presentation, not a new provider observation. Preserve
     // the actual observation time for every fact carried by this payload.
-    const stale = Date.now() - cached.at >= METADATA_TTL_MS;
+    const stale = Boolean(cached && Date.now() - cached.at >= METADATA_TTL_MS);
     for (const group of ['marketEvidence', 'activityEvidence', 'ownershipEvidence', 'securityEvidence', 'creatorEvidence'] as const) {
       const evidence = token[group];
-      if (evidence) token[group] = { ...evidence, observedAt: new Date(cached.at).toISOString(),
+      if (evidence && cached) token[group] = { ...evidence, observedAt: new Date(cached.at).toISOString(),
         ...(stale ? { status: 'stale', reason: 'Metadata refresh is delayed.' } : {}) };
     }
     tokens.push(applyLifecycleToToken(token, current));
-  }
-  if (!tokens.length && records.some((record) => eligible.has(record.mint))) {
-    throw new ApiError('Lifecycle confirmed; token metadata is temporarily unavailable. Retrying.',
-      503, 'LIFECYCLE_METADATA_UNAVAILABLE');
   }
   return tokens;
 }

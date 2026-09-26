@@ -40,7 +40,7 @@ const STORAGE_QUERY_KEY = 'sentinel_discovery_query_v1';
  */
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
   { id: 'col_new', type: 'new', title: 'New Pairs', sortBy: 'newest' },
-  { id: 'col_bonding', type: 'migrating', title: 'Final Stretch', sortBy: 'migration-progress' },
+  { id: 'col_bonding', type: 'migrating', title: 'Final Stretch', sortBy: 'newest' },
   { id: 'col_migrated', type: 'graduated', title: 'Migrated', sortBy: 'newest' },
 ];
 
@@ -52,6 +52,16 @@ export function DiscoverView() {
   // State: Columns
   const [columns, setColumns] = useState<DiscoveryColumnConfig[]>(DEFAULT_COLUMNS);
   const [activeMobileColumnId, setActiveMobileColumnId] = useState<string>('col_new');
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const selectedColumnId = columns.some((column) => column.id === activeMobileColumnId)
+    ? activeMobileColumnId : columns[0]?.id;
 
   // State: Global Controls
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,7 +90,8 @@ export function DiscoverView() {
             // Strip trending and hot columns (now on the Overview page)
             const cleaned = parsed
               .filter((c: any) => c.type !== 'trending' && c.type !== 'hot')
-              .map((c: DiscoveryColumnConfig) => c.type === 'migrating' ? { ...c, sortBy: 'migration-progress' as const } : c);
+              .map((c: DiscoveryColumnConfig) => c.id === 'col_bonding' && c.sortBy === 'migration-progress'
+                ? { ...c, sortBy: 'newest' as const } : c);
             setColumns(cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS);
           }
         }
@@ -149,7 +160,7 @@ export function DiscoverView() {
       id: `col_${type}_${Date.now()}`,
       type,
       title,
-      sortBy: type === 'new' ? 'newest' : type === 'migrating' ? 'migration-progress' : 'volume',
+      sortBy: type === 'new' || type === 'migrating' || type === 'graduated' ? 'newest' : 'volume',
     };
     persistColumns([...columns, newCol]);
   };
@@ -245,10 +256,10 @@ export function DiscoverView() {
         {columns.map((col) => (
           <button
             key={col.id}
-            aria-pressed={activeMobileColumnId === col.id}
+            aria-pressed={selectedColumnId === col.id}
             onClick={() => setActiveMobileColumnId(col.id)}
             className={`min-h-11 flex-1 px-3 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-              activeMobileColumnId === col.id
+              selectedColumnId === col.id
                 ? 'bg-sky-500 text-slate-950 shadow-sm'
                 : 'bg-slate-900 text-slate-400 hover:text-slate-200'
             }`}
@@ -260,14 +271,13 @@ export function DiscoverView() {
 
       {/* Main Workspace Feed Area */}
       <div className="flex-1 min-h-0 min-w-0 pt-2 flex flex-col h-full">
-        {/* Desktop View: Multi-Column Independent Grid */}
+        {/* Mount each feed once; hidden duplicate copies competed for the
+            same visible-card enrichment and socket budget. */}
         <div
-          className="hidden md:grid flex-1 h-full min-h-0 gap-3 overflow-x-auto pb-1"
-          style={{
-            gridTemplateColumns: `repeat(${columns.length}, minmax(290px, 1fr))`,
-          }}
+          className="discovery-columns-grid grid flex-1 h-full min-h-0 gap-3 overflow-x-auto pb-1"
+          style={{ gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : `repeat(${columns.length}, minmax(290px, 1fr))` }}
         >
-          {columns.map((col) => (
+          {(isMobile ? columns.filter((column) => column.id === selectedColumnId) : columns).map((col) => (
             <TerminalColumn
               key={col.id}
               config={col}
@@ -276,29 +286,11 @@ export function DiscoverView() {
               globalFilters={activeCombinedGlobalFilters}
               quickBuyPresets={quickBuyPresets}
               quickBuyMode={quickBuyMode}
-              onRemoveColumn={columns.length > 1 ? handleRemoveColumn : undefined}
+              onRemoveColumn={!isMobile && columns.length > 1 ? handleRemoveColumn : undefined}
               onUpdateConfig={handleUpdateConfig}
               onQuickBuy={handleQuickBuy}
             />
           ))}
-        </div>
-
-        {/* Mobile View: Single Column with Active Tab */}
-        <div className="md:hidden flex-1 h-full min-h-0 flex flex-col">
-          {columns
-            .filter((col) => col.id === activeMobileColumnId)
-            .map((col) => (
-              <TerminalColumn
-                key={col.id}
-                config={col}
-                timeWindow={timeWindow}
-                chain={selectedChain}
-                globalFilters={activeCombinedGlobalFilters}
-                quickBuyPresets={quickBuyPresets}
-                quickBuyMode={quickBuyMode}
-                onQuickBuy={handleQuickBuy}
-              />
-            ))}
         </div>
       </div>
 

@@ -51,13 +51,14 @@ describe('real Discover endpoint column selection', () => {
     applyCurveReading('stale', curve(0.96, now - 121_000));
     applyCurveReading('complete-unconfirmed', { ...curve(1), complete: true });
     const rows = await getLiveDiscoveryTokens({ section: 'migrating' });
-    expect(rows.map((row) => row.mint)).toEqual(['near', 'threshold']);
-    expect(rows.map((row) => row.bondingCurveProgress)).toEqual([97, 80]);
+    expect(rows.map((row) => row.mint)).toEqual(['stale', 'near', 'threshold']);
+    expect(rows.map((row) => row.bondingCurveProgress)).toEqual([96, 97, 80]);
+    expect(rows[0].lifecycleEvidence?.status).toBe('stale');
     expect(rows.every((row) => row.lifecycleEvidence?.source === 'solana-bonding-curve')).toBe(true);
     expect(fetchJupiterFeed).not.toHaveBeenCalled();
   });
 
-  it('only lists recent confirmed migrations, even for tokens launched long ago', async () => {
+  it('retains the last confirmed migrations regardless of a two-hour clock window', async () => {
     migrate('old-launch-new-migration', now - 10_000);
     migrate('new-launch-older-migration', now - 50_000);
     migrate('expired', now - 3 * 60 * 60_000);
@@ -66,7 +67,7 @@ describe('real Discover endpoint column selection', () => {
       token('unrequested-dex-pair', { launchpad: undefined }),
     ]);
     const rows = await getLiveDiscoveryTokens({ section: 'graduated' });
-    expect(rows.map((row) => row.mint)).toEqual(['old-launch-new-migration', 'new-launch-older-migration']);
+    expect(rows.map((row) => row.mint)).toEqual(['old-launch-new-migration', 'new-launch-older-migration', 'expired']);
     expect(rows[0]).toMatchObject({ migrationSignature: 'confirmed-old-launch-new-migration',
       migratedPool: 'pool-old-launch-new-migration', lifecycleState: 'migrated', bondingStatus: 'graduated' });
     expect(rows[0].ageMinutes).toBeGreaterThan(1000);
@@ -93,12 +94,11 @@ describe('real Discover endpoint column selection', () => {
     expect(await getLiveDiscoveryTokens({ section: 'graduated' })).toEqual([]);
   });
 
-  it('surfaces metadata failure and deduplicates overlapping reads', async () => {
+  it('keeps confirmed rows with unknown metadata and deduplicates overlapping reads', async () => {
     migrate('real');
     vi.mocked(fetchJupiterTokensByMint).mockResolvedValue([]);
-    await expect(getLiveDiscoveryTokens({ section: 'graduated' })).rejects.toMatchObject({
-      statusCode: 503, code: 'LIFECYCLE_METADATA_UNAVAILABLE',
-    });
+    const fallback = await getLiveDiscoveryTokens({ section: 'graduated' });
+    expect(fallback[0]).toMatchObject({ mint: 'real', marketEvidence: { status: 'unavailable' } });
     vi.mocked(fetchJupiterTokensByMint).mockResolvedValue([token('real')]);
     vi.mocked(fetchJupiterTokensByMint).mockClear();
     await Promise.all([getLiveDiscoveryTokens({ section: 'graduated' }), getLiveDiscoveryTokens({ section: 'graduated' })]);
@@ -137,10 +137,12 @@ describe('real Discover endpoint column selection', () => {
     expect(row.holdersCount).toBeUndefined();
   });
 
-  it('renders available confirmed mints when metadata is only partially indexed', async () => {
+  it('renders every confirmed mint when metadata is only partially indexed', async () => {
     migrate('a'); migrate('b');
     vi.mocked(fetchJupiterTokensByMint).mockResolvedValue([token('a')]);
-    expect((await getLiveDiscoveryTokens({ section: 'graduated' })).map((row) => row.mint)).toEqual(['a']);
+    const rows = await getLiveDiscoveryTokens({ section: 'graduated' });
+    expect(rows.map((row) => row.mint)).toEqual(['a', 'b']);
+    expect(rows[1].marketEvidence?.status).toBe('unavailable');
   });
 
   it('leaves New Pairs on the existing recent-token source', async () => {

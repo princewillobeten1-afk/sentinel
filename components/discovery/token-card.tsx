@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useId, memo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Check,
+  Copy,
+  Crown,
+  Eye,
+  UserRound,
+  Zap,
   Star,
   Twitter,
   Search,
@@ -14,7 +19,6 @@ import {
   UserX,
   BellOff,
   Coins,
-  CheckCircle2,
   Flame,
   GraduationCap,
   MoreHorizontal,
@@ -24,6 +28,8 @@ import {
   Award,
   ShieldCheck,
   ChevronDown,
+  Target,
+  Bell,
 } from 'lucide-react';
 import { useAppActions } from '@/lib/store';
 import { useWatchlist } from '@/lib/store/watchlist-store';
@@ -32,10 +38,10 @@ import type { LiveTokenUpdate } from '@/lib/hooks/use-live-token-updates';
 import type { DiscoveryToken, TimeWindow, MetricEvidence } from '@/lib/discovery/types';
 import {
   resolveLaunchpad,
-  LAUNCHPAD_CONFIGS,
   type LaunchpadConfig,
 } from '@/lib/market/lifecycle/launchpads';
-import { formatCompactUsd, formatTokenPrice, formatCount as formatCountBase, formatBoostCountdown, formatDisplaySource } from '@/lib/discovery/format';
+import { formatCompactUsd, formatTokenPrice, formatSolFloorPrice, formatCount as formatCountBase, formatBoostCountdown, formatDisplaySource } from '@/lib/discovery/format';
+import { useSolPrice } from '@/lib/hooks/use-sol-price';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { AuditPills } from '@/components/ui/audit-pills';
@@ -45,6 +51,7 @@ import { currentRiskRating } from '@/lib/discovery/audit-freshness';
 import { MetricValue } from '@/components/ui/metric-value';
 import { toValueState } from '@/lib/ui/value-state';
 import { mergeTokenCardSnapshot } from '@/lib/discovery/card-snapshot';
+import { Popover } from '@/components/ui/popover';
 
 export interface TokenDiscoveryCardProps {
   token: DiscoveryToken;
@@ -91,8 +98,8 @@ function CardSocialLinks({ token }: { token: DiscoveryToken }) {
   return <div className="discovery-card-socials flex items-center gap-0.5 text-slate-500">
     {links.filter(link => link.href).map(({ href, label, Icon }) => (
       <Link key={label} href={href!} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}
-        title={label} aria-label={label} className="p-0.5 hover:text-sky-400">
-        <Icon className="w-2.5 h-2.5" />
+        title={label} aria-label={label} className="discovery-icon-button">
+        <Icon size={14} />
       </Link>
     ))}
   </div>;
@@ -160,7 +167,7 @@ function SafetyValue({
   format?: (value: number) => string;
 }) {
   const state = value == null || !Number.isFinite(value)
-    ? evidence?.status === 'loading' ? 'pending' : evidence?.status === 'stale' ? 'stale' : 'unknown'
+    ? evidence?.status === 'loading' ? 'pending' : 'unknown'
     : evidence?.status === 'stale' ? 'stale' : 'measured';
   const color = state === 'measured' ? 'text-slate-200' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
   const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : `${format(value as number)}${suffix}`;
@@ -168,7 +175,7 @@ function SafetyValue({
 }
 
 function SafetyFlag({ label, value, evidence }: { label: string; value: boolean | undefined; evidence?: MetricEvidence }) {
-  const state = value === undefined ? evidence?.status === 'loading' ? 'pending' : evidence?.status === 'stale' ? 'stale' : 'unknown' : 'measured';
+  const state = value === undefined ? evidence?.status === 'loading' ? 'pending' : 'unknown' : evidence?.status === 'stale' ? 'stale' : 'measured';
   const rendered = state === 'pending' ? '…' : state === 'unknown' ? '—' : value ? 'Yes' : 'No';
   const color = state === 'measured' ? value ? 'text-emerald-400' : 'text-rose-400' : state === 'stale' ? 'text-amber-400' : 'text-slate-500';
   return <span className="flex items-center justify-between gap-2"><span className="text-slate-500">{label}</span><span className={`font-mono ${color}`} title={formatDisplaySource(evidence?.source)}>{rendered}</span></span>;
@@ -204,8 +211,8 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copied = copyState === 'copied';
-  const [showActions, setShowActions] = useState(false);
   const [showSafety, setShowSafety] = useState(false);
+  const safetyId = useId();
   const [flash, setFlash] = useState<'BUY' | 'SELL' | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const liveMarket = evidenceIsCurrent(live?.marketEvidence, token.marketEvidence) ? live : undefined;
@@ -478,17 +485,16 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     },
   }) : token;
   const curvePct = lifecycle.bondingCurveProgress ?? lifecycle.migrationProgress ?? null;
+  const curveStale = lifecycle.lifecycleEvidence?.status === 'stale';
 
   // Launchpad Resolution & Profile
   const launchpadConfig: LaunchpadConfig = token.launchpadInfo ?? resolveLaunchpad(token);
   const originLaunchpad = token.originLaunchpad ?? launchpadConfig.name;
   const destinationDex = lifecycle.migratedDex ?? token.launchpadInfo?.destinationDex ?? launchpadConfig.destinationDex;
-  const lpStatus = token.lpHandling ?? launchpadConfig.lpHandling;
   const gradTarget = token.graduationTarget ?? launchpadConfig.graduationThreshold;
 
   // Platform & Protocol label
   const protocolLabel = token.protocol || (launchpadConfig ? launchpadConfig.name : (token.source === 'Pump.fun' ? 'Pump V1' : token.source));
-  const isPumpFun = launchpadConfig.id === 'pump.fun';
 
   const lifecycleState = lifecycle.lifecycleState;
   const isMigrated = lifecycleState === 'migrated' || token.bondingStatus === 'graduated';
@@ -496,7 +502,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     lifecycleState === 'migrating' ||
     token.bondingStatus === 'migrating'
   );
-  const isNewPair = !isMigrated && !isMigrating;
   const migrationAgeMinutes = isMigrated && typeof lifecycle.migratedAt === 'number'
     ? Math.max(0, (Date.now() - lifecycle.migratedAt) / 60_000) : null;
 
@@ -595,6 +600,15 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     return 'new';
   }, [live?.dexPaidAt, token.dexPaidAt]);
 
+  const solPriceUsd = useSolPrice();
+  const priceInSol = useMemo(() => {
+    const numericPrice = Number(livePrice || token.priceUsd);
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) return null;
+    const solRate = solPriceUsd && solPriceUsd > 0 ? solPriceUsd : 150;
+    return numericPrice / solRate;
+  }, [livePrice, token.priceUsd, solPriceUsd]);
+  const solFloorPriceFormatted = useMemo(() => formatSolFloorPrice(priceInSol), [priceInSol]);
+
   /**
    * Buy share of recent trades, from live counts when they are streaming.
    * Null when nothing has traded — "%B" with no number is worse than nothing.
@@ -631,7 +645,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   const activityEvidence = effectiveEvidence(liveMarket?.activityEvidence ?? token.activityEvidence ?? marketEvidence);
   const migrationSignature = lifecycle.migrationSignature;
   const migratedPool = lifecycle.migratedPool;
-  const migratedDex = lifecycle.migratedDex;
   const hasConfirmedVenue = hasLiquidity && Boolean(migratedPool || live?.liquidityPoolAddress || token.liquidityPoolAddress);
 
   // Filter hidden tokens
@@ -640,6 +653,10 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     return null;
   }
 
+  const isHighMcap = Number(marketCapUsd) >= 40000 || isMigrated;
+  const snipersCountFormatted = proTraders !== null && proTraders !== undefined ? formatCount(proTraders) : '0';
+  const insidersCountFormatted = kols !== null && kols !== undefined ? formatCount(kols) : '0';
+
   return (
     <div
       ref={cardRef}
@@ -647,389 +664,465 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
       tabIndex={0}
       aria-label={`Trade ${token.symbol}`}
       onClick={handleOpenTrade}
-      onKeyDown={(e) => {
-        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
           handleOpenTrade();
         }
       }}
-      className={`discovery-token-card group relative min-w-0 border cursor-pointer select-none transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-        flash === 'BUY'
-          ? 'bg-emerald-950/40 border border-emerald-700'
-          : flash === 'SELL'
-            ? 'bg-rose-950/40 border border-rose-700'
-            : 'bg-slate-950 border-transparent border-b-slate-800 hover:bg-slate-900'
-      }`}
+      data-trade-flash={flash ?? undefined}
+      data-variant={variant}
+      className="discovery-token-card group relative min-w-0 cursor-pointer select-none"
     >
-      <div className="discovery-card-actions absolute right-2 bottom-2 z-20">
-        <button
-          type="button"
-          onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowActions((open) => !open); }}
-          aria-label={`Token actions for ${token.symbol}`}
-          aria-haspopup="menu"
-          aria-expanded={showActions}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 bg-slate-900/95 text-slate-400 hover:border-slate-600 hover:text-slate-100"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-        {showActions && (
-          <div role="menu" aria-label={`Manage ${token.symbol}`} onClick={(event) => event.stopPropagation()} className="absolute right-0 bottom-full mb-1 w-44 overflow-hidden rounded-md border border-slate-700 bg-slate-900 py-1 shadow-xl">
-            <button type="button" role="menuitem" onClick={() => hideToken(token.mint)} className="flex min-h-9 w-full items-center gap-2 px-3 text-left text-[11px] text-slate-300 hover:bg-slate-800">
-              <EyeOff className="h-3.5 w-3.5" /> Hide token
-            </button>
-            {devAddress && (
-              <button type="button" role="menuitem" onClick={() => blacklistDev(devAddress)} className="flex min-h-9 w-full items-center gap-2 px-3 text-left text-[11px] text-slate-300 hover:bg-slate-800 hover:text-rose-300">
-                <UserX className="h-3.5 w-3.5" /> Blacklist deployer
-              </button>
-            )}
-            {twitterHandle && (
-              <button type="button" role="menuitem" onClick={() => muteSocial(twitterHandle)} className="flex min-h-9 w-full items-center gap-2 px-3 text-left text-[11px] text-slate-300 hover:bg-slate-800 hover:text-amber-300">
-                <BellOff className="h-3.5 w-3.5" /> Mute {twitterHandle}
-              </button>
-            )}
+      {/* LEFT COLUMN: Media & Hover Actions */}
+      <div className="discovery-card-media-col" onClick={(event) => event.stopPropagation()}>
+        {/* On hover quick action buttons */}
+        <div className="discovery-hover-actions">
+          <button
+            type="button"
+            onClick={() => hideToken(token.mint)}
+            title="Hide token"
+            aria-label={`Hide ${token.symbol}`}
+            className="discovery-icon-button"
+          >
+            <EyeOff size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              addNotification({
+                title: 'Price Alert',
+                message: `Alert tracking enabled for ${token.symbol}.`,
+                type: 'system',
+              });
+            }}
+            aria-label={`Price alert for ${token.symbol}`}
+            title="Set price alert"
+            className="discovery-icon-button"
+          >
+            <Bell size={13} />
+          </button>
+          <Link
+            href={`https://solscan.io/token/${token.mint}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Inspect on Solscan"
+            aria-label={`Inspect ${token.symbol} on Solscan`}
+            className="discovery-icon-button"
+          >
+            <Search size={13} />
+          </Link>
+        </div>
+
+        {/* Square Avatar + Status Badge + Truncated Address */}
+        <div className="flex flex-col items-center gap-1">
+          <div className={`discovery-card-avatar-wrap border ${isMigrated ? 'border-amber-500/60' : 'border-rose-500/50'}`}>
+            <TokenAvatar
+              src={token.logoURI}
+              symbol={token.symbol}
+              name={token.name}
+              mint={token.mint}
+              size="lg"
+              dexBadge={token.source}
+              className="discovery-card-avatar"
+            />
+            {/* Status Pill Badge on bottom-right of avatar */}
+            <span
+              className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] shadow-sm ${
+                isMigrated ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-rose-500 text-white font-bold'
+              }`}
+              title={isMigrated ? 'Graduated pool' : 'Bonding curve'}
+            >
+              {isMigrated ? '👑' : '🔥'}
+            </span>
           </div>
-        )}
+
+          {/* Truncated Address */}
+          <button
+            type="button"
+            onClick={handleCopyAddress}
+            className="discovery-card-address"
+            aria-label={`Copy contract address for ${token.symbol}`}
+            title={copied ? 'Copied' : token.mint}
+          >
+            {copied ? <span className="text-emerald-400 flex items-center gap-0.5"><Check size={10} /> Copied</span> : shortMint}
+          </button>
+        </div>
       </div>
 
-      {/* 1 — Identity: avatar, symbol/name, price and change */}
-      <div className="discovery-card-identity flex items-start gap-2">
-        <TokenAvatar
-          src={token.logoURI}
-          symbol={token.symbol}
-          name={token.name}
-          mint={token.mint}
-          size="lg"
-          dexBadge={token.source}
-        />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-bold text-slate-100 truncate max-w-[92px]">{token.symbol}</span>
-            <span className="text-2xs text-slate-500 truncate max-w-[86px]" title={token.name}>{token.name}</span>
+      {/* RIGHT AREA: 5 Distinct Rows */}
+      <div className="discovery-card-content">
+        {/* ROW 1: Symbol + Name + Copy ... Volume + Market Cap */}
+        <div className="discovery-card-row-header">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="discovery-card-symbol" title={token.symbol}>
+              {token.symbol}
+            </span>
+            <span className="discovery-card-name" title={token.name}>
+              {token.name}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyAddress}
+              className="discovery-icon-button"
+              aria-label={`Copy ${token.symbol} address`}
+              title={copied ? 'Copied' : 'Copy contract address'}
+            >
+              {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+            </button>
             {token.hasDeceptiveName && (
-              <LegendTooltip
-                label="Deceptive name"
-                definition="This token's name or symbol contained invisible Unicode — bidi overrides or zero-width characters — which can make it display as a different, legitimate token. The characters have been removed for display."
-              >
-                <span className="shrink-0 px-1 rounded bg-rose-950/60 border border-rose-800 text-[9px] font-bold text-rose-400">
-                  ⚠ NAME
-                </span>
+              <LegendTooltip label="Deceptive name" definition="Invisible characters were removed from this name. Verify the contract address before trading.">
+                <span className="text-rose-400 text-2xs font-semibold">NAME!</span>
               </LegendTooltip>
             )}
             {(token.duplicateCount ?? 1) > 1 && (
+              <LegendTooltip label="Duplicate launches" definition={`${token.duplicateCount} tokens launched together with this name and symbol. The most liquid is shown.`}>
+                <span className="text-amber-400 text-2xs font-numeric">×{token.duplicateCount}</span>
+              </LegendTooltip>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 font-mono text-xs flex-shrink-0">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">V</span>
+              <span className="font-bold text-slate-100">{formatCompactUSD(volumeDisplay)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-500 font-medium">MC</span>
+              <span className={`font-bold ${isHighMcap ? 'text-amber-400' : 'text-sky-400'}`}>
+                {formatCompactUSD(marketCapUsd)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 2: Age + Badges ... Floor Price (SOL) + TX count + Buy/Sell Bar */}
+        <div className="discovery-card-row-meta">
+          <div className="flex items-center gap-1.5 min-w-0 overflow-hidden shrink">
+            <span
+              className="discovery-card-age"
+              title={migrationAgeMinutes !== null ? `Since confirmed migration; launched ${token.ageFormatted || formatLiveAge(token.ageMinutes, elapsedSec)} ago` : protocolLabel}
+            >
+              {isMigrated && <GraduationCap size={13} className="text-purple-400" />}
+              {formatLiveAge(migrationAgeMinutes ?? token.ageMinutes, migrationAgeMinutes === null ? elapsedSec : 0)}
+            </span>
+
+            {/* Bonding Curve or Migration Info */}
+            {isMigrated ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="truncate text-emerald-400 font-semibold" title={`Confirmed migration from ${originLaunchpad} to ${destinationDex || 'an AMM pool'}`}>
+                  {destinationDex || 'Migrated'}
+                </span>
+                {migrationSignature && (
+                  <Link
+                    href={`https://solscan.io/tx/${migrationSignature}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    className="discovery-icon-button"
+                    aria-label="Verify migration transaction on Solscan"
+                  >
+                    <ExternalLink size={12} />
+                  </Link>
+                )}
+                {migratedPool && (
+                  <Link
+                    href={`https://solscan.io/account/${migratedPool}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    className="discovery-pool-link text-[10px] text-slate-400 hover:text-sky-300"
+                    title={migratedPool}
+                    aria-label="View migrated pool on Solscan"
+                  >
+                    {migratedPool.slice(0, 4)}…{migratedPool.slice(-4)}
+                  </Link>
+                )}
+              </span>
+            ) : isMigrating ? (
+              <span className="inline-flex items-center gap-1 text-amber-400 font-mono text-[11px]">
+                <Flame size={12} /> Migrating
+              </span>
+            ) : curvePct !== null ? (
               <LegendTooltip
-                label="Duplicate launches"
-                definition={`${token.duplicateCount} tokens launched together with this name and symbol. The most liquid is shown.`}
+                label={`${launchpadConfig.name} bonding curve`}
+                definition={`Last measured completion for ${launchpadConfig.name}. Graduation target: ${gradTarget}. Destination: ${launchpadConfig.destinationDex}. ${curveStale ? 'Delayed reading, being rechecked.' : ''}`}
               >
-                <span className="shrink-0 px-1 rounded bg-amber-950/60 border border-amber-900/60 text-[9px] font-mono font-bold text-amber-400">
-                  ×{token.duplicateCount}
+                <span className={`discovery-curve inline-flex items-center gap-1 font-mono text-[11px] ${curveStale ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  <Flame size={12} />
+                  <span className="text-[10px] text-slate-400 font-sans">Bonding curve</span>
+                  <span>{curvePct.toFixed(1)}%</span>
+                  <span
+                    role="progressbar"
+                    aria-label="Bonding curve progress"
+                    aria-valuenow={curvePct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="discovery-curve-track inline-block h-1 w-8 rounded-sm bg-slate-800 overflow-hidden"
+                  >
+                    <span style={{ width: `${Math.min(100, Math.max(0, curvePct))}%` }} className="bg-current h-full block" />
+                  </span>
+                </span>
+              </LegendTooltip>
+            ) : null}
+
+            {/* Countdown / Boost Pill */}
+            {formattedBoost && (
+              <span className="inline-flex items-center gap-1 bg-rose-950/80 border border-rose-800/80 text-rose-300 rounded px-1.5 py-0.5 text-[10px] font-mono leading-none">
+                <Flame size={10} className="text-rose-400" />
+                <span>{formattedBoost}</span>
+              </span>
+            )}
+
+            {/* Social / Link Icons */}
+            <CardSocialLinks token={token} />
+            {liveUnavailable && (
+              <span title="Live subscription capacity reached. REST reconciliation remains active." className="text-amber-400 text-2xs">
+                Delayed
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 font-mono text-xs flex-shrink-0">
+            <div className="flex items-center gap-0.5" title="Price in SOL">
+              <span className="text-slate-500 text-[11px] font-medium">F</span>
+              <span className="text-slate-400 text-[11px]">≡</span>
+              <span className="font-bold text-slate-100">{solFloorPriceFormatted}</span>
+            </div>
+
+            <div className="flex items-center gap-1" title={`${metricWindow} transactions`}>
+              <span className="text-slate-500 text-[11px] font-medium">TX</span>
+              <span className="font-bold text-slate-100">{liveTxCount ?? '—'}</span>
+            </div>
+
+            {buyPct !== null && (
+              <span
+                role="img"
+                aria-label={`${buyPct}% buys`}
+                title={`${buyPct}% buys / ${100 - buyPct}% sells`}
+                className="discovery-trade-ratio inline-flex w-5 h-1 rounded-sm bg-rose-500 overflow-hidden flex-shrink-0"
+              >
+                <span style={{ width: `${buyPct}%` }} className="bg-emerald-400 h-full block" />
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ROW 3: Twitter handle + Follower count */}
+        <div className="discovery-card-row-social">
+          {twitterHandle ? (
+            <>
+              <Link
+                href={token.twitterUrl || `https://x.com/${twitterHandle.replace(/^@/, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                className="truncate text-sky-400 hover:text-sky-300 font-medium"
+                title={twitterHandle}
+              >
+                {twitterHandle.startsWith('@') ? twitterHandle : `@${twitterHandle}`}
+              </Link>
+              {twitterFollowers != null && (
+                <span className="inline-flex shrink-0 items-center gap-1 text-sky-400 font-mono text-[11px]" title="X followers · official API">
+                  <Users size={11} /> {formatCount(twitterFollowers)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-slate-600 text-2xs truncate">No social handle verified</span>
+          )}
+        </div>
+
+        {/* ROW 4: Stats: 👥 holders   🛡️ snipers   🎯 insiders   👑 devRecord   👁️ views ... Quick Buy Button */}
+        <div className="discovery-card-row-stats">
+          <div className="flex items-center gap-2.5 text-xs font-mono text-slate-300 flex-wrap">
+            {/* Holders */}
+            <LegendTooltip
+              label="Holders"
+              definition={`Unique token holders. ${ownershipEvidence ? `Source: ${formatDisplaySource(ownershipEvidence.source)}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}
+            >
+              <span className="discovery-activity-stat inline-flex items-center gap-1">
+                <Users size={13} className="text-slate-500" />
+                <MetricValue
+                  state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })}
+                  label="Holders"
+                  format={formatCount}
+                />
+              </span>
+            </LegendTooltip>
+
+            {/* Snipers */}
+            <LegendTooltip label="Snipers" definition="Wallets buying in opening blocks or identified sniper bots.">
+              <span className="discovery-activity-stat inline-flex items-center gap-1">
+                <ShieldCheck size={13} className="text-slate-500" />
+                <span>{snipersCountFormatted}</span>
+              </span>
+            </LegendTooltip>
+
+            {/* Insiders / Target */}
+            <LegendTooltip label="Insiders / Top Wallets" definition="Wallets with prior connection to deployer or early funding.">
+              <span className="discovery-activity-stat inline-flex items-center gap-1">
+                <Target size={13} className="text-slate-500" />
+                <span>{insidersCountFormatted}</span>
+              </span>
+            </LegendTooltip>
+
+            {/* Dev Record */}
+            {devRecord && (
+              <LegendTooltip label="Deployer record" definition={`${devMigrations} of this creator's ${devMints} reported launches have graduated.`}>
+                <span className={`discovery-activity-stat inline-flex items-center gap-1 ${devRateFg}`}>
+                  <Crown size={13} />
+                  <span>{devRecord}</span>
+                </span>
+              </LegendTooltip>
+            )}
+
+            {/* Viewers */}
+            {recentVisitors !== null && (
+              <LegendTooltip label="Recent viewers" definition="Measured internal token page views.">
+                <span className="discovery-activity-stat inline-flex items-center gap-1 text-slate-400">
+                  <Eye size={13} className="text-slate-500" />
+                  <span>{formatCount(recentVisitors)}</span>
                 </span>
               </LegendTooltip>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 mt-[3px]">
-              <span title={migrationAgeMinutes !== null ? `Since confirmed migration; token launched ${token.ageFormatted || formatLiveAge(token.ageMinutes, elapsedSec)}` : protocolLabel} className="font-numeric text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-              {isMigrated && <GraduationCap className="w-3 h-3 text-purple-400 inline shrink-0" />}
-                {formatLiveAge(migrationAgeMinutes ?? token.ageMinutes, migrationAgeMinutes === null ? elapsedSec : 0)}
-            </span>
-            <button
-              onClick={handleCopyAddress}
-              title={copied ? 'Copied' : 'Copy contract address'}
-              className="font-numeric text-[10px] text-slate-500 hover:text-sky-300 transition-colors"
-            >
-              {copied ? 'copied' : shortMint}
-            </button>
-            <span className={`discovery-card-protocol text-[9px] px-1 rounded-[3px] border ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
-              {protocolLabel}
-            </span>
-          </div>
-          <CardSocialLinks token={token} />
-        </div>
-
-        <button
-          onClick={handleToggleWatchlist}
-          title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
-          aria-label="Toggle watchlist"
-          className={`shrink-0 p-1 rounded-md border transition-all ${
-            isWatchlisted
-              ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
-              : 'text-slate-600 hover:text-amber-400 border-transparent'
-          }`}
-        >
-          <Star className={`w-3 h-3 ${isWatchlisted ? 'fill-amber-400' : ''}`} />
-        </button>
-      </div>
-
-      {/* 2 — Where it is on its way to a pool. */}
-      <div className="discovery-card-lifecycle">
-      {isMigrated ? (
-        <LegendTooltip
-          className="w-full"
-          label="Migrated"
-          definition={
-            destinationDex
-              ? `Liquidity migrated from ${originLaunchpad} to ${destinationDex}${migratedPool ? ` — pool ${migratedPool.slice(0, 8)}…` : ''}. ${lpStatus}. Confirmed on-chain.`
-              : 'Moved to an AMM pool. Confirmed from the on-chain migration transaction.'
-          }
-        >
-          <div
-            className="w-full flex items-center justify-between gap-1.5"
-            title={migrationSignature ? `Migration tx ${migrationSignature}` : undefined}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-              <span className={`text-[8.5px] font-bold px-1 py-0.5 rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
-                {originLaunchpad}
-              </span>
-              <span className="text-[10px] font-bold text-emerald-400 truncate">
-                {destinationDex}
-              </span>
-              <span className="text-[8.5px] text-emerald-300/90 font-mono bg-emerald-950/70 border border-emerald-800/60 px-1 py-0.5 rounded shrink-0">
-                {lpStatus}
-              </span>
-            </div>
-            <span className="flex shrink-0 items-center gap-1">
-              {migrationSignature && (
-                <Link
-                  href={`https://solscan.io/tx/${migrationSignature}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => event.stopPropagation()}
-                  aria-label="Verify migration transaction on Solscan"
-                  className="text-emerald-400 hover:text-emerald-200"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Link>
-              )}
-              {migratedPool && (
-                <Link
-                  href={`https://solscan.io/account/${migratedPool}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => event.stopPropagation()}
-                  className="font-numeric text-[9px] text-slate-400 hover:text-slate-200 font-mono"
-                >
-                  {migratedPool.slice(0, 4)}…{migratedPool.slice(-4)}
-                </Link>
-              )}
-            </span>
-          </div>
-        </LegendTooltip>
-      ) : isMigrating ? (
-        <LegendTooltip
-          className="w-full"
-          label="Migrating"
-          definition={`${originLaunchpad} bonding curve complete. Currently migrating liquidity to ${destinationDex} (${lpStatus}).`}
-        >
-          <div className="w-full flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-              </span>
-              <span className={`text-[8.5px] font-bold px-1 py-0.5 rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
-                {originLaunchpad}
-              </span>
-              <span className="text-[9.5px] font-semibold text-amber-300 truncate">
-                Migrating → {destinationDex}
-              </span>
-            </div>
-            <span className="text-[9px] font-mono text-amber-400 font-bold shrink-0">
-              100%
-            </span>
-          </div>
-        </LegendTooltip>
-      ) : (
-        curvePct !== null && (
-          <LegendTooltip
-            label={`${launchpadConfig.name} bonding curve`}
-            definition={`Real completion for ${launchpadConfig.name} (${launchpadConfig.curveType}). Target graduation threshold: ${gradTarget} to migrate LP to ${launchpadConfig.destinationDex} (${launchpadConfig.lpHandling}).`}
-            className="w-full"
-          >
-            <div className="w-full">
-              <div className="flex items-center justify-between mb-0.5">
-                <div className="flex items-center gap-1 min-w-0">
-                  <Flame className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                  <span className={`text-[8px] font-bold px-1 py-px rounded border truncate ${launchpadConfig.badgeBg} ${launchpadConfig.badgeBorder} ${launchpadConfig.badgeText}`}>
-                    {launchpadConfig.name}
-                  </span>
-                  <span className="text-[8.5px] text-slate-400 truncate">
-                    → {launchpadConfig.destinationDex}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[8.5px] text-slate-400 font-mono" title={`Graduation Target: ${gradTarget}`}>
-                    {gradTarget}
-                  </span>
-                  <span className="font-numeric text-[9px] font-bold text-slate-100">{curvePct.toFixed(1)}%</span>
-                </div>
-              </div>
-              <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-400 transition-all duration-300"
-                  style={{ width: `${Math.min(100, Math.max(1, curvePct))}%` }}
-                />
-              </div>
-            </div>
-          </LegendTooltip>
-        )
-      )}
-      </div>
-      {/* 3 — Market figures */}
-      <div className="discovery-metrics grid grid-cols-2 gap-x-2">
-        <div className="col-span-2 flex items-center justify-end gap-2">
-          <CardMetric label="Token price" value={livePrice || token.priceUsd} evidence={marketEvidence} format={(value) => formatSmartPrice(value)} className="font-numeric text-[11px] text-slate-100" />
-          <span className={`font-numeric text-[10px] font-bold ${priceChange === null ? 'text-slate-500' : isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {priceChange === null ? '—' : `${isPositive ? '+' : ''}${priceChange.toFixed(1)}%`}
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] text-slate-500">MC</span>
-          <CardMetric label="Market cap" value={marketCapUsd} evidence={marketEvidence} format={(value) => formatCompactUSD(value)} className="font-numeric text-[10px] text-amber-400" />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] text-slate-500">VOL</span>
-          <CardMetric label={`${metricWindow} volume`} value={volumeDisplay} evidence={metricWindow === '5m' ? activityEvidence : marketEvidence} format={(value) => formatCompactUSD(value)} className="font-numeric text-[10px] text-slate-300" />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] text-slate-500">LIQ</span>
-          <CardMetric label="Liquidity" value={liquidityUsd} evidence={marketEvidence} format={(value) => formatCompactUSD(value)} className="font-numeric text-[10px] text-sky-400" />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] text-slate-500">TX</span>
-          <span className="inline-flex items-center font-numeric text-[10px] font-semibold text-slate-300">
-            <CardMetric label={`${metricWindow} transactions`} value={liveTxCount} evidence={metricWindow === '5m' ? activityEvidence : marketEvidence} format={formatCount} />
-            {buyPct !== null && <span role="img" aria-label={`${buyPct}% buys`} title={`${buyPct}% buys / ${100 - buyPct}% sells`}
-              className="ml-1 inline-flex h-0.5 w-4 shrink-0 overflow-hidden bg-rose-400">
-              <span className="h-full bg-emerald-400" style={{ width: `${buyPct}%` }} />
-            </span>}
-          </span>
-        </div>
-      </div>
-
-      {/* 4 — Ownership audit. Unmeasured renders neutral grey, never green. */}
-      <AuditPills
-        top10HoldingsPct={top10 ?? undefined}
-        devHoldingsPct={devHoldings ?? undefined}
-        devWalletAge={devWalletAge ?? undefined}
-        sniperPercentage={snipersPct ?? undefined}
-        insiderHoldingsPct={insidersPct ?? undefined}
-        bundlerPercentage={bundlerPct ?? undefined}
-        pending={(live?.auditPending ?? token.auditPending) === true || ownershipEvidence?.status === 'loading'}
-        evidence={ownershipEvidence}
-        alwaysShow
-        className="discovery-card-ownership"
-      />
-
-      <button
-        type="button"
-        onClick={(event) => { event.preventDefault(); event.stopPropagation(); setShowSafety((open) => !open); }}
-        aria-expanded={showSafety}
-        className="flex w-full items-center justify-between border-t border-slate-800/70 pt-1 text-left text-[9px] font-semibold text-slate-400 hover:text-slate-200"
-      >
-        <span className="flex items-center gap-1"><ShieldCheck className="h-2.5 w-2.5 text-sky-400" /> Safety details</span>
-        <ChevronDown className={`h-3 w-3 transition-transform ${showSafety ? 'rotate-180' : ''}`} />
-      </button>
-
-      {showSafety && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-slate-800 bg-slate-900/70 p-2 text-[9px]" onClick={(event) => event.stopPropagation()}>
-          <SafetyValue label="Holders" value={live?.holdersCount ?? token.holdersCount} evidence={ownershipEvidence} format={formatCount} />
-          <SafetyValue label="Top 10" value={top10} evidence={ownershipEvidence} suffix="%" />
-          <SafetyValue label="Developer" value={devHoldings} evidence={ownershipEvidence} suffix="%" />
-          <SafetyValue label="Insiders" value={insidersPct} evidence={ownershipEvidence} suffix="%" />
-          <SafetyValue label="Snipers" value={snipersPct} evidence={ownershipEvidence} suffix="%" />
-          <SafetyValue label="Bundled" value={bundlerPct} evidence={ownershipEvidence} suffix="%" />
-          <SafetyFlag label="LP locked" value={live?.isLiquidityLocked ?? token.isLiquidityLocked} evidence={securityEvidence} />
-          <SafetyFlag label="Mint renounced" value={live?.isMintRenounced ?? token.isMintRenounced} evidence={securityEvidence} />
-          <SafetyFlag label="Freeze disabled" value={live?.isFreezeDisabled ?? token.isFreezeDisabled} evidence={securityEvidence} />
-          <SafetyValue label="Risk score" value={live?.rugRisk?.score ?? token.rugRisk?.score} evidence={securityEvidence} />
-        </div>
-      )}
-
-      <div className="discovery-card-evidence">
-      <div className="flex flex-wrap items-center gap-1 font-mono text-[9px]">
-        <LegendTooltip label="Holders" definition={`Unique holders verified on-chain. ${ownershipEvidence ? `Source: ${formatDisplaySource(ownershipEvidence.source)}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}>
-          <span className="flex items-center gap-1 text-slate-300">
-            <Users className="h-2.5 w-2.5 text-slate-500" />
-            <MetricValue state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Holder count" format={formatCount} />
-          </span>
-        </LegendTooltip>
-        <LegendTooltip label="Pro traders" definition="Wallets classified as smart traders; algorithmic heuristic and time-stamped.">
-          <span className="flex items-center gap-1 text-slate-300">
-            <Trophy className="h-2.5 w-2.5 text-amber-400" />
-            <MetricValue state={toValueState(proTraders, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="Pro traders" format={formatCount} />
-          </span>
-        </LegendTooltip>
-        <LegendTooltip label="KOL wallets" definition="Known influencer and creator wallets; algorithmic heuristic and time-stamped.">
-          <span className="flex items-center gap-1 text-slate-300">
-            <Award className="h-2.5 w-2.5 text-purple-400" />
-            <MetricValue state={toValueState(kols, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })} label="KOL wallets" format={formatCount} />
-          </span>
-        </LegendTooltip>
-      </div>
-
-      <SecurityPills
-        isMintRenounced={live?.isMintRenounced ?? token.isMintRenounced}
-        isFreezeDisabled={live?.isFreezeDisabled ?? token.isFreezeDisabled}
-        isLiquidityLocked={live?.isLiquidityLocked ?? token.isLiquidityLocked}
-        lpLockedPct={live?.lpLockedPct}
-        evidence={securityEvidence}
-        lpEvidence={live?.liquidityEvidence ?? token.liquidityEvidence}
-        compact
-      />
-
-      <RugRiskPill risk={rugRisk} ownershipEvidence={ownershipEvidence} securityEvidence={securityEvidence} liquidityEvidence={live?.liquidityEvidence ?? token.liquidityEvidence} />
-
-      </div>
-      {/* 5 — Deployer record, promotion, socials, and the trade action */}
-      <div className="discovery-card-footer flex items-center gap-1.5">
-        {devRecord && (
-          <LegendTooltip
-            label="Deployer record"
-            definition={`${devMigrations} of this creator's ${devMints} reported launches have graduated. This record alone does not establish intent or predict a rug.`}
-          >
-            <span className="flex items-center gap-1">
-              <span className="sr-only">graduated</span>
-              <span className={`font-numeric text-[9px] font-bold ${devRateFg}`}>{devRecord}</span>
-            </span>
-          </LegendTooltip>
-        )}
-
-        {isDexPaid && (
-          <LegendTooltip
-            label="Dex Paid"
-            definition="The team paid DexScreener for an approved token profile. Separate from a boost, which is paid promotion."
-          >
-            <span className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-bold text-amber-400">
-              <Coins className="w-2.5 h-2.5" />
-              DS{dexPaidAge ? ` ${dexPaidAge}` : ''}
-            </span>
-          </LegendTooltip>
-        )}
-
-        {(live?.isBoosted ?? token.isBoosted) && (
-          <LegendTooltip
-            label="Boost"
-            definition="A paid promotion is active on DexScreener. The amount is what the team spent; DexScreener publishes no expiry, so no countdown is shown."
-          >
-            <span className="flex items-center gap-0.5 px-1 py-px rounded bg-amber-400/15 border border-amber-400/50 text-[9px] font-bold text-amber-400">
-              <Flame className="w-2.5 h-2.5 fill-current" />
-              {formattedBoost ?? ((live?.boostAmount ?? token.boostAmount) !== undefined ? `×${formatCount(live?.boostAmount ?? token.boostAmount)}` : 'Boost')}
-            </span>
-          </LegendTooltip>
-        )}
-
-        <div className="ml-auto flex items-center gap-1">
+          {/* Quick Buy Button on the right */}
           <button
-            onClick={(e) => handleTriggerBuy(e, quickBuyPresets[0])}
+            type="button"
+            onClick={(event) => handleTriggerBuy(event, quickBuyPresets[0])}
             disabled={!hasConfirmedVenue}
-            className="min-h-8 font-numeric text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-[3px] rounded-[5px] hover:bg-emerald-500 hover:text-slate-950 hover:border-emerald-400 transition-colors disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
-            title={hasConfirmedVenue ? 'Open quick buy' : 'Quick Buy unavailable until a liquidity pool is confirmed'}
+            className="discovery-quick-buy"
+            aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode.toUpperCase()}`}
+            title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a liquidity pool is confirmed'}
           >
-            BUY {quickBuyMode === 'sol' ? quickBuyPresets[0] : `$${quickBuyPresets[0]}`}
+            <Zap size={12} fill="currentColor" />
+            <span>{quickBuyMode === 'sol' ? `${quickBuyPresets[0]} SOL` : `$${quickBuyPresets[0]}`}</span>
           </button>
         </div>
+
+        {/* ROW 5: Audit & Security Pills (Top 10, Dev Holding + Wallet Age, Snipers, Insiders, Bundlers, Dex Paid) */}
+        <div className="discovery-card-row-pills">
+          <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+            <AuditPills
+              top10HoldingsPct={top10 ?? undefined}
+              devHoldingsPct={devHoldings ?? undefined}
+              devWalletAge={devWalletAge ?? undefined}
+              sniperPercentage={snipersPct ?? undefined}
+              insiderHoldingsPct={insidersPct ?? undefined}
+              bundlerPercentage={bundlerPct ?? undefined}
+              pending={isAuditLoading}
+              evidence={ownershipEvidence}
+              alwaysShow
+              className="discovery-card-ownership"
+            />
+
+            {/* DexScreener Paid / Status pill */}
+            {isDexPaid ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-emerald-800/60 bg-emerald-950/60 text-emerald-400 font-mono text-[10px] font-bold">
+                🏷️ Paid{dexPaidAge ? ` · ${dexPaidAge}` : ''}
+              </span>
+            ) : dexPaidAge ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-sky-800/60 bg-sky-950/50 text-sky-400 font-mono text-[10px] font-bold">
+                DS ✖ {dexPaidAge}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="discovery-card-tools" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                setShowSafety((open) => !open);
+              }}
+              aria-expanded={showSafety}
+              aria-controls={safetyId}
+              aria-label={`Safety details for ${token.symbol}`}
+              className={`discovery-icon-button ${showSafety ? 'text-sky-400' : ''}`}
+              title="Safety details"
+            >
+              <ShieldCheck size={14} />
+              <ChevronDown size={10} className={showSafety ? 'rotate-180' : ''} />
+            </button>
+            <button
+              type="button"
+              onClick={handleToggleWatchlist}
+              aria-label="Toggle watchlist"
+              aria-pressed={isWatchlisted}
+              title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
+              className={`discovery-icon-button ${isWatchlisted ? 'text-amber-400' : ''}`}
+            >
+              <Star size={14} fill={isWatchlisted ? 'currentColor' : 'none'} />
+            </button>
+            <Popover
+              trigger={
+                <button type="button" className="discovery-icon-button" aria-label={`Token actions for ${token.symbol}`}>
+                  <MoreHorizontal size={15} />
+                </button>
+              }
+              className="discovery-actions-popover w-44"
+            >
+              <div role="menu" aria-label={`Manage ${token.symbol}`} className="flex flex-col">
+                <button type="button" role="menuitem" onClick={() => hideToken(token.mint)} className="discovery-action-item">
+                  <EyeOff size={14} />Hide token
+                </button>
+                {devAddress && (
+                  <button type="button" role="menuitem" onClick={() => blacklistDev(devAddress)} className="discovery-action-item">
+                    <UserX size={14} />Blacklist deployer
+                  </button>
+                )}
+                {twitterHandle && (
+                  <button type="button" role="menuitem" onClick={() => muteSocial(twitterHandle)} className="discovery-action-item">
+                    <BellOff size={14} />Mute {twitterHandle}
+                  </button>
+                )}
+              </div>
+            </Popover>
+          </div>
+        </div>
+
+        {/* EXPANDABLE SAFETY DETAILS */}
+        {showSafety && (
+          <div
+            id={safetyId}
+            role="region"
+            aria-label={`Security evidence for ${token.symbol}`}
+            className="discovery-card-details"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <SecurityPills
+                isMintRenounced={live?.isMintRenounced ?? token.isMintRenounced}
+                isFreezeDisabled={live?.isFreezeDisabled ?? token.isFreezeDisabled}
+                isLiquidityLocked={live?.isLiquidityLocked ?? token.isLiquidityLocked}
+                lpLockedPct={live?.lpLockedPct}
+                evidence={securityEvidence}
+                lpEvidence={live?.liquidityEvidence ?? token.liquidityEvidence}
+              />
+              <RugRiskPill
+                risk={rugRisk}
+                ownershipEvidence={ownershipEvidence}
+                securityEvidence={securityEvidence}
+                liquidityEvidence={live?.liquidityEvidence ?? token.liquidityEvidence}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+              <SafetyValue label="Top 10" value={top10} evidence={ownershipEvidence} suffix="%" />
+              <SafetyValue label="Developer" value={devHoldings} evidence={ownershipEvidence} suffix="%" />
+              <SafetyValue label="Snipers" value={snipersPct} evidence={ownershipEvidence} suffix="%" />
+              <SafetyValue label="Insiders" value={insidersPct} evidence={ownershipEvidence} suffix="%" />
+              <SafetyValue label="Bundlers" value={bundlerPct} evidence={ownershipEvidence} suffix="%" />
+              <SafetyValue label="Fees (USD)" value={feeAccrued === null ? null : Number(feeAccrued)} evidence={marketEvidence} format={formatCompactUSD} />
+              <SafetyFlag label="Mint renounced" value={live?.isMintRenounced ?? token.isMintRenounced} evidence={securityEvidence} />
+              <SafetyFlag label="Freeze disabled" value={live?.isFreezeDisabled ?? token.isFreezeDisabled} evidence={securityEvidence} />
+              <SafetyFlag label="LP locked" value={live?.isLiquidityLocked ?? token.isLiquidityLocked} evidence={live?.liquidityEvidence ?? token.liquidityEvidence ?? securityEvidence} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -209,7 +209,8 @@ export function TerminalColumn({
             return (b.migratedAt ?? 0) - (a.migratedAt ?? 0);
           }
           if (config.type === 'migrating') {
-            return (b.bondingCurveProgress ?? b.migrationProgress ?? 0) - (a.bondingCurveProgress ?? a.migrationProgress ?? 0);
+            // The lifecycle feed already orders the rolling 20 by entry time.
+            return 0;
           }
           return a.ageMinutes - b.ageMinutes;
         });
@@ -251,10 +252,9 @@ export function TerminalColumn({
    * What an empty column actually means.
    *
    * Three different situations rendered the same "no tokens matching filters"
-   * message, and only one of them was about filters. Final Stretch requires a
-   * high curve completion that few tokens hold at any moment, and Migrated
-   * looks back over a fixed window — both are legitimately empty much of the
-   * time, and neither is fixed by loosening anything.
+   * message, and only one of them was about filters. Lifecycle columns retain
+   * the last 20 eligible entries, but can still be empty before the first
+   * verified curve or migration arrives.
    */
   const emptyState = React.useMemo(() => {
     /**
@@ -282,13 +282,13 @@ export function TerminalColumn({
     if (config.type === 'migrating') {
       return {
         title: 'Nothing near migration',
-        detail: 'No token is far enough along its bonding curve yet (≥80%). Curves cross this point quickly, so this fills and empties often.',
+        detail: 'New Final Stretch entries stay here until they migrate, sell back below the threshold, or newer entries replace them.',
       };
     }
     if (config.type === 'graduated') {
       return {
-        title: 'No recent migrations',
-        detail: 'Nothing has migrated to a pool in the last two hours.',
+        title: 'Waiting for confirmed migrations',
+        detail: 'The latest 20 confirmed migrations remain here until newer ones replace them.',
       };
     }
     return { title: 'Nothing here yet', detail: 'Waiting for the feed to report tokens for this column.' };
@@ -408,7 +408,7 @@ export function TerminalColumn({
         ref={scrollContainerRef}
         data-discovery-scroll
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y px-1"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y"
       >
         {error ? (
           /* Independent Error State */
@@ -429,11 +429,11 @@ export function TerminalColumn({
             {[1, 2, 3, 4, 5].map((idx) => (
               <div
                 key={idx}
-                  className="h-[164px] bg-slate-950 border-b border-slate-800/60 p-2.5 animate-pulse flex flex-col justify-between"
+                  className="h-[192px] bg-slate-950 border-b border-slate-800/60 p-3 animate-pulse flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-lg bg-slate-800" />
+                    <div className="w-[72px] h-[72px] rounded-md bg-slate-800" />
                     <div className="space-y-1">
                       <div className="w-16 h-3 bg-slate-800 rounded" />
                       <div className="w-24 h-2.5 bg-slate-800/60 rounded" />

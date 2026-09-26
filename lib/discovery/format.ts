@@ -98,6 +98,32 @@ export function formatTokenPrice(value: number | string | undefined | null): str
   return `${sign}0.0${toSubscript(leadingZeros)}${significant}`;
 }
 
+/**
+ * Formats a floor / token price in SOL with subscript zeros (Axiom / Photon style: `0.0₂1`, `0.093`, `2.359`).
+ */
+export function formatSolFloorPrice(
+  priceInSol: number | string | undefined | null,
+): string {
+  const num = toNumber(priceInSol);
+  if (num === null) return '—';
+  if (num === 0) return '0';
+
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+
+  if (abs >= 1) return `${sign}${abs.toFixed(abs >= 10 ? 2 : 3)}`;
+  if (abs >= 0.01) return `${sign}${abs.toFixed(3)}`;
+
+  const exponent = Math.floor(Math.log10(abs));
+  const leadingZeros = Math.abs(exponent) - 1;
+  const significant = Math.floor(abs * Math.pow(10, Math.abs(exponent)));
+
+  if (leadingZeros <= 1) {
+    return `${sign}${abs.toFixed(3)}`;
+  }
+  return `${sign}0.0${toSubscript(leadingZeros)}${significant}`;
+}
+
 /** Signed percentage with a fixed one-decimal width: `+12.4%`, `-3.0%`. */
 export function formatPercent(value: number | undefined | null, digits = 1): string {
   const num = toNumber(value);

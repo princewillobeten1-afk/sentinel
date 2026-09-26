@@ -8,6 +8,7 @@ import {
   stateFromCurve,
 } from './types';
 import { curveProgress } from './bonding-curve';
+import { isSolanaMint } from '@/lib/market/chart-model';
 
 /**
  * The single owner of every token's lifecycle state.
@@ -43,10 +44,10 @@ import { curveProgress } from './bonding-curve';
 type Listener = (mint: string, record: TokenLifecycle) => void;
 
 /**
- * How far back the Migrated column looks.
+ * How far back the RPC migration catch-up scans after a restart.
  *
- * Configurable because "recently" is a product judgement, not a chain fact.
- * Override with `LIFECYCLE_MIGRATED_WINDOW_MIN` (minutes).
+ * Display retention is count-based (the last 20 proved migrations), not this
+ * duration. Override with `LIFECYCLE_MIGRATED_WINDOW_MIN` (minutes).
  */
 export const MIGRATED_WINDOW_MS = (() => {
   const raw = Number(process.env.LIFECYCLE_MIGRATED_WINDOW_MIN);
@@ -57,6 +58,7 @@ export const MIGRATED_WINDOW_MS = (() => {
 /** A stalled RPC feed must not keep advertising an old curve as active. */
 export const CURVE_FRESHNESS_MS = Number(process.env.LIFECYCLE_CURVE_FRESHNESS_MS ?? 120_000);
 export const FINAL_STRETCH_LIMIT = 20;
+export const MIGRATED_LIMIT = 20;
 
 /**
  * State lives on `globalThis`.
@@ -74,14 +76,34 @@ export const FINAL_STRETCH_LIMIT = 20;
 const globalForLifecycle = globalThis as unknown as {
   sentinelLifecycleRecords?: Map<string, TokenLifecycle>;
   sentinelLifecycleListeners?: Set<Listener>;
+  sentinelFinalStretchQueue?: Map<string, number>;
 };
 
 const records: Map<string, TokenLifecycle> =
   globalForLifecycle.sentinelLifecycleRecords ?? new Map<string, TokenLifecycle>();
 const listeners: Set<Listener> = globalForLifecycle.sentinelLifecycleListeners ?? new Set<Listener>();
+const finalStretchQueue: Map<string, number> = globalForLifecycle.sentinelFinalStretchQueue ?? new Map<string, number>();
 
 globalForLifecycle.sentinelLifecycleRecords = records;
 globalForLifecycle.sentinelLifecycleListeners = listeners;
+globalForLifecycle.sentinelFinalStretchQueue = finalStretchQueue;
+
+// A hot-reloaded server may already hold verified records from an older module
+// graph. Adopt them once; a process restart uses the Redis checkpoint below.
+if (finalStretchQueue.size === 0 && records.size > 0) {
+  const existing = [...records.values()].filter((record) => record.state === 'FINAL_STRETCH'
+    && record.curve && !record.curve.complete).sort((a, b) => a.stateChangedAt - b.stateChangedAt);
+  for (const record of existing.slice(-FINAL_STRETCH_LIMIT))
+    finalStretchQueue.set(record.mint, record.stateChangedAt);
+}
+
+function trimFinalStretchQueue(): void {
+  while (finalStretchQueue.size > FINAL_STRETCH_LIMIT) {
+    const oldest = [...finalStretchQueue].sort((a, b) => a[1] - b[1])[0];
+    if (!oldest) break;
+    finalStretchQueue.delete(oldest[0]);
+  }
+}
 
 function maxBigInt(...values: bigint[]): bigint {
   return values.reduce((largest, value) => (value > largest ? value : largest), 0n);
@@ -208,8 +230,16 @@ export function applyCurveReading(
   };
 
   records.set(mint, record);
-  // Emitted even without a state change: Final Stretch is ordered by curve
-  // completion, so a progress move matters to the UI on its own.
+  if (nextState === 'FINAL_STRETCH' && changed) {
+    // Different mints can share one batched RPC timestamp. Preserve arrival
+    // order so the newest entrant goes on top even within the same millisecond.
+    finalStretchQueue.set(mint, Math.max(corrected.readAt,
+      Math.max(0, ...finalStretchQueue.values()) + 1));
+    trimFinalStretchQueue();
+  } else if (nextState !== 'FINAL_STRETCH') {
+    finalStretchQueue.delete(mint);
+  }
+  // A progress change is emitted even when membership stays the same.
   emit(mint, record);
   return record;
 }
@@ -248,6 +278,7 @@ export function recordMigration(
     source: 'migration-event',
   };
   records.set(mint, record);
+  finalStretchQueue.delete(mint);
   emit(mint, record);
   return record;
 }
@@ -270,6 +301,7 @@ export function markMigrating(mint: string, at = Date.now()): TokenLifecycle | n
     source: 'curve-read',
   };
   records.set(mint, record);
+  finalStretchQueue.delete(mint);
   emit(mint, record);
   return record;
 }
@@ -280,14 +312,16 @@ export function newPairs(): TokenLifecycle[] {
 }
 
 /**
- * Final Stretch, ordered by proximity to migration.
- *
- * Curve completion is the sort key, not volume or market cap — the column
- * exists to show what is closest to migrating. Only tokens meeting or exceeding
- * the configured threshold (default 80%) are admitted.
+ * Last 20 verified Final Stretch entries, newest entry first. A delayed RPC
+ * read makes the card stale; it does not silently remove it from the column.
  */
 export function finalStretch(now = Date.now()): TokenLifecycle[] {
-  return closestToMigrating(finalStretchThreshold(), now);
+  return [...finalStretchQueue]
+    .sort((a, b) => b[1] - a[1])
+    .map(([mint]) => records.get(mint))
+    .filter((record): record is TokenLifecycle => Boolean(record && record.state === 'FINAL_STRETCH'
+      && record.curve && !record.curve.complete && record.curve.readAt <= now))
+    .slice(0, FINAL_STRETCH_LIMIT);
 }
 
 /**
@@ -315,11 +349,10 @@ export function migrating(): TokenLifecycle[] {
 }
 
 /**
- * Recently migrated tokens, newest migration first.
- *
- * Never backfills the recent window with older events to pad the column.
+ * Last 20 confirmed migrations, newest first. A caller may explicitly request
+ * a narrower time window, but Discover keeps rows until newer proof replaces them.
  */
-export function migrated(withinMs = MIGRATED_WINDOW_MS, now = Date.now()): TokenLifecycle[] {
+export function migrated(withinMs = Number.POSITIVE_INFINITY, now = Date.now()): TokenLifecycle[] {
   return getAllByState('MIGRATED').filter((record) => {
     const proof = record.migration;
     return proof !== null && Boolean(proof.signature && proof.poolAddress && proof.dex) &&
@@ -328,27 +361,31 @@ export function migrated(withinMs = MIGRATED_WINDOW_MS, now = Date.now()): Token
   }).sort(
     (a, b) =>
       (b.migration?.migratedAt ?? b.stateChangedAt) - (a.migration?.migratedAt ?? a.stateChangedAt),
-  );
+  ).slice(0, MIGRATED_LIMIT);
 }
 
 /**
  * Drops tokens that have sat in a pre-migration state without progressing.
  *
  * Most launches never migrate; without eviction the map grows without bound.
- * Migration history is retained for four recent windows, independently of count.
+ * Displayed migration history is bounded by count. Older records remain as
+ * short-lived deduplication tombstones so a recent Jupiter pair cannot reappear
+ * under New Pairs immediately after leaving the visible 20.
  */
 export function evictStale(maxAgeMs = 6 * 60 * 60 * 1000, now = Date.now()): number {
   let removed = 0;
+  const retainedMigrations = new Set(migrated(Number.POSITIVE_INFINITY, now).map((record) => record.mint));
 
   for (const [mint, record] of records) {
     if (record.state === 'MIGRATED') {
       const migratedAt = record.migration?.migratedAt ?? record.stateChangedAt;
-      if (now - migratedAt > MIGRATED_WINDOW_MS * 4) {
+      if (!retainedMigrations.has(mint) && now - migratedAt > maxAgeMs) {
         records.delete(mint);
         removed += 1;
       }
       continue;
     }
+    if (finalStretchQueue.has(mint)) continue;
     if (now - record.stateChangedAt > maxAgeMs) {
       records.delete(mint);
       removed += 1;
@@ -357,8 +394,67 @@ export function evictStale(maxAgeMs = 6 * 60 * 60 * 1000, now = Date.now()): num
   return removed;
 }
 
+/** A bounded Redis checkpoint, never a substitute for an on-chain observation. */
+export function serializeRollingLifecycle(): string {
+  const entries = [
+    ...finalStretch().map((record) => ({ record, enteredAt: finalStretchQueue.get(record.mint) })),
+    ...migrated().map((record) => ({ record })),
+  ];
+  return JSON.stringify({ version: 1, entries }, (_key, value) => typeof value === 'bigint' ? value.toString() : value);
+}
+
+/** Restores only validated curve reads and confirmed migration proofs after restart. */
+export function restoreRollingLifecycle(raw: string): number {
+  let parsed: { version?: number; entries?: Array<{ record?: Partial<TokenLifecycle>; enteredAt?: number }> };
+  try { parsed = JSON.parse(raw); } catch { return 0; }
+  if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) return 0;
+  let restored = 0;
+  const integer = (value: unknown): bigint | null => typeof value === 'string' && /^\d+$/.test(value)
+    ? BigInt(value) : null;
+  for (const entry of parsed.entries.slice(0, FINAL_STRETCH_LIMIT + MIGRATED_LIMIT)) {
+    const saved = entry?.record;
+    if (!saved || typeof saved.mint !== 'string' || !isSolanaMint(saved.mint)
+      || !Number.isFinite(saved.firstSeenAt) || !Number.isFinite(saved.stateChangedAt)) continue;
+    const existing = records.get(saved.mint);
+    if (existing?.state === 'MIGRATED' || (existing && existing.stateChangedAt >= saved.stateChangedAt!)) continue;
+    const launchpad = resolveLaunchpad(saved.launchpad).id;
+    if (saved.state === 'FINAL_STRETCH') {
+      const c = saved.curve as BondingCurveState | null | undefined;
+      if (!c || c.complete || !Number.isFinite(c.readAt) || !Number.isFinite(c.progress)
+        || c.progress < finalStretchThreshold() || c.progress >= 1
+        || !Number.isFinite(entry.enteredAt)) continue;
+      const reserves = [c.virtualTokenReserves, c.virtualSolReserves, c.realTokenReserves,
+        c.realSolReserves, c.tokenTotalSupply, c.baselineRealTokenReserves].map(integer);
+      if (reserves.some((reserve) => reserve === null)) continue;
+      records.set(saved.mint, {
+        mint: saved.mint, state: 'FINAL_STRETCH', launchpad, launchpadInfo: resolveLaunchpad(launchpad),
+        curve: { ...c, virtualTokenReserves: reserves[0]!, virtualSolReserves: reserves[1]!,
+          realTokenReserves: reserves[2]!, realSolReserves: reserves[3]!,
+          tokenTotalSupply: reserves[4]!, baselineRealTokenReserves: reserves[5]! },
+        migration: null, firstSeenAt: saved.firstSeenAt!, stateChangedAt: saved.stateChangedAt!,
+        source: 'reconciliation',
+      });
+      finalStretchQueue.set(saved.mint, entry.enteredAt!);
+      restored += 1;
+    } else if (saved.state === 'MIGRATED') {
+      const proof = saved.migration;
+      if (!proof || !proof.signature || !isSolanaMint(proof.poolAddress)
+        || !proof.dex || !Number.isFinite(proof.migratedAt) || proof.migratedAt <= 0) continue;
+      records.set(saved.mint, {
+        mint: saved.mint, state: 'MIGRATED', launchpad, launchpadInfo: resolveLaunchpad(launchpad),
+        curve: null, migration: proof, firstSeenAt: saved.firstSeenAt!,
+        stateChangedAt: proof.migratedAt, source: 'reconciliation',
+      });
+      restored += 1;
+    }
+  }
+  trimFinalStretchQueue();
+  return restored;
+}
+
 /** Test seam. */
 export function __resetLifecycle(): void {
   records.clear();
+  finalStretchQueue.clear();
   listeners.clear();
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Users, ChefHat, Target, Ghost, Boxes } from 'lucide-react';
+import { Users, Shield, Target, Ghost, Boxes } from 'lucide-react';
 import { clsx } from 'clsx';
 import { LegendTooltip } from '@/components/ui/legend-tooltip';
 import { MetricValue } from '@/components/ui/metric-value';
@@ -107,7 +107,7 @@ export function AuditPills({
       label: 'Dev Holding %',
       definition:
         "Share still held by the deployer wallet, plus how long ago that wallet was funded.",
-      icon: ChefHat,
+      icon: Shield,
       value: devHoldingsPct,
       warn: 5,
       danger: 20,
@@ -125,7 +125,7 @@ export function AuditPills({
       key: 'insiders',
       label: 'Insiders %',
       definition: 'Share held by wallets linked to the deployer before launch.',
-      icon: Ghost,
+      icon: Users,
       value: insiderHoldingsPct,
       warn: 5,
       danger: 15,
@@ -135,7 +135,7 @@ export function AuditPills({
       label: 'Bundlers %',
       definition:
         'Share bought in the same block as pool creation — one operator across many wallets in a single bundle.',
-      icon: Boxes,
+      icon: Users,
       value: bundlerPercentage,
       warn: 5,
       danger: 20,

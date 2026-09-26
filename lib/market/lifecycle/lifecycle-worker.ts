@@ -1,21 +1,27 @@
 import 'server-only';
 
 import { logger } from '@/lib/server/logger';
+import { redis } from '@/lib/server/redis';
 import { PublicKey } from '@solana/web3.js';
 import { quickNodeService } from '@/lib/server/quicknode';
 import { bondingCurveAddress, decodeBondingCurve, PUMPFUN_PROGRAM_ID } from './bonding-curve';
 import { fetchConfirmedSignatures, fetchMigrationWithFailover } from './migration-rpc';
 import { MigrationHistory } from './migration-history';
 import { fetchJupiterFeed, hasReadableCurve, type JupiterToken } from '@/lib/discovery/jupiter-feed';
+import { getBitqueryRecentLaunches } from '@/lib/discovery/bitquery-launch-feed';
 import {
   applyCurveReading,
   evictStale,
+  finalStretch,
   getAllByState,
   getLifecycle,
   lifecycleSize,
+  migrated,
   onLifecycleChange,
   recordMigration,
   recordPairCreated,
+  restoreRollingLifecycle,
+  serializeRollingLifecycle,
   CURVE_FRESHNESS_MS,
 } from './lifecycle-engine';
 import { updateTokenCard } from '@/lib/market/live/card-cache';
@@ -53,6 +59,7 @@ const MAX_CURVES_PER_SWEEP = 100;
 const MAX_QUICKNODE_CURVES_PER_SWEEP = 25;
 const MAX_HISTORICAL_MIGRATIONS_PER_SWEEP = 3;
 const HISTORICAL_MIGRATION_RETRY_MS = 30 * 60_000;
+const ROLLING_LIFECYCLE_KEY = 'sentinel:lifecycle:rolling:v1';
 
 /**
  * Prefer a dedicated lifecycle RPC, then the configured Helius RPC/key.
@@ -74,6 +81,25 @@ class LifecycleWorker {
   private historicalMigrationCheckedAt = new Map<string, number>();
   private curveAttemptedAt = new Map<string, number>();
   private migrationHistory = new MigrationHistory();
+  private checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private async writeCheckpoint(): Promise<void> {
+    // A dev preview and the main server can share Redis. Merge their proved
+    // lifecycle records before writing so the smaller in-memory view does not
+    // blindly replace the fuller one on every sweep.
+    const stored = await this.restoreCheckpoint();
+    if (stored) restoreRollingLifecycle(stored);
+    await redis.set(ROLLING_LIFECYCLE_KEY, serializeRollingLifecycle());
+  }
+
+  private scheduleCheckpoint(): void {
+    if (this.checkpointTimer) return;
+    this.checkpointTimer = setTimeout(() => {
+      this.checkpointTimer = null;
+      void this.writeCheckpoint();
+    }, 500);
+    this.checkpointTimer.unref?.();
+  }
 
   /**
    * Recovers a missed migration after reconnect/restart from the confirmed
@@ -144,18 +170,41 @@ class LifecycleWorker {
 
   start(): void {
     if (this.timer) return;
-    this.unsubscribeLifecycle = onLifecycleChange((mint, record) => this.publishLifecycle(mint, record));
+    this.unsubscribeLifecycle = onLifecycleChange((mint, record) => {
+      this.publishLifecycle(mint, record);
+      this.scheduleCheckpoint();
+    });
     this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
     logger.info('[lifecycle] worker started', {
       sweepIntervalMs: SWEEP_INTERVAL_MS,
       rpc: curveRpcUrl().replace(/api-key=[^&]+/, 'api-key=***'),
     });
-    void this.sweep();
+    void this.restoreCheckpoint().then((stored) => {
+      if (stored) {
+        const restored = restoreRollingLifecycle(stored);
+        if (restored) logger.info('[lifecycle] restored rolling columns', { restored });
+      }
+    }).finally(() => void this.sweep());
+  }
+
+  private async restoreCheckpoint(): Promise<string | null> {
+    // RedisClient starts its connection on the first read. That read can use
+    // the in-process fallback before the socket is ready; retry briefly so a
+    // normal server restart does not present empty lifecycle columns.
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const stored = await redis.get(ROLLING_LIFECYCLE_KEY);
+      if (stored || !redis.isDegraded || !process.env.REDIS_URL) return stored;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return null;
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.checkpointTimer) clearTimeout(this.checkpointTimer);
+    this.checkpointTimer = null;
+    void this.writeCheckpoint();
     this.unsubscribeLifecycle?.();
     this.unsubscribeLifecycle = null;
   }
@@ -230,6 +279,15 @@ class LifecycleWorker {
         fetchJupiterFeed('toporganicscore', { limit: 100, window: '5m' }),
         fetchJupiterFeed('toporganicscore', { limit: 100, window: '1h' }),
       ]);
+
+      // When Jupiter's recent endpoint is quota-limited, confirmed Pump.fun
+      // creations from Bitquery still enter the curve-read queue. Creation
+      // alone never promotes a token into Final Stretch.
+      if (results[0].status !== 'fulfilled' || results[0].value.length === 0) {
+        void getBitqueryRecentLaunches().then((launches) => {
+          for (const { raw } of launches) recordPairCreated(raw.id, 'pump.fun', Date.parse(raw.createdAt ?? '') || Date.now());
+        }).catch(() => logger.debug('[lifecycle] Bitquery launch fallback unavailable'));
+      }
 
       const historicalCandidates: Array<{ mint: string; pool: string }> = [];
       for (const result of results) {
@@ -393,9 +451,9 @@ class LifecycleWorker {
     return {
       tracking: lifecycleSize(),
       newPair: getAllByState('NEW_PAIR').length,
-      finalStretch: getAllByState('FINAL_STRETCH').length,
+      finalStretch: finalStretch().length,
       migrating: getAllByState('MIGRATING').length,
-      migrated: getAllByState('MIGRATED').length,
+      migrated: migrated().length,
       sweepIntervalMs: SWEEP_INTERVAL_MS,
       running: this.timer !== null,
       historicalMigrationChecks: this.historicalMigrationCheckedAt.size,
@@ -408,6 +466,19 @@ class LifecycleWorker {
   }
 }
 
-const globalForLifecycle = globalThis as unknown as { lifecycleWorker?: LifecycleWorker };
-export const lifecycleWorker = globalForLifecycle.lifecycleWorker ?? new LifecycleWorker();
-if (process.env.NODE_ENV !== 'production') globalForLifecycle.lifecycleWorker = lifecycleWorker;
+const WORKER_REVISION = 3;
+const globalForLifecycle = globalThis as unknown as {
+  lifecycleWorker?: LifecycleWorker;
+  lifecycleWorkerRevision?: number;
+};
+const priorWorker = globalForLifecycle.lifecycleWorker;
+const refreshWorker = process.env.NODE_ENV !== 'production' && priorWorker
+  && globalForLifecycle.lifecycleWorkerRevision !== WORKER_REVISION;
+const resumeWorker = refreshWorker && priorWorker.stats().running;
+if (refreshWorker) priorWorker.stop();
+export const lifecycleWorker = !priorWorker || refreshWorker ? new LifecycleWorker() : priorWorker;
+if (process.env.NODE_ENV !== 'production') {
+  globalForLifecycle.lifecycleWorker = lifecycleWorker;
+  globalForLifecycle.lifecycleWorkerRevision = WORKER_REVISION;
+  if (resumeWorker) lifecycleWorker.start();
+}

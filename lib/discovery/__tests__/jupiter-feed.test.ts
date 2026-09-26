@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
+  fetchJupiterFeed,
   isOnBondingCurve,
   collapseDuplicateLaunches,
   mapJupiterToken,
@@ -7,6 +8,35 @@ import {
   formatAge,
   type JupiterToken,
 } from '../jupiter-feed';
+
+describe('recent launch host failover', () => {
+  it('uses the public API host for live New Pairs', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ id: MINT }]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect(await fetchJupiterFeed('recent', { limit: 30 })).toEqual([{ id: MINT }]);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.jup.ag/tokens/v2/recent?limit=30');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('tries the lite host if the public API host is quota-limited', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: MINT }]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect(await fetchJupiterFeed('recent')).toEqual([{ id: MINT }]);
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        'https://api.jup.ag/tokens/v2/recent?limit=30',
+        'https://lite-api.jup.ag/tokens/v2/recent?limit=30',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 const MINT = '7W3zhfDKKfQSJjzs8tqiN8EPyQf8YXP51pTkuGiXpump';
 const POOL = 'Ray1poo1AddressDistinctFromTheMint11111111';

@@ -4,6 +4,9 @@ const nextConfig = {
   ...(process.env.SENTINEL_UI_PREVIEW === 'true' ? {
     distDir: '.next-ui-preview',
     typescript: { tsconfigPath: 'scripts/tsconfig.ui-preview.json' },
+  } : process.env.SENTINEL_DEV_BUILD === 'true' && process.env.NODE_ENV !== 'production' ? {
+    // Keep hot-reload output separate from `npm run build`'s `.next` files.
+    distDir: '.next-dev',
   } : {}),
   reactStrictMode: true,
   swcMinify: true,

@@ -40,6 +40,7 @@ import { isSupportedLaunchpad, resolveLaunchpad } from '@/lib/market/lifecycle/l
  */
 
 const JUPITER_BASE = 'https://lite-api.jup.ag';
+const JUPITER_RECENT_BASE = 'https://api.jup.ag';
 const REQUEST_TIMEOUT_MS = 8_000;
 
 /** The feeds each Discover column draws from. */
@@ -421,24 +422,30 @@ export async function fetchJupiterFeed(
 ): Promise<JupiterToken[]> {
   const { limit = 30, window = '5m' } = options;
   const path = feed === 'recent' ? 'recent' : `${feed}/${window}`;
-  const url = `${JUPITER_BASE}/tokens/v2/${path}?limit=${limit}`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      cache: 'no-store',
-      signal: controller.signal,
-      headers: { accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Jupiter ${feed} responded ${res.status}`);
-
-    const body = await res.json();
-    const list = Array.isArray(body) ? body : (body?.tokens ?? body?.data ?? []);
-    return Array.isArray(list) ? (list as JupiterToken[]) : [];
-  } finally {
-    clearTimeout(timer);
+  // The lite host can return 429 while the public API host still serves the
+  // same recent launch feed. Do not turn a host-specific quota into an empty
+  // New Pairs column; the Bitquery creation feed remains the next fallback.
+  const hosts = feed === 'recent' ? [JUPITER_RECENT_BASE, JUPITER_BASE] : [JUPITER_BASE];
+  let lastError: Error | null = null;
+  for (const host of hosts) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${host}/tokens/v2/${path}?limit=${limit}`, {
+        cache: 'no-store', signal: controller.signal, headers: { accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Jupiter ${feed} responded ${res.status} on ${new URL(host).host}`);
+      const body = await res.json();
+      const list = Array.isArray(body) ? body : (body?.tokens ?? body?.data ?? []);
+      if (!Array.isArray(list)) throw new Error(`Jupiter ${feed} returned an invalid token list`);
+      if (list.length > 0 || host === hosts[hosts.length - 1]) return list as JupiterToken[];
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw lastError ?? new Error(`Jupiter ${feed} is unavailable`);
 }
 
 

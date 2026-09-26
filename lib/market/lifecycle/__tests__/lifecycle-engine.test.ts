@@ -12,6 +12,8 @@ import {
   recordMigration,
   recordPairCreated,
   evictStale,
+  restoreRollingLifecycle,
+  serializeRollingLifecycle,
 } from '../lifecycle-engine';
 import { decodeBondingCurve, INITIAL_REAL_TOKEN_RESERVES, bondingCurveAddress } from '../bonding-curve';
 import { canTransition, stateFromCurve, type BondingCurveState } from '../types';
@@ -256,7 +258,7 @@ describe('lifecycle engine', () => {
 
   it('evicts stalled pre-migration tokens but keeps migrated ones', () => {
     recordPairCreated(MINT, 'pump.fun', 0);
-    recordMigration(OTHER, { signature: 's', migratedAt: 0, dex: 'PumpSwap', poolAddress: 'p' });
+    recordMigration(OTHER, { signature: 's', migratedAt: 1, dex: 'PumpSwap', poolAddress: 'p' });
     const removed = evictStale(1_000, 10_000);
     expect(removed).toBe(1);
     expect(getLifecycle(MINT)).toBeNull();
@@ -313,7 +315,47 @@ describe('curve progress is reversible — regression', () => {
 describe('column semantics — underway, and recently migrated', () => {
   beforeEach(() => __resetLifecycle());
 
-  it('orders Final Stretch by proximity to migration (highest progress first)', () => {
+  it('keeps only the last 20 verified Final Stretch entries, newest at the top', () => {
+    const now = Date.now();
+    for (let i = 0; i < 21; i++) applyCurveReading(`curve-${i}`, curveAt(0.85, false, now - 21 + i));
+    expect(finalStretch(now).map((row) => row.mint)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `curve-${20 - i}`),
+    );
+    // An evicted row does not re-enter just because another sweep read it.
+    applyCurveReading('curve-0', curveAt(0.9, false, now + 1));
+    expect(finalStretch(now + 1).map((row) => row.mint)).not.toContain('curve-0');
+  });
+
+  it('keeps the latest 20 proved migrations instead of expiring by age', () => {
+    const now = Date.now();
+    for (let i = 0; i < 21; i++) recordMigration(`migration-${i}`, {
+      signature: `sig-${i}`, poolAddress: `pool-${i}`, dex: 'PumpSwap',
+      migratedAt: now - (21 - i) * 60_000,
+    });
+    expect(migrated()).toHaveLength(20);
+    expect(migrated()[0].mint).toBe('migration-20');
+    expect(migrated().some((row) => row.mint === 'migration-0')).toBe(false);
+    evictStale();
+    // The dropped row stays known briefly, so a repeated launch feed cannot
+    // misclassify it as a new pair while it is still recent.
+    expect(getLifecycle('migration-0')?.state).toBe('MIGRATED');
+    evictStale(1_000, now + 1_000);
+    expect(getLifecycle('migration-0')).toBeNull();
+  });
+
+  it('restores the rolling columns without inventing curve or migration proof', () => {
+    applyCurveReading(MINT, curveAt(0.91));
+    recordMigration(OTHER, { signature: 'confirmed', poolAddress: MINT,
+      dex: 'PumpSwap', migratedAt: Date.now() - 3 * 60 * 60_000 });
+    const checkpoint = serializeRollingLifecycle();
+    __resetLifecycle();
+    expect(restoreRollingLifecycle(checkpoint)).toBe(2);
+    expect(finalStretch().map((row) => row.mint)).toEqual([MINT]);
+    expect(migrated().map((row) => row.mint)).toEqual([OTHER]);
+    expect(restoreRollingLifecycle('{"version":1,"entries":[{"record":{"mint":"bad"}}]}')).toBe(0);
+  });
+
+  it('orders Final Stretch by entry time, even when an older row has higher progress', () => {
     const a = 'AaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA';
     const b = 'BbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbB';
     recordPairCreated(a, 'pump.fun', Date.now() - 60_000);
@@ -321,7 +363,7 @@ describe('column semantics — underway, and recently migrated', () => {
     applyCurveReading(a, curveAt(0.99));
     applyCurveReading(b, curveAt(0.88));
 
-    expect(finalStretch().map((r) => r.mint)).toEqual([a, b]);
+    expect(finalStretch().map((r) => r.mint)).toEqual([b, a]);
   });
 
   it('does not admit tokens below the threshold to Final Stretch', () => {
@@ -380,7 +422,7 @@ describe('column semantics — underway, and recently migrated', () => {
     expect(migrated(60 * 60 * 1000, now)).toHaveLength(0);
   });
 
-  it('evicts migrated records well past the window so the map stays bounded', () => {
+  it('retains an old migration until newer confirmed entries push it out', () => {
     const now = Date.now();
     recordMigration('Ancient1111111111111111111111111111111111', {
       signature: 'sig-ancient',
@@ -389,9 +431,8 @@ describe('column semantics — underway, and recently migrated', () => {
       poolAddress: 'PooL444444444444444444444444444444444444444',
     });
 
-    // Migrated was exempt from eviction entirely, so the map grew for the life
-    // of the process at one entry per migration.
-    expect(evictStale(6 * 60 * 60 * 1000, now)).toBeGreaterThan(0);
+    expect(evictStale(6 * 60 * 60 * 1000, now)).toBe(0);
+    expect(migrated().map((row) => row.mint)).toContain('Ancient1111111111111111111111111111111111');
   });
 });
 
@@ -500,13 +541,13 @@ describe('Final Stretch inclusion cannot be violated by sort', () => {
     expect(rows.map((r) => r.mint)).toEqual(['C', 'B']);
   });
 
-  it('ignores out-of-order curve readings and expires an unrefreshed curve', () => {
+  it('ignores out-of-order reads and retains an unrefreshed row as stale evidence', () => {
     const now = Date.now();
     applyCurveReading(MINT, curveAt(0.84, false, now));
     applyCurveReading(MINT, curveAt(0.21, false, now - 1_000));
     expect(getLifecycle(MINT)?.curve?.progress).toBe(0.84);
     expect(finalStretch(now)).toHaveLength(1);
-    expect(finalStretch(now + 121_000)).toHaveLength(0);
+    expect(finalStretch(now + 121_000)).toHaveLength(1);
   });
 
   it('safely handles dumped curves with tiny virtualSol without generating fake progress', () => {

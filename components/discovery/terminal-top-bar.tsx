@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import type { TimeWindow, DiscoverySection, DiscoveryColumnConfig } from '@/lib/discovery/types';
 import type { DiscoveryHealth } from '@/lib/discovery/discovery-store';
+import { Modal } from '@/components/ui/modal';
 
 interface TerminalTopBarProps {
   searchQuery: string;
@@ -106,7 +107,7 @@ export function TerminalTopBar({
   return (
     <div className="discovery-toolbar relative shrink-0 z-20 bg-sentinel-950 border-b border-slate-700 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
       {/* Left Section: Search & Chain & Time Window */}
-      <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 basis-full xl:basis-auto">
+      <div className="discovery-toolbar-search flex flex-wrap items-center gap-2 flex-1 min-w-0 basis-full xl:basis-auto">
         {/* Global Search Input */}
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
@@ -171,7 +172,38 @@ export function TerminalTopBar({
       </div>
 
       {/* Right Section: Quick Buy Presets, Column Manager, Advanced Filters & Stream Status */}
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
+      <div className="discovery-toolbar-controls flex flex-wrap items-center gap-2 min-w-0" aria-label="Discovery controls">
+        {/* Advanced Filters Trigger Button */}
+        <button
+          onClick={onOpenFilterDrawer}
+          className={`h-7 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
+            activeFilterCount > 0
+              ? 'bg-sky-500/10 border-sky-500/60 text-sky-300'
+              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'
+          }`}
+        >
+          <SlidersHorizontal className="w-3 h-3 text-sky-400" />
+          <span>Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-sky-500 text-slate-950 text-2xs font-black">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+
+        {/* Shared stream health and inspection pause */}
+        <button
+          onClick={onTogglePause}
+          aria-pressed={paused}
+          className={`h-7 px-2 rounded-lg border flex items-center gap-1.5 text-2xs font-bold transition-colors ${
+            paused ? 'bg-amber-950/50 border-amber-800/60 text-amber-300' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+          }`}
+          title={paused ? 'Resume live updates' : 'Freeze the board for inspection'}
+        >
+          {paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+          <span>{paused ? 'Resume' : 'Freeze'}</span>
+          {paused && pendingRefresh && <span className="text-amber-400">•</span>}
+        </button>
         {/* Quick Buy Presets Pill Configuration */}
         <button
           onClick={() => setShowQuickBuyModal(true)}
@@ -223,7 +255,7 @@ export function TerminalTopBar({
           </button>
 
           {showAddMenu && (
-            <div className="absolute right-0 mt-1 w-64 bg-[#0d121a] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-xs">
+            <div className="discovery-add-menu absolute right-0 mt-1 w-64 bg-[#0d121a] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-xs">
               <div className="px-3 py-1.5 text-2xs font-bold uppercase text-slate-400 border-b border-slate-800">
                 Add Feed Column
               </div>
@@ -255,38 +287,6 @@ export function TerminalTopBar({
             </div>
           )}
         </div>
-
-        {/* Advanced Filters Trigger Button */}
-        <button
-          onClick={onOpenFilterDrawer}
-          className={`h-7 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
-            activeFilterCount > 0
-              ? 'bg-sky-500/10 border-sky-500/60 text-sky-300'
-              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'
-          }`}
-        >
-          <SlidersHorizontal className="w-3 h-3 text-sky-400" />
-          <span>Filters</span>
-          {activeFilterCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-sky-500 text-slate-950 text-2xs font-black">
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-
-        {/* Shared stream health and inspection pause */}
-        <button
-          onClick={onTogglePause}
-          aria-pressed={paused}
-          className={`h-7 px-2 rounded-lg border flex items-center gap-1.5 text-2xs font-bold transition-colors ${
-            paused ? 'bg-amber-950/50 border-amber-800/60 text-amber-300' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
-          }`}
-          title={paused ? 'Resume live updates' : 'Freeze the board for inspection'}
-        >
-          {paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
-          <span>{paused ? 'Resume' : 'Freeze'}</span>
-          {paused && pendingRefresh && <span className="text-amber-400">•</span>}
-        </button>
         <div
           className={`flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-bold border ${
             health === 'live'
@@ -305,22 +305,7 @@ export function TerminalTopBar({
       </div>
 
       {/* Quick Buy Presets Configuration Modal */}
-      {showQuickBuyModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e131b] border border-slate-700/90 rounded-xl max-w-sm w-full p-4 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-emerald-400 fill-current" />
-                Quick Buy Settings
-              </h3>
-              <button
-                onClick={() => setShowQuickBuyModal(false)}
-                className="text-slate-500 hover:text-slate-300"
-              >
-                ✕
-              </button>
-            </div>
-
+      <Modal isOpen={showQuickBuyModal} onClose={() => setShowQuickBuyModal(false)} title="Quick Buy Settings" size="sm">
             <form onSubmit={handleSaveQuickBuy} className="space-y-3 text-xs">
               <div className="space-y-1">
                 <label className="text-slate-400 text-2xs uppercase font-bold">Currency Mode</label>
@@ -360,6 +345,7 @@ export function TerminalTopBar({
                     <input
                       type="number"
                       step="any"
+                      aria-label="Preset 1 amount"
                       value={editPreset1}
                       onChange={(e) => setEditPreset1(parseFloat(e.target.value) || 0)}
                       className="w-full h-8 px-2 rounded bg-slate-900 border border-slate-800 text-white font-bold"
@@ -370,6 +356,7 @@ export function TerminalTopBar({
                     <input
                       type="number"
                       step="any"
+                      aria-label="Preset 2 amount"
                       value={editPreset2}
                       onChange={(e) => setEditPreset2(parseFloat(e.target.value) || 0)}
                       className="w-full h-8 px-2 rounded bg-slate-900 border border-slate-800 text-white font-bold"
@@ -380,6 +367,7 @@ export function TerminalTopBar({
                     <input
                       type="number"
                       step="any"
+                      aria-label="Preset 3 amount"
                       value={editPreset3}
                       onChange={(e) => setEditPreset3(parseFloat(e.target.value) || 0)}
                       className="w-full h-8 px-2 rounded bg-slate-900 border border-slate-800 text-white font-bold"
@@ -390,6 +378,7 @@ export function TerminalTopBar({
                     <input
                       type="number"
                       step="any"
+                      aria-label="Preset 4 amount"
                       value={editPreset4}
                       onChange={(e) => setEditPreset4(parseFloat(e.target.value) || 0)}
                       className="w-full h-8 px-2 rounded bg-slate-900 border border-slate-800 text-white font-bold"
@@ -414,9 +403,7 @@ export function TerminalTopBar({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }
