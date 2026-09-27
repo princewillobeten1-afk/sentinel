@@ -67,9 +67,10 @@ const ROLLING_LIFECYCLE_KEY = 'sentinel:lifecycle:rolling:v1';
 function curveRpcUrl(): string {
   return process.env.LIFECYCLE_RPC_URL?.trim()
     || process.env.HELIUS_RPC_URL?.trim()
+    || process.env.QUICKNODE_SOLANA_RPC_URL?.trim()
     || (process.env.HELIUS_API_KEY?.trim()
       ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY.trim()}`
-      : 'https://api.mainnet-beta.solana.com');
+      : 'https://mainnet.helius-rpc.com/?api-key=b9c3bccc-78da-45d2-884e-8fd563b20ad7');
 }
 
 class LifecycleWorker {
@@ -471,13 +472,13 @@ const globalForLifecycle = globalThis as unknown as {
 };
 const priorWorker = globalForLifecycle.lifecycleWorker;
 const refreshWorker = process.env.NODE_ENV !== 'production' && priorWorker
-  && globalForLifecycle.lifecycleWorkerRevision !== WORKER_REVISION;
-const resumeWorker = refreshWorker && priorWorker.stats().running;
-if (refreshWorker) priorWorker.stop();
+const resumeWorker = Boolean(refreshWorker && priorWorker?.stats().running);
+if (refreshWorker) priorWorker?.stop();
 export const lifecycleWorker = !priorWorker || refreshWorker ? new LifecycleWorker() : priorWorker;
-if (process.env.NODE_ENV !== 'production') {
-  globalForLifecycle.lifecycleWorker = lifecycleWorker;
-  globalForLifecycle.lifecycleWorkerRevision = WORKER_REVISION;
-  if (resumeWorker || !priorWorker) lifecycleWorker.start();
+globalForLifecycle.lifecycleWorker = lifecycleWorker;
+globalForLifecycle.lifecycleWorkerRevision = WORKER_REVISION;
+if (resumeWorker || !priorWorker) {
+  lifecycleWorker.start();
 }
+
 
