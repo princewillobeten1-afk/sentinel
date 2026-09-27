@@ -17,6 +17,8 @@ export const dynamic = 'force-dynamic';
  * once, so a stray extra call (e.g. a dev-mode double-invocation) is harmless.
  */
 export async function POST() {
+  const { startCopilotRetention } = await import('@/lib/ai/pilot/maintenance');
+  startCopilotRetention();
   const wss = (globalThis as unknown as { __sentinelWss?: import('ws').WebSocketServer }).__sentinelWss;
 
   const { webhookDispatcher } = await import('@/lib/webhooks/dispatcher');

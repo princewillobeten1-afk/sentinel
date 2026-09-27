@@ -57,6 +57,13 @@ export class RedisClient {
     return !this.isReady;
   }
 
+  /** Security/budget decisions must NEVER use the process-local fallback. */
+  public async evalStrict(script: string, keys: string[], args: (string | number)[]): Promise<unknown> {
+    const client = this.getClient();
+    if (!client) throw new Error('Distributed coordination is unavailable');
+    return client.eval(script, keys.length, ...keys, ...args);
+  }
+
   private options(): RedisOptions {
     return {
       // Commands issued before the socket is up would otherwise queue forever;

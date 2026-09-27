@@ -27,6 +27,7 @@ build/
 coverage/
 artifacts/ui-cleanup/
 artifacts/ui-audit/
+artifacts/copilot/
 *.tsbuildinfo
 
 # Editor/OS noise

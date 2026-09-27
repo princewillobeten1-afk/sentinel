@@ -12,6 +12,7 @@
  *   8. Structured Response Delivery & Metrics Logging
  */
 
+import 'server-only';
 import { logger } from '@/lib/server/logger';
 import { AiFeatureRegistry, aiFeatureRegistry } from './feature-registry';
 import { ModelRouter, modelRouter } from './model-router';
@@ -103,6 +104,8 @@ export class AiGateway {
    * Primary entrypoint: Executes full 8-step AI Gateway pipeline (§3).
    */
   public async execute(req: AiGatewayRequest): Promise<AiGatewayResponse> {
+    // Fixture-only compatibility; never report synthetic inference in the application.
+    if (process.env.NODE_ENV !== 'test') throw new Error('Legacy AI preview retired; use the authenticated public-data pilot.');
     const start = Date.now();
 
     // ── 1. Authentication & Feature Lookup ──

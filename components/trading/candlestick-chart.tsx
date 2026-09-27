@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useCopilotChartContext } from '@/components/ai/copilot-context';
 import type { Chart, Crosshair, DataLoaderGetBarsParams, DeepPartial, KLineData, Period, Styles } from 'klinecharts';
 import { BarChart3, ChevronDown, RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useChartData } from '@/lib/hooks/use-chart-data';
@@ -182,6 +183,7 @@ export function CandlestickChart(props: CandlestickChartProps) {
     return 'mcap';
   });
   const displayUnit = props.displayUnit ?? selectedUnit;
+  useCopilotChartContext(props.symbol || '', timeframe, displayUnit);
   const setDisplayUnit = (unit: PriceDisplayUnit) => {
     setSelectedUnit(unit);
     props.onDisplayUnitChange?.(unit);

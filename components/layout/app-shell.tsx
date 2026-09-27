@@ -13,6 +13,8 @@ import { ExecutionConsole } from '@/components/layout/execution-console';
 import { XTrackerDrawer } from '@/components/x-tracker/x-tracker-drawer';
 import { useAppActions, useAppState, AppView } from '@/lib/store';
 import { clsx } from 'clsx';
+import { CopilotContextProvider } from '@/components/ai/copilot-context';
+import { CopilotPanel } from '@/components/ai/copilot-panel';
 
 export interface AppShellProps {
   initialView?: AppView;
@@ -34,6 +36,7 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
   }, [initialView, setActiveView]);
 
   return (
+    <CopilotContextProvider page={activeView === 'trade' ? 'trade' : activeView === 'discover' ? 'discover' : 'ai'}>
     <div
       data-density={density}
       data-hydrated={hydrated}
@@ -73,7 +76,9 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       <NotificationsDrawer />
       <ExecutionConsole />
       <XTrackerDrawer />
+      <CopilotPanel />
     </div>
+    </CopilotContextProvider>
   );
 }
 
