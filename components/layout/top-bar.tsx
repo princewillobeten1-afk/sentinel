@@ -32,7 +32,6 @@ import { useAppState, useAppActions, DensityMode, AppView } from '@/lib/store';
 import { useGlobalTicker } from '@/lib/hooks/use-global-ticker';
 import { useMarketSummary } from '@/lib/hooks/use-market-summary';
 import { viewRouteMap, NavItemConfig } from '@/components/layout/mobile-nav-drawer';
-import { XTrackerButton } from '@/components/x-tracker/x-tracker-button';
 
 export const primaryNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
@@ -287,9 +286,6 @@ export function TopBar() {
 
         {/* Right: Quick Trade, Notifications, Wallet Connection, User Profile */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
-          {/* Axiom-Style X Tracker Toggle */}
-          <XTrackerButton variant="header" />
-
           {/* Active Wallet Connection Button */}
           {primaryWallet ? (
             <button
