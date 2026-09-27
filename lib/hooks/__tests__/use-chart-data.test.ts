@@ -168,3 +168,41 @@ it('shows empty/malformed responses honestly and never fills them with dummy bar
   await act(async () => {}); expect(result.current.candles).toEqual([]); expect(result.current.error).toBeNull();
   await act(async () => { result.current.refresh(); }); expect(result.current.error).toContain('invalid'); expect(result.current.candles).toEqual([]);
 });
+it('successfully parses public sanitized chart snapshots from production gateways', async () => {
+  const publicPayload = {
+    market: 'pool',
+    seriesId: 'b815dc1b21da4d840e94085d',
+    priority: 1,
+    poolAddress: '9XMSmioJTLTtVtkHSfVrTMjycKDajhgJhooSVjHJzwAr',
+    address: mint,
+    chain: 'solana',
+    timeframe: '15m',
+    currency: 'usd',
+    candles: [
+      {
+        time,
+        open: 0.0000044,
+        high: 0.0000058,
+        low: 0.0000036,
+        close: 0.0000051,
+        volume: null,
+        volumeUsd: 2968.29,
+      },
+    ],
+    hasMore: false,
+    oldestTime: time,
+    observedAt: Date.now(),
+    status: 'measured',
+    deliveryMode: 'poll',
+  };
+  const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: publicPayload }) });
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.error).toBeNull();
+  expect(result.current.candles).toHaveLength(1);
+  expect(result.current.candles[0].close).toBe(0.0000051);
+  expect(result.current.market).toBe('pool');
+  expect(result.current.poolAddress).toBe('9XMSmioJTLTtVtkHSfVrTMjycKDajhgJhooSVjHJzwAr');
+});
+

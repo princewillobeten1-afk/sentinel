@@ -25,9 +25,8 @@ function validSeries(value: PublicChartSeries): boolean {
     && Number.isFinite(value.priority) && value.priority >= 0
     && (value.market === 'token-aggregate' || value.market === 'pool' && isSolanaMint(value.poolAddress ?? ''));
 }
-function candle(value: ChartCandle, timeframe: ChartTimeframe): ChartCandle | null {
-  return value && parseProviderCandle({ unixTime: value.time, o: value.open, h: value.high,
-    l: value.low, c: value.close, v: value.volume, vUsd: value.volumeUsd }, timeframe);
+function candle(value: any, timeframe: ChartTimeframe): ChartCandle | null {
+  return value ? parseProviderCandle(value, timeframe) : null;
 }
 export function parsePublicChartFrame(value: unknown): PublicChartFrame | null {
   const f = value as PublicChartFrame;

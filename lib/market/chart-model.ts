@@ -45,12 +45,12 @@ const numeric = (value: unknown): number | null => typeof value === 'number' && 
 
 export function parseProviderCandle(row: any, timeframe: ChartTimeframe): ChartCandle | null {
   if (!row || typeof row !== 'object') return null;
-  const time = numeric(row.unix_time ?? row.unixTime);
-  const [open, high, low, close] = [row.o, row.h, row.l, row.c].map(numeric);
+  const time = numeric(row.unix_time ?? row.unixTime ?? row.time);
+  const [open, high, low, close] = [row.o ?? row.open, row.h ?? row.high, row.l ?? row.low, row.c ?? row.close].map(numeric);
   if (time === null || !Number.isInteger(time) || time <= 0 || time % CHART_SECONDS[timeframe] !== 0
     || open === null || high === null || low === null || close === null
     || Math.min(open, high, low, close) <= 0 || low > Math.min(open, close) || high < Math.max(open, close)) return null;
-  return { time, open, high, low, close, volume: numeric(row.v), volumeUsd: numeric(row.v_usd ?? row.vUsd) };
+  return { time, open, high, low, close, volume: numeric(row.v ?? row.volume), volumeUsd: numeric(row.v_usd ?? row.vUsd ?? row.volumeUsd) };
 }
 
 export function parseChartTarget(target: string): { mint: string; timeframe: ChartTimeframe } | null {
@@ -86,15 +86,30 @@ export function chartPrecision(price: number): { precision: number; minMove: num
 }
 
 export function parseChartSnapshot(value: unknown, address: string, timeframe: ChartTimeframe): ChartSnapshot | null {
-  const s = value as ChartSnapshot | null;
+  const s = value as (Partial<ChartSnapshot> & Record<string, unknown>) | null;
   if (!s || s.address !== address || s.timeframe !== timeframe || s.chain !== 'solana' || s.currency !== 'usd'
-    || !((s.market === 'token-aggregate' && ['birdeye-ohlcv-v3'].includes(s.source))
-      || (s.market === 'pool' && s.source === 'geckoterminal-pool-ohlcv' && isSolanaMint(s.poolAddress ?? '')))
+    || !((s.market === 'token-aggregate' && (!s.source || String(s.source).startsWith('birdeye')))
+      || (s.market === 'pool' && (!s.source || String(s.source).startsWith('geckoterminal')) && isSolanaMint(String(s.poolAddress ?? ''))))
     || !Number.isFinite(s.observedAt)
-    || s.observedAt <= 0 || !['measured', 'stale'].includes(s.status) || !Array.isArray(s.candles)
+    || Number(s.observedAt) <= 0 || !['measured', 'stale'].includes(String(s.status)) || !Array.isArray(s.candles)
     || typeof s.hasMore !== 'boolean') return null;
-  const candles = s.candles.map(c => c && parseProviderCandle({ unixTime: c.time, o: c.open, h: c.high,
-    l: c.low, c: c.close, v: c.volume, vUsd: c.volumeUsd }, timeframe));
+  const candles = s.candles.map(c => c && parseProviderCandle(c, timeframe));
   if (candles.some(c => !c)) return null;
-  return { ...s, candles: mergeChartCandles([], candles as ChartCandle[]) };
+  const defaultSource: ChartSnapshot['source'] = s.market === 'pool' ? 'geckoterminal-pool-ohlcv' : 'birdeye-ohlcv-v3';
+  const resolvedSource = s.source === 'geckoterminal-pool-ohlcv' ? 'geckoterminal-pool-ohlcv' : 'birdeye-ohlcv-v3';
+  return {
+    address: s.address as string,
+    chain: 'solana',
+    timeframe,
+    currency: 'usd',
+    market: s.market as 'token-aggregate' | 'pool',
+    poolAddress: s.poolAddress as string | undefined,
+    candles: mergeChartCandles([], candles as ChartCandle[]),
+    hasMore: s.hasMore as boolean,
+    oldestTime: (s.oldestTime as number | null) ?? null,
+    observedAt: s.observedAt as number,
+    source: (s.source as ChartSnapshot['source']) || resolvedSource || defaultSource,
+    status: s.status as 'measured' | 'stale',
+    ...(s.reason ? { reason: String(s.reason) } : {}),
+  };
 }

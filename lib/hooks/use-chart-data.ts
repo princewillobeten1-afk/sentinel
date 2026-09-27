@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSentinelWS, type SentinelWSEventHandler } from './use-sentinel-ws';
 import { isSolanaMint, mergeChartCandles, parseChartFrame, parseChartSnapshot,
   type ChartCandle, type ChartSnapshot, type ChartTimeframe } from '@/lib/market/chart-model';
+import { parsePublicChartFrame, parsePublicChartSnapshot } from '@/lib/market/public-chart';
 
 // The server already polls visible candles every 30 seconds and broadcasts
 // them. Browser REST is reconciliation, not a second high-frequency feed.
@@ -54,7 +55,7 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
     const controllers = new Set<AbortController>();
 
     receive.current = (value, message) => {
-      const frame = parseChartFrame(value);
+      const frame = parsePublicChartFrame(value) ?? parseChartFrame(value);
       if (!active || !frame || frame.address !== address || frame.timeframe !== timeframe
         || frame.observedAt > Date.now() + 5_000 || frame.candle.time > Date.now() / 1000 + 5
         || (message.sequence !== undefined && message.sequence <= sequence.current)) return;
@@ -72,6 +73,8 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
       if (frame.market === 'pool') { setMarket('pool'); setPoolAddress(frame.poolAddress ?? null); }
       if (frame.source === 'birdeye-price-ws' || frame.source === 'birdeye-ohlcv-rest') setSource('birdeye-ohlcv-v3');
       else if (frame.source === 'geckoterminal-pool-rest') setSource('geckoterminal-pool-ohlcv');
+      else if (frame.market === 'pool') setSource('geckoterminal-pool-ohlcv');
+      else if (frame.market === 'token-aggregate') setSource('birdeye-ohlcv-v3');
       if (message.sequence !== undefined) sequence.current = message.sequence;
       if (frame.observedAt < (revisions.get(frame.candle.time) ?? 0)) return;
       revisions.set(frame.candle.time, frame.observedAt);
@@ -112,7 +115,8 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
         });
         const body = await response.json();
         if (!response.ok || !body.success) throw new Error(body?.error?.message || 'Chart history is unavailable.');
-        const snapshot = parseChartSnapshot(body.data, address, timeframe);
+        const snapshot = parsePublicChartSnapshot(body.data, address, timeframe)
+          ?? parseChartSnapshot(body.data, address, timeframe);
         if (!snapshot) throw new Error('Chart provider returned an invalid candle snapshot.');
         if (!active) return;
         // A stale aggregate cache must not displace a fresh pool stream, but a
@@ -128,7 +132,8 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
         }
         seriesIdentity = nextIdentity;
         setMarket(snapshot.market); setPoolAddress(snapshot.poolAddress ?? null);
-        setSource(snapshot.source);
+        const resolvedSource = (snapshot.source as any) || (snapshot.market === 'pool' ? 'geckoterminal-pool-ohlcv' : 'birdeye-ohlcv-v3');
+        setSource(resolvedSource);
         const accepted = snapshot.candles.filter(c => (before === undefined || c.time < before)
           && !(snapshot.market === 'pool' && c.time === streamBucket && Date.now() - lastStream < 20_000)
           && snapshot.observedAt >= (revisions.get(c.time) ?? 0));
