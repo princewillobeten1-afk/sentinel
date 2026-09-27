@@ -147,8 +147,10 @@ function reconcileTopics(): void {
   for (const topic of wanted) subscribedTopics.add(topic);
 }
 
-const SECTION_ENDPOINTS: Partial<Record<DiscoverySection, string>> = {
+const SECTION_ENDPOINTS: Partial<Record<DiscoverySection | 'bonding' | 'final-stretch', string>> = {
   'top-gainers': 'movers',
+  'bonding': 'migrating',
+  'final-stretch': 'migrating',
 };
 
 /** Query shape the columns share. Changing it restarts the cycle. */

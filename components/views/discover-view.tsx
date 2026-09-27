@@ -91,8 +91,17 @@ export function DiscoverView() {
             // Strip trending and hot columns (now on the Overview page)
             const cleaned = parsed
               .filter((c: any) => c.type !== 'trending' && c.type !== 'hot')
-              .map((c: DiscoveryColumnConfig) => c.id === 'col_bonding' && c.sortBy === 'migration-progress'
-                ? { ...c, sortBy: 'newest' as const } : c);
+              .map((c: any) => {
+                const updated = { ...c };
+                if (updated.id === 'col_bonding' || updated.type === 'bonding' || updated.type === 'final-stretch') {
+                  updated.type = 'migrating';
+                  updated.title = 'Final Stretch';
+                }
+                if (updated.id === 'col_bonding' && updated.sortBy === 'migration-progress') {
+                  updated.sortBy = 'newest';
+                }
+                return updated as DiscoveryColumnConfig;
+              });
             setColumns(cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS);
           }
         }

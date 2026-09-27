@@ -38,7 +38,9 @@ export const GET = withApiGateway(
         offset,
         nextCursor,
         tokens: mappedTokens,
-      }, 200);
+      }, 200, {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to fetch migrating tokens';
       if (message.includes('temporarily unavailable')) {

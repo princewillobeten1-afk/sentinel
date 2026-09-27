@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-23T15:32:34.547Z",
+  "checkedAt": "2026-09-27T08:19:44.310Z",
   "feeds": [
     {
       "count": 100
@@ -29,67 +29,75 @@
       "count": 30
     }
   ],
-  "curveCandidates": 50,
-  "curvesRead": 50,
-  "migrationsConfirmed": 6,
+  "curveCandidates": 77,
+  "curvesRead": 77,
+  "migrationsConfirmed": 5,
   "finalStretch": [
     {
-      "mint": "8HuqgVyrcaBSKb6WNwhcLPqNTuVqYfWQcSPiTVF7pump",
-      "progress": 91.1926330502091,
-      "observedAt": "2026-09-23T15:32:31.169Z"
+      "mint": "k1XfUWYVWD7F2k3PTRkGMU6BAsKnimSwuxSyuP6pump",
+      "progress": 87.5314301233957,
+      "observedAt": "2026-09-27T08:19:39.734Z"
     },
     {
-      "mint": "DJZF7e7MtR5XLFBJy9oaPQqLJwh1MVrVxFfB7hgvpump",
-      "progress": 86.11367620085085,
-      "observedAt": "2026-09-23T15:32:31.169Z"
+      "mint": "GsyqitN9rXtrYCnL9B1J2FqdJvsPvrzkUVGjuiznY2PY",
+      "progress": 85.83780357834218,
+      "observedAt": "2026-09-27T08:19:39.733Z"
     },
     {
-      "mint": "8MYx2Umiu8vBgkvLCGP5RpqmsHp4kNFXmJE3YpFDpump",
-      "progress": 82.68774114455069,
-      "observedAt": "2026-09-23T15:32:31.170Z"
+      "mint": "BS1xEuDHvJhuqgTjCy1F2gZNkuCDQxhUMDpKSdtRpump",
+      "progress": 95.85569558576348,
+      "observedAt": "2026-09-27T08:19:39.733Z"
     },
     {
-      "mint": "6Saa3yt4FSQeKsXb3Ed6TYrzdPnT5bmBGmmN1PtG1ive",
-      "progress": 78.92289467656376,
-      "observedAt": "2026-09-23T15:32:31.169Z"
+      "mint": "2XHsRr2JWT2i71NBY2oda3jSfau2hhCicnArf15qTKtF",
+      "progress": 86.76865551378563,
+      "observedAt": "2026-09-27T08:19:39.733Z"
+    },
+    {
+      "mint": "HNazMWySREpLBoyEdsXPPzvvc4eZ6avQDwqBko3vpump",
+      "progress": 77.10196137545312,
+      "observedAt": "2026-09-27T08:19:39.733Z"
+    },
+    {
+      "mint": "8czeE7w5o1SPKGhud3LYczy52BHy615EX3zd519vpump",
+      "progress": 75.38418964913141,
+      "observedAt": "2026-09-27T08:19:39.733Z"
+    },
+    {
+      "mint": "AuHt7PrmWVS9hsgpy967rKXWiMvc8ZFMKvRgm5W5BMRp",
+      "progress": 89.51918782527008,
+      "observedAt": "2026-09-27T08:19:39.733Z"
+    },
+    {
+      "mint": "9VRxuR3jRexKxGA1uMCDgPWyLnGnPEFAbyohUP7mMpCE",
+      "progress": 80.81690058456137,
+      "observedAt": "2026-09-27T08:19:39.732Z"
     }
   ],
   "migrated": [
     {
-      "mint": "8seJEbGihNcgb2uco8tYibfTJFw8WK9586RFF9BFpump",
-      "migratedAt": 1790177542000,
-      "signature": "4LgtUxUikyU6psKLYisCJggDCz17B31jfvgaXkLCnjTcS2L74QhyjvVsBCvs14EAhMSmpnaDiMaLjaRf3gfa9ynf",
-      "pool": "6ebqfek3U52bbgVSX18C8qdwjSywLUD2PZV6Grnd1Sfp"
+      "mint": "a4PZFLz9vCJ3QeRk2MEgeVXwSUXuShJfTw3sba6pump",
+      "migratedAt": 1790497014000,
+      "signature": "5H7kiAFjwL6djQHxYUeosiMLFnnAssXKiAXQziH8ZWY2Y9NmPFEjXDruoZQzok38yQwe455f2HoRAfMsjScMF7ez",
+      "pool": "HiL6D7GHgD3C6fRviuhnoJAeEFjud3s9M6cZ269RcDvi"
     },
     {
-      "mint": "J7EvdCzwtFTCw4MhU8KiYZBoVwnnG2ihLCYr5DyCpump",
-      "migratedAt": 1790177401000,
-      "signature": "5KGxDokZBHsyLWrx5Pbjur3F2VaXpmMxRtxAdLZcXA7HCqx3sE3p8mRE9Gy35XxbHsSKiEX24BcasFfA9U42ZePf",
-      "pool": "46qQxBwXLbgNMrU5yiuP7r2ywQQJNSwhgqKrLZA4Rn71"
+      "mint": "G87g2Wm14j4zn32h4BWTGSu9eCtbNQDXubh1oSZ8pump",
+      "migratedAt": 1790496818000,
+      "signature": "4S4wv2xBRzrptRNsr9fDD9xoFpH8D3ZBpTtFV4Ms3ihoBT41hevT5BD3mjUfx8Uvfxnwvz2rr2v9C2VtqievTPPu",
+      "pool": "5Wz6qW6JfKX5i2M3V6QKXNrA61emixRHLLuc86xcCDXa"
     },
     {
-      "mint": "FB6gcsYM4oK5X8TBi3A8xx9Pd5Y4ndRsW21Rk93Rpump",
-      "migratedAt": 1790177352000,
-      "signature": "2hCnBe3kbPS1hcrnnUY7nm8VqF4AMBX99x8zThjQL7GBbCDBSP9eWueWCZ9Q2ExapSUUXxgUE5SXWHRkP5wD36CC",
-      "pool": "3EuNitsRnCFrRrxY2VFavgkK9AXp45LRUzzizp5f75kD"
+      "mint": "4xDT5jPscGPh761Ln3er4zuQ2R1QEcEaB8oTZMjvpump",
+      "migratedAt": 1790496812000,
+      "signature": "5aUFUXAsb3MUYLC4sjQwt3btGtZ3MjRAGjgErpSWR1RizBa7LYWZAwwvcBqH3U2XAhVHdoAWVSrW8weM7XULcrYV",
+      "pool": "8aAqHMdJFmPocCR9QEkLtWoDW1EdsJjt78DgCGFreXxe"
     },
     {
-      "mint": "2q33YE2s8e2A7WgD9biXEHYn8jk6ZdDBCq7rQkGvpump",
-      "migratedAt": 1790177254000,
-      "signature": "48iFwhHk3RmycdvfthPb7xqxaoJwYVeTN5wqJUASSN4Jd6NWVvrvfYVhSCznS2cEYacgM18MZrh4mGhTu5cwHQvF",
-      "pool": "EJcP66jP57k862P3gs69TVZRQxCP1v7gzo9B7jqyXv4L"
-    },
-    {
-      "mint": "AzUXtPJAThjDLoNsJXZY9aiArB9UCU6CmzMP4YNxpump",
-      "migratedAt": 1790177247000,
-      "signature": "31GXCBXYuB5X5WVyGYVLmNpUb748kxNa4QZn2fr91eVeA3sayntJiLw6mMfqTDQm6cmdJjo1DPtYR6arxar4Nfyc",
-      "pool": "AvXBMBtQrRCV2ciXgQbCbmxiEEB5icHWFLbBtUVEd1CM"
-    },
-    {
-      "mint": "CcxugZKPsg28s7xDVR7KrQjmmoKZgitPZBmjBvknpump",
-      "migratedAt": 1790177150000,
-      "signature": "43QzYisoGn14Z17RyabHLZb3NJpN6Rnra5rjYsNsoK8fZsYPrMm6z1KCb2kWa3aGE1XUd7YJvveF3ipZxWx6Xrqg",
-      "pool": "ESmZfuwvUsJR4Jr5rzVhjWARyhemSQz9fzp4VVEps2yr"
+      "mint": "mBj64o7MdEE3TtG5bYFaYX7eVzpMg1SeP8f78G7pump",
+      "migratedAt": 1790496426000,
+      "signature": "4kXWc84aZiY1fxV32MK5Ssb7mvsKdspWWNZz1EjNoP9dLvnqhn6jJZ4LojwZMQ3tYs4VvJYoeVAp9hp59kkTfUJz",
+      "pool": "BSef69xExzriPhqKNV9vh1c1BTaTJ5yUFmF9WJXwZLWP"
     }
   ]
 }

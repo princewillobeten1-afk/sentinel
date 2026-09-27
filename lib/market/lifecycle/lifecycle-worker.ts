@@ -464,7 +464,7 @@ class LifecycleWorker {
   }
 }
 
-const WORKER_REVISION = 3;
+const WORKER_REVISION = 4;
 const globalForLifecycle = globalThis as unknown as {
   lifecycleWorker?: LifecycleWorker;
   lifecycleWorkerRevision?: number;
@@ -478,5 +478,6 @@ export const lifecycleWorker = !priorWorker || refreshWorker ? new LifecycleWork
 if (process.env.NODE_ENV !== 'production') {
   globalForLifecycle.lifecycleWorker = lifecycleWorker;
   globalForLifecycle.lifecycleWorkerRevision = WORKER_REVISION;
-  if (resumeWorker) lifecycleWorker.start();
+  if (resumeWorker || !priorWorker) lifecycleWorker.start();
 }
+

@@ -175,10 +175,27 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
   const select = section === 'migrating'
     ? () => {
         const queue = finalStretch();
-        if (queue.length > 0) return queue;
-        const near = closestToMigrating(finalStretchThreshold());
-        if (near.length > 0) return near;
-        return closestToMigrating(0.70);
+        const seen = new Set(queue.map((r) => r.mint));
+        const combined = [...queue];
+        if (combined.length < FINAL_STRETCH_LIMIT) {
+          for (const near of closestToMigrating(finalStretchThreshold())) {
+            if (!seen.has(near.mint)) {
+              seen.add(near.mint);
+              combined.push(near);
+              if (combined.length >= FINAL_STRETCH_LIMIT) break;
+            }
+          }
+        }
+        if (combined.length < FINAL_STRETCH_LIMIT) {
+          for (const near70 of closestToMigrating(0.70)) {
+            if (!seen.has(near70.mint)) {
+              seen.add(near70.mint);
+              combined.push(near70);
+              if (combined.length >= FINAL_STRETCH_LIMIT) break;
+            }
+          }
+        }
+        return combined;
       }
     : migrated;
   const records = select().slice(0, section === 'migrating' ? FINAL_STRETCH_LIMIT : MIGRATED_LIMIT);
@@ -215,14 +232,21 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
       }
     } else if (section === 'migrating') {
       try {
-        // For Final Stretch, check high-volume trending tokens that are genuinely near graduation.
+        // For Final Stretch, check high-volume trending & traded tokens that are genuinely near graduation.
         // NEVER query 'recent' because 'recent' consists of brand-new 0-2 min launches ($5k mcap).
         // A token enters Final Stretch ONLY if its bonding curve progress is >= 80% (mcap >= ~$55.2k).
-        const trending = await fetchJupiterFeed('toptrending', { limit: 50 });
+        const [trending, traded] = await Promise.all([
+          fetchJupiterFeed('toptrending', { limit: 50 }).catch(() => []),
+          fetchJupiterFeed('toptraded', { limit: 50 }).catch(() => []),
+        ]);
+        const candidates = [...trending, ...traded];
         const minThresholdPct = finalStretchThreshold() * 100;
-        const finalStretchTokens = trending.filter((t) => {
+        const seenMints = new Set<string>();
+        const finalStretchTokens = candidates.filter((t) => {
+          if (!t.id || seenMints.has(t.id)) return false;
+          seenMints.add(t.id);
           if (hasGraduated(t) || t.graduatedPool || t.graduatedAt) return false;
-          const isBonding = t.launchpad === 'pump.fun' || (t.id && t.id.endsWith('pump'));
+          const isBonding = t.launchpad === 'pump.fun' || t.id.endsWith('pump');
           if (!isBonding) return false;
           const mcap = Number(t.mcap) || 0;
           // pump.fun graduation target is ~$69,000. 80% progress is ~$55,200.
