@@ -5,7 +5,6 @@ import { AppShell } from '@/components/layout/app-shell';
 import { XTrackerCard } from '@/components/x-tracker/x-tracker-card';
 import { useXTracker } from '@/lib/hooks/use-x-tracker';
 import { Search, Flame, CheckCircle2, Sparkles, RefreshCw, Trophy } from 'lucide-react';
-import { SOLANA_KOL_REGISTRY } from '@/lib/x-tracker/mock-kol-registry';
 
 export default function SocialTrackerPage() {
   const { calls, stats, isLoading, refetch } = useXTracker();

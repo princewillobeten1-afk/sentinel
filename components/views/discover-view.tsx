@@ -75,6 +75,7 @@ export function DiscoverView() {
   // State: Quick Buy Settings
   const [quickBuyPresets, setQuickBuyPresets] = useState<number[]>(DEFAULT_QUICKBUY_PRESETS);
   const [quickBuyMode, setQuickBuyMode] = useState<'sol' | 'usd'>('sol');
+  const [quickBuyEnabled, setQuickBuyEnabled] = useState<boolean>(true);
 
   // Debounced search query
   const debouncedSearch = useDebouncedValue(searchQuery, 250);
@@ -100,6 +101,10 @@ export function DiscoverView() {
           const parsedQB = JSON.parse(savedQB);
           if (parsedQB.presets) setQuickBuyPresets(parsedQB.presets);
           if (parsedQB.mode) setQuickBuyMode(parsedQB.mode);
+        }
+        const savedQBEnabled = localStorage.getItem('sentinel_quickbuy_enabled');
+        if (savedQBEnabled !== null) {
+          setQuickBuyEnabled(savedQBEnabled === 'true');
         }
         const savedQuery = localStorage.getItem(STORAGE_QUERY_KEY);
         if (savedQuery) {
@@ -192,6 +197,31 @@ export function DiscoverView() {
     }
   };
 
+  const handleToggleQuickBuy = () => {
+    setQuickBuyEnabled((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('sentinel_quickbuy_enabled', String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const handleCycleQuickBuyPreset = () => {
+    setQuickBuyPresets((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = [...prev.slice(1), prev[0]];
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(STORAGE_QUICKBUY_KEY, JSON.stringify({ presets: next, mode: quickBuyMode }));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
   // Quick Buy execution handler
   const handleQuickBuy = (token: DiscoveryToken, amount: number) => {
     setQuickBuyOpen(true, {
@@ -242,6 +272,9 @@ export function DiscoverView() {
         onAddColumn={handleAddColumn}
         onResetLayout={handleResetLayout}
         quickBuyPresets={quickBuyPresets}
+        quickBuyEnabled={quickBuyEnabled}
+        onToggleQuickBuy={handleToggleQuickBuy}
+        onCycleQuickBuyPreset={handleCycleQuickBuyPreset}
         quickBuyMode={quickBuyMode}
         onUpdateQuickBuySettings={handleUpdateQuickBuySettings}
         health={feedHealth}

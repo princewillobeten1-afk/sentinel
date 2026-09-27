@@ -38,6 +38,9 @@ interface TerminalTopBarProps {
   onAddColumn: (type: DiscoverySection, title: string) => void;
   onResetLayout: () => void;
   quickBuyPresets: number[];
+  quickBuyEnabled?: boolean;
+  onToggleQuickBuy?: () => void;
+  onCycleQuickBuyPreset?: () => void;
   /** Whether zero-liquidity launches are shown. Off by default. */
   showZeroLiquidity?: boolean;
   onToggleZeroLiquidity?: (next: boolean) => void;
@@ -79,6 +82,9 @@ export function TerminalTopBar({
   onAddColumn,
   onResetLayout,
   quickBuyPresets,
+  quickBuyEnabled = true,
+  onToggleQuickBuy,
+  onCycleQuickBuyPreset,
   quickBuyMode,
   onUpdateQuickBuySettings,
   health,
@@ -98,6 +104,15 @@ export function TerminalTopBar({
   const [editPreset3, setEditPreset3] = useState(quickBuyPresets[2] || 0.5);
   const [editPreset4, setEditPreset4] = useState(quickBuyPresets[3] || 1.0);
   const [editMode, setEditMode] = useState<'sol' | 'usd'>(quickBuyMode);
+
+  // Synchronize modal state whenever presets change or modal opens
+  React.useEffect(() => {
+    setEditPreset1(quickBuyPresets[0] || 0.05);
+    setEditPreset2(quickBuyPresets[1] || 0.1);
+    setEditPreset3(quickBuyPresets[2] || 0.5);
+    setEditPreset4(quickBuyPresets[3] || 1.0);
+    setEditMode(quickBuyMode);
+  }, [quickBuyPresets, quickBuyMode, showQuickBuyModal]);
 
   const handleSaveQuickBuy = (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,19 +220,45 @@ export function TerminalTopBar({
           <span>{paused ? 'Resume' : 'Freeze'}</span>
           {paused && pendingRefresh && <span className="text-amber-400">•</span>}
         </button>
-        {/* Quick Buy Presets Pill Configuration */}
-        <button
-          onClick={() => setShowQuickBuyModal(true)}
-          className="h-7 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-slate-100 flex items-center gap-1.5 text-xs transition-colors"
-          title="Configure Quick Buy Amounts"
-        >
-          <Zap className="w-3 h-3 text-emerald-400 fill-current" />
-          <span className="text-2xs text-slate-400">Quick Buy:</span>
-          <span className="font-bold text-slate-200">
-            {quickBuyMode === 'sol' ? `≡${quickBuyPresets[0]}` : `$${quickBuyPresets[0]}`}
-          </span>
-          <Settings className="w-2.5 h-2.5 text-slate-500" />
-        </button>
+        {/* Interactive Quick Buy Toggle & Presets */}
+        <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900 overflow-hidden text-xs">
+          {/* Main Toggle Button */}
+          <button
+            type="button"
+            onClick={onToggleQuickBuy}
+            aria-pressed={quickBuyEnabled}
+            className={`h-7 px-2 flex items-center gap-1.5 font-bold transition-all ${
+              quickBuyEnabled
+                ? 'bg-emerald-950/70 border-r border-emerald-800/60 text-emerald-400 shadow-sm'
+                : 'bg-slate-900 text-slate-500 hover:text-slate-300 border-r border-slate-800'
+            }`}
+            title={quickBuyEnabled ? 'Quick Buy is ACTIVE (click to toggle off)' : 'Quick Buy is OFF (click to toggle on)'}
+          >
+            <Zap className={`w-3 h-3 ${quickBuyEnabled ? 'text-emerald-400 fill-current animate-pulse' : 'text-slate-500'}`} />
+            <span className="text-2xs font-semibold">Quick Buy:</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${quickBuyEnabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+          </button>
+
+          {/* Quick Preset Amount Selector: Click to cycle presets */}
+          <button
+            type="button"
+            onClick={onCycleQuickBuyPreset}
+            className="h-7 px-2 hover:bg-slate-800 text-slate-200 hover:text-white font-mono font-bold transition-colors border-r border-slate-800 flex items-center gap-0.5"
+            title="Click to cycle quick buy amount (0.05, 0.1, 0.5, 1.0 SOL)"
+          >
+            <span>{quickBuyMode === 'sol' ? `≡${quickBuyPresets[0]}` : `$${quickBuyPresets[0]}`}</span>
+          </button>
+
+          {/* Settings Gear to open modal */}
+          <button
+            type="button"
+            onClick={() => setShowQuickBuyModal(true)}
+            className="h-7 px-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            title="Configure custom Quick Buy amounts"
+          >
+            <Settings className="w-2.5 h-2.5" />
+          </button>
+        </div>
 
         {/* Dead-row toggle.
             Twelve of thirty rows in a measured response had no pool at all —

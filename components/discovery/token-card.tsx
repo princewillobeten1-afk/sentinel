@@ -752,15 +752,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     token.bondingStatus === 'migrating'
   );
   const hasConfirmedVenue = Boolean(
-    token.mint && token.mint.length >= 32 && (
-      isBondingCurve ||
-      lifecycleState === 'new_pairs' ||
-      lifecycleState === 'final_stretch' ||
-      migratedPool ||
-      live?.liquidityPoolAddress ||
-      token.liquidityPoolAddress ||
-      hasLiquidity
-    )
+    token.mint && token.mint.length >= 32
   );
 
   // Filter hidden tokens

@@ -60,7 +60,16 @@ export function XTrackerCard({ call }: XTrackerCardProps) {
       priceUsd: String(token.priceUsd),
       marketCapUsd: String(metrics.currentMcap),
     });
-    setQuickBuyOpen(true);
+    setQuickBuyOpen(true, {
+      name: token.name,
+      symbol: token.symbol,
+      mint: token.mint,
+      price: String(token.priceUsd),
+      mcap: String(metrics.currentMcap),
+      customAmountSol: 0.05,
+      logoURI: token.avatarUrl,
+      priceChange24h: metrics.pnlPercent,
+    });
   };
 
   const isPositivePnl = metrics.pnlPercent >= 0;

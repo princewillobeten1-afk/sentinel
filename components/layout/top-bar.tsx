@@ -52,7 +52,7 @@ export const secondaryNavItems: NavItemConfig[] = [
 
 export function TopBar() {
   const pathname = usePathname();
-  const { density, notifications, isMobileNavOpen, primaryWallet, activeView } = useAppState();
+  const { density, notifications, isMobileNavOpen, primaryWallet, activeView, selectedToken } = useAppState();
   const {
     setDensity,
     setActiveView,
@@ -318,7 +318,20 @@ export function TopBar() {
 
           <Tooltip content="Quick Trade Terminal (Shift + B)">
             <Button
-              onClick={() => setQuickBuyOpen(true)}
+              onClick={() => {
+                if (selectedToken && selectedToken.mint) {
+                  setQuickBuyOpen(true, {
+                    name: selectedToken.name,
+                    symbol: selectedToken.symbol,
+                    mint: selectedToken.mint,
+                    price: selectedToken.priceUsd || '0',
+                    mcap: selectedToken.marketCapUsd || '0',
+                    logoURI: selectedToken.logoUrl,
+                  });
+                } else {
+                  setQuickBuyOpen(true);
+                }
+              }}
               variant="outline"
               size="sm"
               leftIcon={<Zap className="h-3.5 w-3.5" />}
