@@ -58,7 +58,7 @@ export function CopilotChat({ context }: { context: PilotContext }) {
   const stop = useCallback(() => { generation.current++; active.current?.abort(); active.current = null; setBusy(false); }, []);
   const loadStatus = useCallback(async (signal?: AbortSignal) => {
     setReady(false);
-    if (!isAuthenticated) { setAvailability('Sign in to request access to the private pilot.'); return; }
+    if (!isAuthenticated) { setAvailability('Sign in to check Copilot access. Your conversations stay private.'); return; }
     try {
       const data = await json('', 'GET', signal);
       if (signal?.aborted) return;

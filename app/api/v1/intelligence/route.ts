@@ -1,29 +1,14 @@
 import { jsonResponse } from '@/lib/server/api';
-
 export const dynamic = 'force-dynamic';
-
 export async function GET() {
   return jsonResponse({
-    engine: 'Sentinel Token Intelligence Engine v1',
-    methodologyVersion: 'sentinel-intelligence-v1.0.0',
-    availableEndpoints: [
-      'GET  /api/v1/intelligence/:chain/:token',
-      'GET  /api/v1/intelligence/:chain/:token/signals',
-      'GET  /api/v1/intelligence/:chain/:token/history',
-      'GET  /api/v1/intelligence/:chain/:token/timeline',
-      'GET  /api/v1/intelligence/:chain/:token/market',
-      'GET  /api/v1/intelligence/:chain/:token/liquidity',
-      'GET  /api/v1/intelligence/:chain/:token/contract',
-    ],
-    supportedChains: ['solana'],
-    scoreInterpretation: {
-      '90-100': 'Strong observable profile',
-      '75-89': 'Generally favorable observable profile',
-      '60-74': 'Mixed profile',
-      '40-59': 'Elevated concerns',
-      '20-39': 'High concern',
-      '0-19': 'Severe observable concerns',
-    },
-    disclaimer: 'Intelligence scores reflect observable data patterns and are not financial recommendations.',
+    schemaVersion: '2', engine: 'Sentinel Intelligence', methodologyVersion: 'observed-evidence-v1',
+    supportedChains: ['solana'], identifier: 'Exact case-sensitive mint address',
+    availableEndpoints: ['GET /api/v1/intelligence/candidates', 'GET /api/v1/intelligence/:chain/:mint',
+      'GET /api/v1/intelligence/:chain/:mint/history', 'GET /api/v1/intelligence/:chain/:mint/signals'],
+    capabilities: ['market observations', 'ownership evidence', 'authority checks', 'recorded creator counts', 'recorded observation history'],
+    scoring: 'No aggregate safety or confidence score. Findings reference measured or explicitly stale evidence.',
+    thresholds: { concentratedTop10Pct: 35, developerAllocationPct: 5, limitedLiquidityUsd: 10000 },
+    disclaimer: 'Thresholds are review prompts, not calibrated probabilities or financial recommendations. Missing evidence never implies safety.'
   });
 }

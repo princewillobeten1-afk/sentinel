@@ -38,7 +38,7 @@ export async function runPilot(userId: string, sessionId: string, request: Pilot
   const outcomes: { tool: string; status: string }[]=[];
   let input=0, output=0, thinking=0, calls=0, status='incomplete', answer=evidenceOnlyAnswer();
   const declarations=Object.entries(skills).map(([name,skill])=>({ name,description:skill.description,parametersJsonSchema:z.toJSONSchema(skill.schema) }));
-  const client=new GoogleGenAI({ apiKey:cfg.data.key, httpOptions:{ timeout:40000, retryOptions:{ attempts:1 } } });
+  const client=new GoogleGenAI({ vertexai:false, apiKey:cfg.data.key, httpOptions:{ timeout:40000, retryOptions:{ attempts:1 } } });
   const contents: Content[] = [...modelHistory(await getTurns(userId,sessionId)), { role:'user', parts:[{text:JSON.stringify({question:request.question,context:request.context})}] }];
   emit({type:'session',sessionId});
   try {

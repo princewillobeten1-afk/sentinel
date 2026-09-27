@@ -12,7 +12,7 @@ export function AiView() {
   const context: PilotContext = { page: 'ai', chain: 'solana', timeframe, displayUnit: 'price', ...(mint && valid ? { mint } : {}) };
   return <div className="mx-auto flex h-[calc(100dvh-140px)] min-h-[540px] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-slate-800 bg-sentinel-950">
     <header className="space-y-3 border-b border-slate-800 p-4">
-      <div><h1 className="text-xl font-semibold">Sentinel Copilot</h1><p className="mt-1 text-xs text-slate-400">Public-market research with traceable evidence. Private pilot.</p></div>
+      <div><h1 className="text-xl font-semibold">Sentinel Copilot</h1><p className="mt-1 text-xs text-slate-400">Public-market research with traceable evidence. Early access.</p></div>
       <div className="flex flex-wrap gap-2">
         <label className="min-w-0 flex-1 text-[11px] text-slate-400">Exact Solana token mint (optional)
           <input aria-invalid={!valid} value={mint} onChange={e => setMint(e.target.value.trim())} placeholder="Paste a token mint, not a wallet address" maxLength={44}

@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { MessageSquare, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useDialogFocus } from '@/lib/hooks/use-dialog-focus';
-import { CopilotChat } from './copilot-chat';
 import { useCopilotContext } from './copilot-context';
+
+const CopilotChat = dynamic(() => import('./copilot-chat').then(module => module.CopilotChat), {
+  loading: () => <p role="status" className="p-4 text-sm text-slate-400">Opening Copilot...</p>,
+});
 
 export function CopilotPanel() {
   const context = useCopilotContext();

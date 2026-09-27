@@ -7,15 +7,17 @@ import { answerSchema } from './contracts';
 import { unsafeAnswer } from './privacy';
 
 export function fact(input: Omit<EvidenceFact, 'id' | 'status' | 'observedAt' | 'expiresAt'>, evidence?: MetricEvidence, now = Date.now()): EvidenceFact {
-  const at = evidence?.observedAt && Number.isFinite(Date.parse(evidence.observedAt)) ? evidence.observedAt : null;
+  const at = evidence?.observedAt && Number.isFinite(Date.parse(evidence.observedAt)) && Date.parse(evidence.observedAt) <= now + 30000 ? evidence.observedAt : null;
   const value = input.value === undefined || typeof input.value === 'number' && !Number.isFinite(input.value) ? null : input.value;
-  const known = value !== null && at && (evidence?.status === 'measured' || evidence?.status === 'stale');
+  const validExpiry = !evidence?.expiresAt || Number.isFinite(Date.parse(evidence.expiresAt));
+  const known = value !== null && at && validExpiry && (evidence?.status === 'measured' || evidence?.status === 'stale');
   const status = !known ? 'unavailable' : evidence?.status === 'stale' || evidence?.expiresAt && Date.parse(evidence.expiresAt) <= now ? 'stale' : 'measured';
   const row = { ...input, value: known ? value : null, status, observedAt: at, expiresAt: evidence?.expiresAt ?? null } as EvidenceFact;
   return { ...row, id: 'e_' + createHash('sha256').update(JSON.stringify(row)).digest('hex').slice(0,20) };
 }
 export function numeric(value: unknown): number | null {
-  if (value === null || value === undefined || value === '' || typeof value !== 'number' && typeof value !== 'string') return null;
+  if (value === null || value === undefined || typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) return null;
   const n = Number(value); return Number.isFinite(n) ? n : null;
 }
 export function chartFacts(snapshot: ChartSnapshot): EvidenceFact[] {

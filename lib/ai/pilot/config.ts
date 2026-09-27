@@ -14,6 +14,8 @@ export function pilotConfig() {
     rpm: process.env.AI_MODEL_RPM, tpm: process.env.AI_MODEL_TPM, rpd: process.env.AI_MODEL_RPD });
 }
 export function isPilotUser(user: AuthUser): boolean {
+  // Public access still means an authenticated account: conversations remain private.
+  if (process.env.AI_COPILOT_ACCESS === 'authenticated') return true;
   return (process.env.AI_PILOT_USER_IDS || '').split(',').map(s => s.trim()).filter(Boolean).includes(user.userId);
 }
 export async function requirePilotUser(req: Request, requireConfigured = false) {

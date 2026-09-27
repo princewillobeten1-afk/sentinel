@@ -27,11 +27,15 @@ async function assess(mint: string, signal: AbortSignal): Promise<ToolResult> {
   const audit = composeTokenAudit(mint, fields, getAudit(mint), null, unavailable, isAuditPending(mint));
   const facts: EvidenceFact[] = [];
   const provenance: Record<string, unknown> = { auditVersion: audit.auditVersion, ownership: audit.ownershipEvidence, security: audit.securityEvidence, creator: audit.creatorEvidence };
-  const add = (metric: string, label: string, value: EvidenceFact['value'], category: EvidenceFact['category'], evidence: MetricEvidence, unit='') =>
-    facts.push(fact({ mint, metric, label, value, unit, category }, evidence));
+  const add = (metric: string, label: string, value: EvidenceFact['value'], category: EvidenceFact['category'], evidence: MetricEvidence, unit='') => {
+    const valid = typeof value !== 'number' || value >= 0 && (unit !== '%' || value <= 100);
+    facts.push(fact({ mint, metric, label, value:valid ? value : null, unit, category }, evidence));
+  };
   let overview: Awaited<ReturnType<typeof getTokenOverview>> | undefined;
   // Existing live card snapshots are reused first; no second market stream is created.
-  if (!fields?.marketEvidence || fields.marketEvidence.status !== 'measured') {
+  const cachedMarket = fields?.marketEvidence;
+  if (!cachedMarket || cachedMarket.status !== 'measured'
+    || cachedMarket.expiresAt && !(Date.parse(cachedMarket.expiresAt) > Date.now())) {
     try { const response = await getTokenOverview(mint); if (response?.address === mint) overview = response; } catch { /* Preserve missing evidence. */ }
   }
   signal.throwIfAborted();

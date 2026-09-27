@@ -28,7 +28,9 @@ describe('public-data privacy scenarios',()=>{
   ])('allows public research: %s',q=>expect(privacyViolation(q)).toBe(false));
 });
 describe('evidence and grounded explanations',()=>{
-  it.each([undefined,null,'',NaN,Infinity,{},true])('keeps missing numeric values unknown: %s',v=>expect(numeric(v)).toBeNull());
+  it.each([undefined,null,'','   ','0xdeadbeef',NaN,Infinity,{},true])('keeps missing numeric values unknown: %s',v=>expect(numeric(v)).toBeNull());
+  it('does not accept invalid expiry as fresh',()=>expect(fact({...make(),value:9},{...evidence,expiresAt:'invalid'},at).status).toBe('unavailable'));
+  it('rejects observations far in the future',()=>expect(fact({...make(),value:9},{...evidence,observedAt:new Date(at+3600000).toISOString()},at).status).toBe('unavailable'));
   it('preserves measured zero',()=>expect(make(0).value).toBe(0));
   it('does not turn unknown into zero',()=>expect(make(null)).toMatchObject({value:null,status:'unavailable'}));
   it('requires observed evidence',()=>expect(fact({metric:'test',label:'Test',value:0,unit:'%',category:'ownership'}).value).toBeNull());

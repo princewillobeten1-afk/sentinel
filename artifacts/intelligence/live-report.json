@@ -1,0 +1,21 @@
+{
+  "live": true,
+  "responses": [
+    {
+      "path": "/api/v1/intelligence/solana/So11111111111111111111111111111111111111112",
+      "status": 200,
+      "coverage": {
+        "total": 15,
+        "measured": 9,
+        "stale": 0,
+        "pending": 3
+      }
+    },
+    {
+      "path": "/api/v1/intelligence/solana/So11111111111111111111111111111111111111112/history",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "hasEvidence": true
+}

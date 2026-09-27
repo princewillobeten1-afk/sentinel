@@ -76,8 +76,16 @@ async function main() {
     await page.screenshot({path:path.join(output,'discover-sheet-390.png')});
     await page.keyboard.press('Escape');assert.equal(await dialog.count(),0);
     assert.ok(await launch.evaluate(el=>el===document.activeElement),'Focus returns to launcher');
+    await page.setViewportSize({width:1440,height:900});
+    await page.goto(base+'/trade/solana/'+mint,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Copilot',exact:true}).click();
+    const tradeDialog=page.getByRole('dialog',{name:'Sentinel Copilot'});await tradeDialog.waitFor();
+    await tradeDialog.getByText('So111111...111112',{exact:true}).waitFor();
+    await page.screenshot({path:path.join(output,'trade-panel-1440.png')});
+    await page.keyboard.press('Escape');
+    assert.equal(await tradeDialog.count(),0);
     await fs.writeFile(path.join(output,'report.json'),JSON.stringify({measurements,errors,interactions:'passed',fixtures:true},null,2));
-    assert.deepEqual(errors,[]);console.log(JSON.stringify({screens:5,interactions:'passed',errors}));
+    assert.deepEqual(errors,[]);console.log(JSON.stringify({screens:6,interactions:'passed',errors}));
   } finally {await browser.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

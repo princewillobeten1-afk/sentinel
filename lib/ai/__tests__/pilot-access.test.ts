@@ -8,11 +8,13 @@ import { getTurns, deleteSession, saveTurn, recordUsage } from '../pilot/reposit
 import { reserveAnswer, reserveModelCall } from '../pilot/quota';
 import type { SavedTurn } from '../pilot/contracts';
 
-beforeEach(()=>{vi.resetAllMocks();vi.stubEnv('AI_PILOT_USER_IDS','invited');mocks.auth.mockResolvedValue({userId:'invited',roles:['user']});});
+beforeEach(()=>{vi.resetAllMocks();vi.stubEnv('AI_COPILOT_ACCESS','invited');vi.stubEnv('AI_PILOT_USER_IDS','invited');mocks.auth.mockResolvedValue({userId:'invited',roles:['user']});});
 afterEach(()=>vi.unstubAllEnvs());
 it('requires authentication',async()=>{mocks.auth.mockRejectedValue(new Error('unauthenticated'));await expect(requirePilotUser(new Request('http://localhost'))).rejects.toThrow();});
 it('denies even administrators not explicitly invited',async()=>{mocks.auth.mockResolvedValue({userId:'admin',roles:['admin']});await expect(requirePilotUser(new Request('http://localhost'))).rejects.toMatchObject({code:'AI_ACCESS_REQUIRED'});});
 it('permits an authenticated invited tester',async()=>expect(await requirePilotUser(new Request('http://localhost'))).toMatchObject({userId:'invited'}));
+it('can open access to all signed-in accounts without an allowlist',async()=>{vi.stubEnv('AI_COPILOT_ACCESS','authenticated');mocks.auth.mockResolvedValue({userId:'public-user',role:'user'});expect(await requirePilotUser(new Request('http://localhost'))).toMatchObject({userId:'public-user'});});
+it('unknown access modes do not bypass invitations',async()=>{vi.stubEnv('AI_COPILOT_ACCESS','anonymous');mocks.auth.mockResolvedValue({userId:'unknown',role:'user'});await expect(requirePilotUser(new Request('http://localhost'))).rejects.toMatchObject({code:'AI_ACCESS_REQUIRED'});});
 it('does not enable free-tier calls without explicit limits and confirmation',()=>{vi.stubEnv('AI_FREE_TIER_CONFIRMED','false');expect(pilotConfig().success).toBe(false);});
 it('does not fall back to in-memory quotas',async()=>{mocks.redis.mockRejectedValue(new Error('down'));await expect(reserveAnswer('u','r')).rejects.toMatchObject({code:'AI_COORDINATION_UNAVAILABLE'});});
 it.each([['duplicate','AI_DUPLICATE_REQUEST'],['busy','AI_BUSY'],['quota','AI_QUOTA_EXHAUSTED']])('handles Redis %s',async(state,code)=>{mocks.redis.mockResolvedValue(state);await expect(reserveAnswer('u','r')).rejects.toMatchObject({code});});

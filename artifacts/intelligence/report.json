@@ -1,0 +1,55 @@
+{
+  "fixtures": true,
+  "measurements": [
+    {
+      "label": "overview",
+      "width": 1440,
+      "height": 900,
+      "actual": 1440
+    },
+    {
+      "label": "overview",
+      "width": 1280,
+      "height": 800,
+      "actual": 1280
+    },
+    {
+      "label": "overview",
+      "width": 768,
+      "height": 1024,
+      "actual": 768
+    },
+    {
+      "label": "overview",
+      "width": 390,
+      "height": 844,
+      "actual": 390
+    },
+    {
+      "label": "report",
+      "width": 1440,
+      "height": 900,
+      "actual": 1440
+    },
+    {
+      "label": "report",
+      "width": 1280,
+      "height": 800,
+      "actual": 1280
+    },
+    {
+      "label": "report",
+      "width": 768,
+      "height": 1024,
+      "actual": 768
+    },
+    {
+      "label": "report",
+      "width": 390,
+      "height": 844,
+      "actual": 390
+    }
+  ],
+  "errors": [],
+  "interactions": "passed"
+}
