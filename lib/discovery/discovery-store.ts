@@ -416,9 +416,10 @@ export function getDiscoverySnapshot(): DiscoverySnapshot {
 
 export function getDiscoveryHealth(section?: DiscoverySection): DiscoveryHealth {
   if (snapshot.paused) return 'stale';
-  if (reconnectState.status === 'connecting' || reconnectState.status === 'reconnecting') return 'reconnecting';
   const sections = section ? [getSection(section)] : activeSections().map(getSection);
-  if (!snapshot.hasLoaded || sections.some((item) => item.state === 'loading')) return 'reconnecting';
+  const hasLiveRest = snapshot.hasLoaded && sections.some((item) => item.state === 'live');
+  if (!hasLiveRest && (reconnectState.status === 'connecting' || reconnectState.status === 'reconnecting')) return 'reconnecting';
+  if (!snapshot.hasLoaded || sections.some((item) => item.state === 'loading')) return hasLiveRest ? 'degraded' : 'reconnecting';
   if (sections.every((item) => item.state === 'stale' || item.at === 0)) return 'unavailable';
   if (sections.some((item) => item.state === 'stale')) return 'degraded';
   if (!socketWelcomed) return 'degraded';

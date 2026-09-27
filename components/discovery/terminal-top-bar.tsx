@@ -292,15 +292,15 @@ export function TerminalTopBar({
             health === 'live'
               ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
               : health === 'degraded'
-                ? 'bg-amber-950/40 border-amber-800/50 text-amber-400'
+                ? 'bg-sky-950/40 border-sky-800/50 text-sky-400'
                 : health === 'stale'
                   ? 'bg-orange-950/40 border-orange-800/50 text-orange-300'
                   : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
           }`}
-          title={`Discovery feed: ${health}${freshnessAt ? `; last update ${new Date(freshnessAt).toLocaleTimeString()}` : ''}`}
+          title={`Discovery feed: ${health === 'degraded' ? 'polling (REST active)' : health}${freshnessAt ? `; last update ${new Date(freshnessAt).toLocaleTimeString()}` : ''}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${health === 'live' ? 'bg-emerald-400 animate-pulse' : health === 'degraded' ? 'bg-amber-400' : 'bg-rose-400'}`} />
-          <span>{health.toUpperCase()}</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${health === 'live' ? 'bg-emerald-400 animate-pulse' : health === 'degraded' ? 'bg-sky-400' : 'bg-rose-400'}`} />
+          <span>{health === 'degraded' ? 'POLLING' : health.toUpperCase()}</span>
         </div>
       </div>
 

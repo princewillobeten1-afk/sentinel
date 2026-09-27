@@ -169,4 +169,20 @@ describe('real Discover endpoint column selection', () => {
     const rows = await getLiveDiscoveryTokens({ section: 'new' });
     expect(rows.map(row => row.mint)).toEqual(['fresh']);
   });
+
+  it('falls back to verified trending graduated tokens when in-memory lifecycle records are empty', async () => {
+    vi.mocked(fetchJupiterFeed).mockImplementation(async (feed) => {
+      if (feed === 'toptrending') {
+        return [
+          token('grad-1', { graduatedPool: 'pool-grad-1', graduatedAt: '2026-09-20T12:00:00Z' }),
+        ];
+      }
+      return [];
+    });
+    const rows = await getLiveDiscoveryTokens({ section: 'graduated' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].mint).toBe('grad-1');
+    expect(rows[0].bondingStatus).toBe('graduated');
+    expect(rows[0].migratedPool).toBe('pool-grad-1');
+  });
 });
