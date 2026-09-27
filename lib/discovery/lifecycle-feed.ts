@@ -1,7 +1,7 @@
 import 'server-only';
 
-import { CURVE_FRESHNESS_MS, FINAL_STRETCH_LIMIT, MIGRATED_LIMIT, finalStretch, getLifecycle, migrated } from '@/lib/market/lifecycle/lifecycle-engine';
-import type { TokenLifecycle } from '@/lib/market/lifecycle/types';
+import { CURVE_FRESHNESS_MS, FINAL_STRETCH_LIMIT, MIGRATED_LIMIT, closestToMigrating, finalStretch, getLifecycle, migrated } from '@/lib/market/lifecycle/lifecycle-engine';
+import { finalStretchThreshold, type TokenLifecycle } from '@/lib/market/lifecycle/types';
 import { fetchJupiterTokensByMint, fetchJupiterFeed, hasGraduated, mapJupiterToken, type JupiterToken } from './jupiter-feed';
 import { fetchDexPairSnapshots, finite, type DexPair } from './dexscreener-market';
 import type { DiscoveryToken } from './types';
@@ -149,7 +149,13 @@ export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecy
 }
 
 export async function getLifecycleDiscoveryTokens(section: Section): Promise<DiscoveryToken[]> {
-  const select = section === 'migrating' ? finalStretch : migrated;
+  const select = section === 'migrating'
+    ? () => {
+        const queue = finalStretch();
+        if (queue.length > 0) return queue;
+        return closestToMigrating(finalStretchThreshold());
+      }
+    : migrated;
   const records = select().slice(0, section === 'migrating' ? FINAL_STRETCH_LIMIT : MIGRATED_LIMIT);
   if (!records.length) {
     if (section === 'graduated') {
@@ -184,14 +190,27 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
       }
     } else if (section === 'migrating') {
       try {
-        const recent = await fetchJupiterFeed('recent', { limit: 50 });
-        const bondingTokens = recent.filter(t => !hasGraduated(t) && (t.launchpad === 'pump.fun' || (t.id && t.id.endsWith('pump'))));
-        if (bondingTokens.length) {
-          const sorted = bondingTokens.sort((a, b) => (Number(b.mcap) || 0) - (Number(a.mcap) || 0));
-          return sorted.slice(0, FINAL_STRETCH_LIMIT).map(t => {
+        // For Final Stretch, check high-volume trending tokens that are genuinely near graduation.
+        // NEVER query 'recent' because 'recent' consists of brand-new 0-2 min launches ($5k mcap).
+        // A token enters Final Stretch ONLY if its bonding curve progress is >= 80% (mcap >= ~$55.2k).
+        const trending = await fetchJupiterFeed('toptrending', { limit: 50 });
+        const minThresholdPct = finalStretchThreshold() * 100;
+        const finalStretchTokens = trending.filter((t) => {
+          if (hasGraduated(t) || t.graduatedPool || t.graduatedAt) return false;
+          const isBonding = t.launchpad === 'pump.fun' || (t.id && t.id.endsWith('pump'));
+          if (!isBonding) return false;
+          const mcap = Number(t.mcap) || 0;
+          // pump.fun graduation target is ~$69,000. 80% progress is ~$55,200.
+          const progress = (mcap / 69000) * 100;
+          return progress >= minThresholdPct && progress < 100;
+        });
+
+        if (finalStretchTokens.length) {
+          const sorted = finalStretchTokens.sort((a, b) => (Number(b.mcap) || 0) - (Number(a.mcap) || 0));
+          return sorted.slice(0, FINAL_STRETCH_LIMIT).map((t) => {
             const mapped = mapJupiterToken(t);
-            const mcap = Number(t.mcap) || 5000;
-            const progress = Math.min(99, Math.max(10, Math.round((mcap / 69000) * 100)));
+            const mcap = Number(t.mcap) || 55000;
+            const progress = Math.min(99, Math.max(minThresholdPct, Math.round((mcap / 69000) * 100)));
             return {
               ...mapped,
               bondingStatus: 'bonding',

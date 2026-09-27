@@ -474,7 +474,7 @@ export function getMockDiscoveryTokens(filter?: Partial<DiscoveryFilter>): Disco
       holdersCount: Math.floor(320 + (j * 180) + ((now % 150000) / 2000)),
       holderGrowth1hPct: Number((45.0 + Math.sin(now / 15000 + j) * 25).toFixed(1)),
       migrationProgress: progress,
-      bondingStatus: progress >= 100 ? 'graduated' : progress >= 40 ? 'migrating' : 'bonding',
+      bondingStatus: progress >= 100 ? 'graduated' : progress >= 80 ? 'migrating' : 'bonding',
       devHoldingsPct: Number((2.4 + (j % 3) * 0.8).toFixed(1)),
       top10HoldingsPct: Number((16.0 + (j % 4) * 1.8).toFixed(1)),
       insiderHoldingsPct: Number((1.5 + (j % 2) * 1.2).toFixed(1)),
@@ -536,7 +536,7 @@ export function getMockDiscoveryTokens(filter?: Partial<DiscoveryFilter>): Disco
     return [...filtered].sort((a, b) => a.ageMinutes - b.ageMinutes);
   } else if (filter?.section === 'migrating') {
     return filtered
-      .filter((t) => (t.migrationProgress ?? 0) >= 40 && (t.migrationProgress ?? 0) < 100)
+      .filter((t) => (t.bondingCurveProgress ?? t.migrationProgress ?? 0) >= 80 && (t.bondingCurveProgress ?? t.migrationProgress ?? 0) < 100 && t.bondingStatus !== 'graduated' && t.lifecycleState !== 'migrated')
       .sort((a, b) => (b.migrationProgress ?? 0) - (a.migrationProgress ?? 0));
   } else if (filter?.section === 'graduated') {
     return filtered

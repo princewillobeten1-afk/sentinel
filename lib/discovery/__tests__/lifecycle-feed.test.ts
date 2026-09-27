@@ -185,4 +185,36 @@ describe('real Discover endpoint column selection', () => {
     expect(rows[0].bondingStatus).toBe('graduated');
     expect(rows[0].migratedPool).toBe('pool-grad-1');
   });
+
+  it('strictly excludes low-cap and newly launched tokens from Final Stretch when in-memory records are empty', async () => {
+    vi.mocked(fetchJupiterFeed).mockImplementation(async (feed) => {
+      if (feed === 'toptrending') {
+        return [
+          token('new-launch-low-cap-pump', { mcap: 5000, launchpad: 'pump.fun' }),
+          token('mid-bonding-pump', { mcap: 25000, launchpad: 'pump.fun' }),
+          token('already-graduated-pump', { mcap: 65000, launchpad: 'pump.fun', graduatedPool: 'pool-grad' }),
+        ];
+      }
+      return [];
+    });
+    const rows = await getLiveDiscoveryTokens({ section: 'migrating' });
+    expect(rows).toEqual([]);
+  });
+
+  it('selects genuinely near-graduation tokens (>=80% progress) for Final Stretch when in-memory records are empty', async () => {
+    vi.mocked(fetchJupiterFeed).mockImplementation(async (feed) => {
+      if (feed === 'toptrending') {
+        return [
+          token('near-grad-pump', { mcap: 58000, launchpad: 'pump.fun' }),
+          token('low-cap-pump', { mcap: 8000, launchpad: 'pump.fun' }),
+        ];
+      }
+      return [];
+    });
+    const rows = await getLiveDiscoveryTokens({ section: 'migrating' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].mint).toBe('near-grad-pump');
+    expect(rows[0].lifecycleState).toBe('final_stretch');
+    expect(rows[0].bondingCurveProgress).toBe(84);
+  });
 });
