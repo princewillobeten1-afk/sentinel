@@ -10,6 +10,7 @@ import { QuickBuyDrawer } from '@/components/layout/quick-buy-drawer';
 import { HotkeyModal } from '@/components/layout/hotkey-modal';
 import { NotificationsDrawer } from '@/components/layout/notifications-drawer';
 import { ExecutionConsole } from '@/components/layout/execution-console';
+import { XTrackerDrawer } from '@/components/x-tracker/x-tracker-drawer';
 import { useAppActions, useAppState, AppView } from '@/lib/store';
 import { clsx } from 'clsx';
 
@@ -71,6 +72,7 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       <HotkeyModal />
       <NotificationsDrawer />
       <ExecutionConsole />
+      <XTrackerDrawer />
     </div>
   );
 }

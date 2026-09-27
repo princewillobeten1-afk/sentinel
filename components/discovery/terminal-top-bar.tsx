@@ -23,6 +23,7 @@ import {
 import type { TimeWindow, DiscoverySection, DiscoveryColumnConfig } from '@/lib/discovery/types';
 import type { DiscoveryHealth } from '@/lib/discovery/discovery-store';
 import { Modal } from '@/components/ui/modal';
+import { XTrackerButton } from '@/components/x-tracker/x-tracker-button';
 
 interface TerminalTopBarProps {
   searchQuery: string;
@@ -287,6 +288,9 @@ export function TerminalTopBar({
             </div>
           )}
         </div>
+        {/* Axiom-Style X Social Tracker Shortcut */}
+        <XTrackerButton variant="toolbar" />
+
         <div
           className={`flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-bold border ${
             health === 'live'

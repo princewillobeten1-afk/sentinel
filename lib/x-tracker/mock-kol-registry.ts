@@ -1,0 +1,86 @@
+import type { XCallerProfile } from './types';
+
+export const SOLANA_KOL_REGISTRY: XCallerProfile[] = [
+  {
+    id: 'kol-hako99',
+    name: 'hako99',
+    handle: '@hako99',
+    avatarUrl: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=100&auto=format&fit=crop&q=80',
+    isVerified: true,
+    followers: 124500,
+    walletAddress: '8f2dKp5Vb88937j7wExM7KLe4a9eN5k3zL7uP1Qx2Y',
+    winRate: 84.5,
+    averageMultiplier: 3.8,
+  },
+  {
+    id: 'kol-bregegg',
+    name: 'BregEgg',
+    handle: '@BregEgg',
+    avatarUrl: 'https://images.unsplash.com/photo-1543610892-0b1f7e6d8ac1?w=100&auto=format&fit=crop&q=80',
+    isVerified: false,
+    followers: 48200,
+    walletAddress: '33b1Lp9xV12874h3eKlm8F2cQ4v7W6t1Y2z5M8n9A',
+    winRate: 72.1,
+    averageMultiplier: 2.4,
+  },
+  {
+    id: 'kol-og-verified',
+    name: 'OG_verified',
+    handle: '@OG_verified',
+    avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+    isVerified: true,
+    followers: 215000,
+    walletAddress: 'aa44Yt7xK89123j4vPlm2B99C5r8D1e3F4g6H7j8K',
+    winRate: 79.8,
+    averageMultiplier: 4.2,
+  },
+  {
+    id: 'kol-thehands',
+    name: 'TheHands 🐕 🐈',
+    handle: '@AnonHands',
+    avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=100&auto=format&fit=crop&q=80',
+    isVerified: true,
+    followers: 189000,
+    walletAddress: '5vH7Pp4kL39841q2xMnr6T1v8B2c4F9g1J3k5M7nP',
+    winRate: 88.2,
+    averageMultiplier: 5.6,
+  },
+  {
+    id: 'kol-duberleak',
+    name: 'Duberleak',
+    handle: '@Duberleak',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
+    isVerified: false,
+    followers: 32000,
+    walletAddress: '7uM2Kk9vL48192p3xJrt5B6v9C1d3E5f7G8h9J1kL',
+    winRate: 67.4,
+    averageMultiplier: 2.1,
+  },
+  {
+    id: 'kol-solmage',
+    name: 'SolMage',
+    handle: '@SolMage_Alpha',
+    avatarUrl: 'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=100&auto=format&fit=crop&q=80',
+    isVerified: true,
+    followers: 94300,
+    walletAddress: '9rP4Nn2vM58291q4xKst6C7w1D2e4F6g8H9j1K2lm',
+    winRate: 81.0,
+    averageMultiplier: 3.5,
+  },
+  {
+    id: 'kol-degenalpha',
+    name: 'DegenSol Hunter',
+    handle: '@DegenSolHunt',
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    isVerified: true,
+    followers: 142000,
+    walletAddress: '4tK8Mm1vN68392p5xLst7D8x2E3f5G7h9J1k2L3mn',
+    winRate: 75.3,
+    averageMultiplier: 2.9,
+  },
+];
+
+export function getCallerByHandle(handle: string): XCallerProfile | undefined {
+  const clean = handle.startsWith('@') ? handle : `@${handle}`;
+  return SOLANA_KOL_REGISTRY.find(k => k.handle.toLowerCase() === clean.toLowerCase());
+}

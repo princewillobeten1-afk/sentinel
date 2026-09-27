@@ -15,6 +15,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useAppState, useAppActions } from '@/lib/store';
+import { XTrackerButton } from '@/components/x-tracker/x-tracker-button';
 
 export function FooterStatusBar() {
   const pathname = usePathname();
@@ -160,6 +161,11 @@ export function FooterStatusBar() {
 
       {/* Right: Navigation Links & Actions */}
       <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        {/* Axiom-Style X Social Tracker Action */}
+        <XTrackerButton variant="footer" />
+
+        <span className="hidden sm:inline-block h-3 w-px bg-sentinel-800 mx-0.5" aria-hidden="true" />
+
         {/* Help Link */}
         <Link
           href="/help"
