@@ -58,12 +58,12 @@ export function LandingView() {
           </Link>
 
           <div className="flex items-center gap-3">
-            <Link href="/terminal">
+            <Link href="/discover">
               <Button variant="ghost" size="sm">
                 Explore Screener
               </Button>
             </Link>
-            <Link href="/terminal">
+            <Link href="/discover">
               <Button variant="primary" size="sm" rightIcon={<ArrowRight className="h-4 w-4" />}>
                 Launch Terminal
               </Button>
@@ -93,12 +93,12 @@ export function LandingView() {
           </motion.p>
 
           <motion.div variants={fadeInUp} className="flex flex-wrap items-center justify-center gap-4 pt-4">
-            <Link href="/terminal">
+            <Link href="/discover">
               <Button variant="buy" size="lg" className="px-8 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95" rightIcon={<ArrowRight className="h-5 w-5" />}>
                 Enter Trade Terminal
               </Button>
             </Link>
-            <Link href="/terminal">
+            <Link href="/discover">
               <Button variant="outline" size="lg" className="px-8 text-base backdrop-blur-md bg-sentinel-950/40 transition-transform hover:scale-105 active:scale-95">
                 View Organic Screener
               </Button>
@@ -259,7 +259,7 @@ export function LandingView() {
           </div>
 
           <div className="relative z-10">
-            <Link href="/terminal">
+            <Link href="/discover">
               <Button variant="cyber" size="lg" rightIcon={<Sparkles className="h-5 w-5" />} className="transition-transform hover:scale-105 active:scale-95">
                 Try Sentinel AI Co-Pilot
               </Button>
@@ -278,7 +278,7 @@ export function LandingView() {
           <p className="text-sm text-slate-400 max-w-lg mx-auto">
             Start exploring fresh token mints, holder clusters, and trading routes on Solana Mainnet.
           </p>
-          <Link href="/terminal">
+          <Link href="/discover">
             <Button variant="buy" size="lg" className="px-10 py-3 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95">
               Enter Sentinel Terminal Now
             </Button>
@@ -294,7 +294,7 @@ export function LandingView() {
           <div className="flex gap-4">
             <Link href="/help" className="hover:text-slate-300 cursor-pointer">Documentation</Link>
             <Link href="/settings" className="hover:text-slate-300 cursor-pointer">Preferences</Link>
-            <Link href="/terminal" className="hover:text-slate-300 cursor-pointer">Screener</Link>
+            <Link href="/discover" className="hover:text-slate-300 cursor-pointer">Discover</Link>
           </div>
         </footer>
       </div>
