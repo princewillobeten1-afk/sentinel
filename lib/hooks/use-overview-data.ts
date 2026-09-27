@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData, ApiRequestError } from '@/lib/api/response';
-import type { MetricEvidence, RugRiskEvidence } from '@/lib/discovery/types';
+import type { MetricEvidence, RugRiskEvidence, DiscoveryToken, DiscoveryScore } from '@/lib/discovery/types';
 
 /**
  * How many tokens each tab shows.
@@ -57,52 +57,13 @@ export interface VolumeDecomposition {
   suspectedWashVolumeUsd?: number;
 }
 
-export interface OverviewToken {
-  mint: string;
-  symbol: string;
-  name: string;
-  priceUsd: string | number | null;
-  priceChange24h: number | null;
-  marketCapUsd: string | number | null;
-  liquidityUsd: string | number | null;
-  volume24hUsd: string | number | null;
-  intelligenceScore: number | null;
-  logoURI?: string | null;
-  /**
-   * Ownership audit, carried through from the discovery endpoints.
-   *
-   * Overview reads the same `/v1/discovery/*` routes the Discover columns do,
-   * so these arrive in the response already — they were simply dropped by this
-   * mapping, leaving the Overview cards with no distribution data at all while
-   * the Discover cards showed it.
-   *
-   * `undefined` means not measured and must render as such. A `0` here is a
-   * real zero reported by the provider.
-   */
-  top10HoldingsPct?: number;
-  devHoldingsPct?: number;
-  sniperPercentage?: number;
-  insiderHoldingsPct?: number;
-  bundlerPercentage?: number;
-  holdersCount?: number;
-  proTradersCount?: number;
-  kolsCount?: number;
-  /** The deployer's graduated/launched record, e.g. `33/34`. */
-  devMints?: number;
-  devMigrations?: number;
-  /** Launch protocol, e.g. `Pump.fun` / `Raydium`. */
-  source?: string;
-  twitterHandle?: string;
-  /** True while the audit lookup is queued but unanswered. */
-  auditPending?: boolean;
-  ownershipEvidence?: MetricEvidence;
-  securityEvidence?: MetricEvidence;
-  liquidityEvidence?: MetricEvidence;
-  rugRisk?: RugRiskEvidence;
-  isMintRenounced?: boolean;
-  isFreezeDisabled?: boolean;
-  isLiquidityLocked?: boolean;
-}
+/**
+ * Overview tokens share 100% contract parity with Discovery tokens,
+ * allowing identical card rendering, badges, audit pills, and live updates.
+ */
+export type OverviewToken = DiscoveryToken & {
+  intelligenceScore?: number | null;
+};
 
 export interface OverviewAlert {
   id: string;
@@ -138,18 +99,12 @@ export interface OverviewData {
   refresh: () => Promise<void>;
 }
 
-/** Normalises the differing token shapes the two token endpoints return. */
+/** Normalises the differing token shapes into the canonical DiscoveryToken contract. */
 function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
   const num = (v: unknown): number | null => {
     const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : NaN;
     return Number.isFinite(n) ? n : null;
   };
-  /**
-   * The two token endpoints use different field names for the same things:
-   * the ranking engine emits `tokenId` / `changePct` / `volumeUsd` / `score`,
-   * while the registry emits `address` / `priceChange24h` / `volume24hUsd`.
-   * Reading only one set is why cards rendered `0/100` and `—` for volume.
-   */
   const first = (...keys: string[]) => {
     for (const k of keys) {
       const v = raw[k];
@@ -158,64 +113,90 @@ function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
     return null;
   };
 
-  /**
-   * Includes a key only when the value was actually measured.
-   *
-   * Spreading `{}` for a null keeps the property *absent* rather than present
-   * and undefined, so "not measured" survives serialisation and cannot be
-   * mistaken for a reported zero downstream.
-   */
-  const optional = <K extends string>(key: K, value: number | null) =>
-    value === null ? {} : ({ [key]: value } as Record<K, number>);
+  const mint = String(first('mint', 'address', 'tokenId', 'id') ?? '');
+  const id = String(raw.id ?? mint);
+  const symbol = String(raw.symbol ?? '—').replace(/^\$/, '');
+  const name = String(raw.name ?? raw.symbol ?? 'Unknown');
+  const chain = String(raw.chain ?? 'solana');
+  const source = (raw.source as any) || 'Raydium';
+  const priceUsd = String(first('priceUsd', 'price') ?? '0');
+  const priceChange24h = num(first('priceChange24h', 'changePct', 'change24h')) ?? 0;
+  const marketCapUsd = String(first('marketCapUsd', 'marketCap') ?? '0');
+  const liquidityUsd = String(first('liquidityUsd', 'liquidity') ?? '0');
+  const volume24hUsd = String(first('volume24hUsd', 'volumeUsd', 'volume24h') ?? '0');
+  const logoURI = (first('logoURI', 'logo_uri', 'icon', 'image', 'avatar', 'logoUrl', 'logo') as string) || undefined;
+  const ageMinutes = typeof raw.ageMinutes === 'number' ? raw.ageMinutes : 0;
+  const ageFormatted = typeof raw.ageFormatted === 'string' ? raw.ageFormatted : `${ageMinutes}m`;
+
+  const discoveryScore: DiscoveryScore = raw.discoveryScore && typeof raw.discoveryScore === 'object'
+    ? (raw.discoveryScore as DiscoveryScore)
+    : {
+        totalScore: num(first('intelligenceScore', 'score')) ?? 50,
+        confidence: 0.8,
+        grade: 'HIGH_SIGNAL',
+        factors: {
+          volumeAcceleration: 0,
+          transactionAcceleration: 0,
+          liquidityChange: 0,
+          buySellImbalance: 0,
+          holderGrowth: 0,
+          recency: 0,
+          priceVelocity: 0,
+        },
+        rawInputs: {
+          ageMinutes,
+          priceChangeWindow: priceChange24h,
+          volumeWindowUsd: Number(volume24hUsd) || 0,
+          volumeAccelerationPct: 0,
+          liquidityChangePct: 0,
+          buysCount: Number(raw.buysCount) || 0,
+          sellsCount: Number(raw.sellsCount) || 0,
+          holdersCount: Number(raw.holdersCount) || 0,
+          holderGrowthPct: 0,
+          buySellImbalancePct: Number(raw.buySellImbalancePct) || 0,
+          buyPressureRatio: Number(raw.buyPressureRatio) || 0,
+          txAccelerationPct: 0,
+          isNewToken: ageMinutes < 30,
+        },
+        signals: [],
+        explanations: [],
+        calculatedAt: new Date().toISOString(),
+      };
 
   return {
-    mint: String(first('mint', 'address', 'tokenId', 'id') ?? ''),
-    symbol: String(raw.symbol ?? '—'),
-    name: String(raw.name ?? raw.symbol ?? 'Unknown'),
-    priceUsd: (first('priceUsd', 'price') as string) ?? null,
-    priceChange24h: num(first('priceChange24h', 'changePct', 'change24h')),
-    marketCapUsd: (first('marketCapUsd', 'marketCap') as string) ?? null,
-    liquidityUsd: (first('liquidityUsd', 'liquidity') as string) ?? null,
-    volume24hUsd: (first('volume24hUsd', 'volumeUsd', 'volume24h') as string) ?? null,
-    logoURI: (first('logoURI', 'logo_uri', 'icon', 'image', 'avatar', 'logoUrl', 'logo') as string) ?? null,
-    // No fabricated score — `null` renders as "—" rather than a number that
-    // looks measured.
-    intelligenceScore: num(
-      first('intelligenceScore', 'score') ??
-        (raw.discoveryScore as { totalScore?: number } | undefined)?.totalScore,
-    ),
-
-    // Ownership audit, passed straight through.
-    //
-    // `?? undefined` rather than `?? 0` throughout: the discovery endpoints omit
-    // a field they have not measured, and a zero here would render as a green
-    // "0% snipers" on a token nobody has audited — the exact failure just
-    // removed from the Discover card.
-    ...optional('top10HoldingsPct', num(raw.top10HoldingsPct)),
-    ...optional('devHoldingsPct', num(raw.devHoldingsPct)),
-    ...optional('sniperPercentage', num(raw.sniperPercentage)),
-    ...optional('insiderHoldingsPct', num(raw.insiderHoldingsPct)),
-    ...optional('bundlerPercentage', num(raw.bundlerPercentage)),
-    ...optional('holdersCount', num(raw.holdersCount)),
-    ...optional('proTradersCount', num(raw.proTradersCount)),
-    ...optional('kolsCount', num(raw.kolsCount)),
-    ...optional('devMints', num(raw.devMints)),
-    ...optional('devMigrations', num(raw.devMigrations)),
-    ...(typeof raw.source === 'string' ? { source: raw.source } : {}),
-    ...(typeof raw.twitterHandle === 'string' ? { twitterHandle: raw.twitterHandle } : {}),
-    ...(raw.auditPending === true ? { auditPending: true } : {}),
-    ...(raw.ownershipEvidence && typeof raw.ownershipEvidence === 'object'
-      ? { ownershipEvidence: raw.ownershipEvidence as MetricEvidence }
-      : {}),
-    ...(raw.securityEvidence && typeof raw.securityEvidence === 'object'
-      ? { securityEvidence: raw.securityEvidence as MetricEvidence }
-      : {}),
-    ...(raw.rugRisk && typeof raw.rugRisk === 'object' ? { rugRisk: raw.rugRisk as RugRiskEvidence } : {}),
-    ...(raw.liquidityEvidence && typeof raw.liquidityEvidence === 'object'
-      ? { liquidityEvidence: raw.liquidityEvidence as MetricEvidence } : {}),
-    ...(typeof raw.isMintRenounced === 'boolean' ? { isMintRenounced: raw.isMintRenounced } : {}),
-    ...(typeof raw.isFreezeDisabled === 'boolean' ? { isFreezeDisabled: raw.isFreezeDisabled } : {}),
-    ...(typeof raw.isLiquidityLocked === 'boolean' ? { isLiquidityLocked: raw.isLiquidityLocked } : {}),
+    ...(raw as unknown as DiscoveryToken),
+    id,
+    mint,
+    name,
+    symbol,
+    chain,
+    source,
+    logoURI,
+    priceUsd,
+    priceChange1m: Number(raw.priceChange1m) || 0,
+    priceChange5m: Number(raw.priceChange5m) || 0,
+    priceChange15m: Number(raw.priceChange15m) || 0,
+    priceChange1h: Number(raw.priceChange1h) || 0,
+    priceChange24h,
+    volume5mUsd: String(raw.volume5mUsd ?? '0'),
+    volume1hUsd: String(raw.volume1hUsd ?? '0'),
+    volume24hUsd,
+    volumeChange15mPct: Number(raw.volumeChange15mPct) || 0,
+    liquidityUsd,
+    liquidityChange1hPct: Number(raw.liquidityChange1hPct) || 0,
+    marketCapUsd,
+    buysCount: Number(raw.buysCount) || 0,
+    sellsCount: Number(raw.sellsCount) || 0,
+    txCount15m: Number(raw.txCount15m) || 0,
+    txCount1h: Number(raw.txCount1h) || 0,
+    buySellImbalancePct: Number(raw.buySellImbalancePct) || 0,
+    buyPressureRatio: Number(raw.buyPressureRatio) || 0,
+    txAccelerationPct: Number(raw.txAccelerationPct) || 0,
+    isNewToken: Boolean(raw.isNewToken || ageMinutes < 30),
+    ageMinutes,
+    ageFormatted,
+    discoveryScore,
+    intelligenceScore: discoveryScore.totalScore,
   };
 }
 

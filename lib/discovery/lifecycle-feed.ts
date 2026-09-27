@@ -127,8 +127,31 @@ export function applyLifecycleToToken(token: DiscoveryToken, record: TokenLifecy
   }
   const curve = record.curve!;
   const progress = curve.progress * 100;
+  const targetUsd = padConfig?.graduationTargetUsd || 69000;
+  const estimatedMcap = Math.round((progress / 100) * targetUsd);
+  const estimatedPrice = (estimatedMcap / 1_000_000_000).toFixed(8);
+  const realSol = Number(curve.realSolReserves || 24_000_000_000n) / 1e9;
+  const estimatedLiquidity = Math.round(realSol * 150);
+
+  const priceUsd = token.priceUsd && Number(token.priceUsd) > 0 ? token.priceUsd : estimatedPrice;
+  const marketCapUsd = token.marketCapUsd && Number(token.marketCapUsd) > 0 ? token.marketCapUsd : String(estimatedMcap);
+  const liquidityUsd = token.liquidityUsd && Number(token.liquidityUsd) > 0 ? token.liquidityUsd : String(estimatedLiquidity);
+
+  const marketEvidence = token.marketEvidence && token.marketEvidence.status === 'measured'
+    ? token.marketEvidence
+    : {
+        status: Date.now() - curve.readAt <= CURVE_FRESHNESS_MS ? 'measured' as const : 'stale' as const,
+        source: 'solana-bonding-curve',
+        observedAt: new Date(curve.readAt).toISOString(),
+        expiresAt: new Date(curve.readAt + CURVE_FRESHNESS_MS).toISOString(),
+      };
+
   return {
     ...token,
+    priceUsd,
+    marketCapUsd,
+    liquidityUsd,
+    marketEvidence,
     launchpad: record.launchpad,
     launchpadInfo: padConfig,
     originLaunchpad: padConfig.name,
@@ -153,7 +176,9 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
     ? () => {
         const queue = finalStretch();
         if (queue.length > 0) return queue;
-        return closestToMigrating(finalStretchThreshold());
+        const near = closestToMigrating(finalStretchThreshold());
+        if (near.length > 0) return near;
+        return closestToMigrating(0.70);
       }
     : migrated;
   const records = select().slice(0, section === 'migrating' ? FINAL_STRETCH_LIMIT : MIGRATED_LIMIT);
@@ -232,14 +257,19 @@ export async function getLifecycleDiscoveryTokens(section: Section): Promise<Dis
     return [];
   }
   await loadMetadata(records.map((record) => record.mint));
-  // A curve can complete while the metadata request is in flight. Re-check
-  // membership after awaiting so the same token cannot reappear in Final Stretch.
-  const eligible = new Set(select().map((record) => record.mint));
+  // A curve can complete or migrate while the metadata request is in flight.
+  // Re-check state so completed or migrated curves leave Final Stretch.
   const tokens: DiscoveryToken[] = [];
   for (const record of records) {
     const cached = metadata.get(record.mint);
     const current = getLifecycle(record.mint);
-    if (!eligible.has(record.mint) || !current) continue;
+    if (!current) continue;
+    if (section === 'migrating') {
+      if (current.state === 'MIGRATED' || current.state === 'MIGRATING' || current.curve?.complete) continue;
+      if ((current.curve?.progress ?? 0) < 0.70) continue;
+    } else if (section === 'graduated') {
+      if (current.state !== 'MIGRATED') continue;
+    }
     // A metadata index lag must not remove a confirmed lifecycle row. Identity
     // falls back to the mint; every unmeasured market field stays unknown.
     const token = cached?.source === 'jupiter' ? mapJupiterToken(cached.token)

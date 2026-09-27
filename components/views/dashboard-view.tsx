@@ -25,7 +25,8 @@ import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { clsx } from 'clsx';
-import { TokenCard, TokenCardData } from '@/components/ui/token-card';
+import { TokenDiscoveryCard } from '@/components/discovery/token-card';
+import type { DiscoveryToken, TimeWindow } from '@/lib/discovery/types';
 import { useLiveTokenUpdates } from '@/lib/hooks/use-live-token-updates';
 import { AlertCard, AlertCardData } from '@/components/ui/alert-card';
 import { IntelligenceScore } from '@/components/ui/intelligence-score';
@@ -67,6 +68,7 @@ export function DashboardView() {
   const { refreshOverview, setQuickBuyOpen, setActiveView, setSelectedToken } = useAppActions();
   const { watchlistedMints } = useWatchlist();
   const [marketTab, setMarketTab] = useState<'trending' | 'hot' | 'top' | 'watchlist'>('trending');
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>('24h');
   
   const activeWallet = primaryWallet || connectedWallet;
 
@@ -83,102 +85,26 @@ export function DashboardView() {
    * most 20 mints — which matters, because a browser session is capped at 30
    * WebSocket topics (see lib/ws/topic-plan.ts).
    */
-  const visibleTokens =
+  const watchlistTokens = React.useMemo(() => {
+    const all = [...overview.trending, ...(overview.hotTokens || []), ...overview.topTokens];
+    const seen = new Set<string>();
+    return all.filter((t) => {
+      if (!watchlistedMints.includes(t.mint) || seen.has(t.mint)) return false;
+      seen.add(t.mint);
+      return true;
+    });
+  }, [overview.trending, overview.hotTokens, overview.topTokens, watchlistedMints]);
+
+  const activeTokens: DiscoveryToken[] =
     marketTab === 'trending'
       ? overview.trending
       : marketTab === 'hot'
-        ? overview.hotTokens
+        ? (overview.hotTokens || [])
         : marketTab === 'top'
           ? overview.topTokens
-          : [...overview.trending, ...(overview.hotTokens || []), ...overview.topTokens].filter((t) =>
-              watchlistedMints.includes(t.mint),
-            );
+          : watchlistTokens;
 
-  const live = useLiveTokenUpdates(visibleTokens.map((t) => t.mint));
-
-  /**
-   * Maps an API token onto the card shape, without inventing anything.
-   *
-   * Live WebSocket values are merged over the REST snapshot where they exist:
-   * the REST poll is a periodic baseline, and a token that trades between
-   * polls would otherwise show a stale price until the next cycle. A token
-   * with no live message keeps its REST value rather than being blanked.
-   */
-  const toCard = (t: OverviewToken): TokenCardData => {
-    const update = live.updates.get(t.mint);
-    const priceUsd = update?.priceUsd ?? (t.priceUsd === null ? null : Number(t.priceUsd));
-    const change = update?.priceChange24h ?? t.priceChange24h ?? undefined;
-
-    return {
-    name: t.name,
-    symbol: t.symbol.startsWith('$') ? t.symbol : `$${t.symbol}`,
-    mint: t.mint,
-    logoURI: t.logoURI ?? undefined,
-    price: priceUsd === null ? dash : money(priceUsd, priceUsd < 1 ? 6 : 2),
-    priceChange24h: n(change),
-    mcap: update?.marketCapUsd ?? (t.marketCapUsd === null ? dash : money(Number(t.marketCapUsd), 0)),
-    liquidity: update?.liquidityUsd ?? (t.liquidityUsd === null ? dash : money(Number(t.liquidityUsd), 0)),
-    volume24h: update?.volume24hUsd ?? (t.volume24hUsd === null ? dash : money(Number(t.volume24hUsd), 0)),
-    // Passed through as null, never coerced to 0: the registry returns no
-    // score, and `?? 0` made every Top Tokens card read a red "0/100" — the
-    // worst possible rating — for tokens that were simply never scored.
-    intelligenceScore: t.intelligenceScore,
-    badges: [],
-    sparklineData: undefined,
-    // Drives the brief highlight on the card when a live update lands.
-    liveUpdatedAt: update?.lastTradeUpdatedAt,
-    lastTradeSide: update?.lastTradeSide,
-
-    // Ownership audit, same source as the Discover columns.
-    //
-    // These were declared on `TokenCardData` but never populated, so the
-    // Overview cards rendered no distribution data while Discover showed it for
-    // the same tokens off the same endpoints. Passed through unchanged —
-    // absent stays absent, so an unaudited token shows nothing rather than a
-    // reassuring zero.
-    top10HoldingsPct: update?.top10HoldingsPct ?? t.top10HoldingsPct,
-    devHoldingsPct: update?.devHoldingsPct ?? t.devHoldingsPct,
-    sniperPercentage: update?.sniperPercentage ?? t.sniperPercentage,
-    insiderHoldingsPct: update?.insiderHoldingsPct ?? t.insiderHoldingsPct,
-    bundlerPercentage: update?.bundlerPercentage ?? t.bundlerPercentage,
-    holdersCount: update?.holdersCount ?? t.holdersCount,
-    proTradersCount: update?.proTradersCount ?? t.proTradersCount,
-    kolsCount: update?.kolsCount ?? t.kolsCount,
-    devMints: update?.devMints ?? t.devMints,
-    devMigrations: update?.devMigrations ?? t.devMigrations,
-    devWalletAge: update?.devWalletAge,
-    protocol: t.source,
-    twitterHandle: t.twitterHandle,
-    auditPending: update?.auditPending ?? t.auditPending,
-    ownershipEvidence: update?.ownershipEvidence ?? t.ownershipEvidence,
-    securityEvidence: update?.securityEvidence ?? t.securityEvidence,
-    liquidityEvidence: update?.liquidityEvidence ?? t.liquidityEvidence,
-    isMintRenounced: update?.isMintRenounced ?? t.isMintRenounced,
-    isFreezeDisabled: update?.isFreezeDisabled ?? t.isFreezeDisabled,
-    isLiquidityLocked: update?.isLiquidityLocked ?? t.isLiquidityLocked,
-    rugRisk: update?.rugRisk ?? t.rugRisk,
-    };
-  };
-
-  // Curated High-Cap & High-Volume Top Solana Ecosystem Tokens
-  /**
-   * Token lists come from the registry and the ranking engine.
-   */
-  const trendingCards = overview.trending.map(toCard);
-  const hotCards = (overview.hotTokens || []).map(toCard);
-  const topCards = overview.topTokens.map(toCard);
-  const watchlistCards = [...overview.trending, ...(overview.hotTokens || []), ...overview.topTokens]
-    .filter((t) => watchlistedMints.includes(t.mint))
-    .map(toCard);
-
-  const activeCards =
-    marketTab === 'trending'
-      ? trendingCards
-      : marketTab === 'hot'
-        ? hotCards
-        : marketTab === 'top'
-          ? topCards
-          : watchlistCards;
+  const live = useLiveTokenUpdates(activeTokens.map((t) => t.mint));
 
   /** Risk feed, from the real alert domain rather than a literal array. */
   const alertCards: AlertCardData[] = overview.alerts.map((a) => ({
@@ -345,18 +271,37 @@ export function DashboardView() {
               </span>
             }
             headerActions={
-              <Tabs
-                activeTab={marketTab}
-                onChange={(id) => setMarketTab(id as any)}
-                variant="segmented"
-                size="sm"
-                tabs={[
-                  { id: 'trending', label: 'Trending', count: trendingCards.length },
-                  { id: 'hot', label: 'Hot', count: hotCards.length },
-                  { id: 'top', label: 'Top Tokens', count: topCards.length },
-                  { id: 'watchlist', label: 'Watchlist', count: watchlistCards.length },
-                ]}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Tabs
+                  activeTab={marketTab}
+                  onChange={(id) => setMarketTab(id as any)}
+                  variant="segmented"
+                  size="sm"
+                  tabs={[
+                    { id: 'trending', label: 'Trending', count: overview.trending.length },
+                    { id: 'hot', label: 'Hot', count: (overview.hotTokens || []).length },
+                    { id: 'top', label: 'Top Tokens', count: overview.topTokens.length },
+                    { id: 'watchlist', label: 'Watchlist', count: watchlistTokens.length },
+                  ]}
+                />
+                <div className="hidden sm:flex items-center bg-sentinel-950/80 rounded-md border border-sentinel-800 p-0.5 text-2xs font-mono">
+                  {(['5m', '1h', '24h'] as TimeWindow[]).map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => setTimeWindow(w)}
+                      className={clsx(
+                        'px-2 py-0.5 rounded transition-colors',
+                        timeWindow === w
+                          ? 'bg-sky-500/20 text-sky-400 font-bold border border-sky-500/30'
+                          : 'text-slate-400 hover:text-slate-200',
+                      )}
+                    >
+                      {w}
+                    </button>
+                  ))}
+                </div>
+              </div>
             }
           >
             {isLoading ? (
@@ -364,7 +309,7 @@ export function DashboardView() {
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-32 rounded-xl bg-sentinel-800/50 animate-pulse border border-white/5"
+                    className="h-32 rounded-lg bg-sentinel-900/60 animate-pulse border border-sentinel-800/60"
                   />
                 ))}
               </div>
@@ -374,8 +319,8 @@ export function DashboardView() {
                  push the activity stream and rankings below the fold. The
                  container keeps the panel a fixed size and the whole list
                  reachable. */
-              <div className="overview-token-grid max-h-[26rem] overflow-y-auto pr-1">
-                {activeCards.length === 0 && (
+              <div className="overview-token-grid max-h-[36rem] overflow-y-auto pr-1">
+                {activeTokens.length === 0 && (
                   <p className="col-span-full text-2xs text-slate-500 py-8 text-center">
                     {overview.errors.trending || overview.errors.hotTokens || overview.errors.topTokens
                       ? (overview.errors.trending ?? overview.errors.hotTokens ?? overview.errors.topTokens)
@@ -384,25 +329,14 @@ export function DashboardView() {
                         : 'No tokens returned.'}
                   </p>
                 )}
-                {activeCards.map((t) => (
-                  <TokenCard
-                    key={t.symbol + t.mint}
-                    token={t}
-                    onQuickBuy={() => setQuickBuyOpen(true, t)}
-                    onClick={() => {
-                      setSelectedToken({
-                        mint: t.mint,
-                        symbol: t.symbol.replace('$', ''),
-                        name: t.name,
-                        priceUsd: t.price ? String(t.price).replace('$', '') : undefined,
-                        marketCapUsd: t.mcap ? String(t.mcap).replace('$', '') : undefined,
-                        liquidityUsd: t.liquidity ? String(t.liquidity).replace('$', '') : undefined,
-                        logoUrl: t.logoURI,
-                        chain: 'solana',
-                      });
-                      setActiveView('trade');
-                      router.push(`/trade/solana/${t.mint}`);
-                    }}
+                {activeTokens.map((token) => (
+                  <TokenDiscoveryCard
+                    key={token.id || token.mint}
+                    token={token}
+                    variant="compact"
+                    timeWindow={timeWindow}
+                    live={live.updates.get(token.mint)}
+                    liveUnavailable={live.status !== 'live'}
                   />
                 ))}
               </div>
@@ -457,7 +391,7 @@ export function DashboardView() {
                 supporting sentences — presented as analysis of specific tokens.
                 Only tokens that actually carry a score are shown. */}
             <div className="grid gap-3 sm:grid-cols-2">
-              {overview.trending.filter((t) => t.intelligenceScore !== null).length === 0 ? (
+              {overview.trending.filter((t) => (t.discoveryScore?.totalScore ?? t.intelligenceScore) != null).length === 0 ? (
                 <p className="col-span-full text-2xs text-slate-500 py-6 text-center">
                   {isLoading
                     ? 'Scoring tokens…'
@@ -465,10 +399,10 @@ export function DashboardView() {
                 </p>
               ) : (
                 overview.trending
-                  .filter((t) => t.intelligenceScore !== null)
+                  .filter((t) => (t.discoveryScore?.totalScore ?? t.intelligenceScore) != null)
                   .slice(0, 2)
                   .map((t) => {
-                    const score = t.intelligenceScore as number;
+                    const score = Number(t.discoveryScore?.totalScore ?? t.intelligenceScore ?? 50);
                     return (
                       <IntelligenceScore
                         key={t.mint || t.symbol}

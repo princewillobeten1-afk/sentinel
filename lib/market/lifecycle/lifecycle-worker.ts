@@ -373,13 +373,21 @@ class LifecycleWorker {
       ];
       if (tracked.length === 0) return;
 
-      // Prioritize tokens in FINAL_STRETCH and MIGRATING so near-graduation curves
-      // update with lowest latency, followed by unread candidates (curve === null),
+      // Prioritize tokens in MIGRATING, FINAL_STRETCH, and advancing curves (progress >= 50%)
+      // so near-graduation curves update with lowest latency, followed by unread candidates (curve === null),
       // followed by oldest reading first.
+      const getPriority = (r: TokenLifecycle) => {
+        if (r.state === 'MIGRATING') return 5;
+        if (r.state === 'FINAL_STRETCH') return 4;
+        if (r.curve && Number.isFinite(r.curve.progress) && r.curve.progress >= 0.50) return 3;
+        if (r.curve === null) return 2;
+        return 1;
+      };
+
       const due = tracked
         .sort((a, b) => {
-          const priorityA = a.state === 'FINAL_STRETCH' ? 3 : a.state === 'MIGRATING' ? 4 : a.curve === null ? 2 : 1;
-          const priorityB = b.state === 'FINAL_STRETCH' ? 3 : b.state === 'MIGRATING' ? 4 : b.curve === null ? 2 : 1;
+          const priorityA = getPriority(a);
+          const priorityB = getPriority(b);
           if (priorityA !== priorityB) return priorityB - priorityA;
           const attemptedA = a.curve?.readAt ?? this.curveAttemptedAt.get(a.mint) ?? 0;
           const attemptedB = b.curve?.readAt ?? this.curveAttemptedAt.get(b.mint) ?? 0;

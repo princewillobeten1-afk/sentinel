@@ -338,7 +338,7 @@ export function closestToMigrating(minProgress = finalStretchThreshold(), now = 
         record.curve !== null && !record.curve.complete &&
         Number.isFinite(record.curve.progress) && record.curve.progress >= minProgress &&
         record.curve.progress < 1 &&
-        now >= record.curve.readAt && now - record.curve.readAt <= CURVE_FRESHNESS_MS,
+        now >= record.curve.readAt,
     )
     .sort((a, b) => (b.curve?.progress ?? 0) - (a.curve?.progress ?? 0));
 }

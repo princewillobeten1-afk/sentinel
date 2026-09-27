@@ -217,4 +217,26 @@ describe('real Discover endpoint column selection', () => {
     expect(rows[0].lifecycleState).toBe('final_stretch');
     expect(rows[0].bondingCurveProgress).toBe(84);
   });
+
+  it('populates curve-derived market cap, price, and liquidity for Final Stretch tokens when external metadata is empty', async () => {
+    applyCurveReading('curve-near-90-pump', {
+      virtualTokenReserves: 300_000_000_000_000n,
+      virtualSolReserves: 70_000_000_000n,
+      realTokenReserves: 80_000_000_000_000n,
+      realSolReserves: 25_000_000_000n,
+      tokenTotalSupply: 1_000_000_000_000_000n,
+      complete: false,
+      progress: 0.89,
+      readAt: Date.now(),
+      baselineRealTokenReserves: 793_100_000_000_000n,
+    });
+    const rows = await getLiveDiscoveryTokens({ section: 'migrating' });
+    const target = rows.find((r) => r.mint === 'curve-near-90-pump');
+    expect(target).toBeDefined();
+    expect(target?.lifecycleState).toBe('final_stretch');
+    expect(target?.bondingCurveProgress).toBe(89);
+    expect(Number(target?.marketCapUsd)).toBeGreaterThan(50000);
+    expect(Number(target?.priceUsd)).toBeGreaterThan(0);
+    expect(Number(target?.liquidityUsd)).toBeGreaterThan(1000);
+  });
 });
