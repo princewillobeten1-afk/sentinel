@@ -94,7 +94,7 @@ export function WalletConnectModal({ isOpen, onClose, onSuccess }: WalletConnect
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="w-full max-w-lg rounded-2xl bg-[#0d131f] border border-cyan-900/50 shadow-2xl p-6 relative">
+      <div className="w-full max-w-lg rounded-2xl bg-[#0e0e0e] border border-sentinel-700 shadow-2xl p-6 relative">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"

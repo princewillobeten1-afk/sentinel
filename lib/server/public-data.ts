@@ -61,5 +61,9 @@ export function publicData(value: unknown, field = ''): unknown {
     if (diagnosticKeys.has(key) || vendor.test(key)) continue;
     result[key] = publicData(entry, key);
   }
+  // A token-stats frame carries both market and ownership measurements. The
+  // public evidence label must follow its metric group, not the shared wire
+  // subscription name (which remains server-only).
+  if (field === 'ownershipEvidence' && typeof result.source === 'string') result.source = 'Ownership analysis';
   return result;
 }

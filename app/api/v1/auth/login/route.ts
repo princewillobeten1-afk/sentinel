@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/server/errors';
 import { checkRateLimit } from '@/lib/server/rate-limit';
 import { mfaStore } from '@/lib/server/mfa-store';
 import { mfaChallengeStore } from '@/lib/server/mfa-challenge-store';
+import { sessionStore } from '@/lib/server/session-store';
 
 const loginSchema = z.object({
   email: emailSchema,
@@ -64,6 +65,9 @@ export async function POST(request: Request) {
     });
 
     if (mfaStore.isEnabled(result.user.id)) {
+      // authService has issued a session by this point; revoke it before
+      // returning a challenge so the pre-MFA token cannot access Copilot.
+      await sessionStore.revoke(result.session.id, 'MFA challenge required');
       const challenge = mfaChallengeStore.create({
         userId: result.user.id,
         email: result.user.email || undefined,

@@ -24,6 +24,15 @@ describe('audit evidence contract', () => {
     const metadataOnly = composeTokenAudit('mint', undefined, null, { id: 'mint', symbol: 'META' }, evidence, false, now);
     expect(metadataOnly.lastAuditedAt).toBeNull();
   });
+  it('passes classified-wallet counts to the audit without inventing total holders', () => {
+    const data = composeTokenAudit('mint', {
+      sniperCount: 0, bundlerCount: 12, insiderCount: 3, devCount: 1,
+      ownershipEvidence: evidence,
+    }, null, null, evidence, false, now);
+    expect(data).toMatchObject({ sniperCount: 0, bundlerCount: 12, insiderCount: 3, devCount: 1 });
+    expect(data.totalHolders).toBeNull();
+    expect(isTokenAudit(data, 'mint')).toBe(true);
+  });
   it('keeps fallback sources per field instead of attributing Jupiter facts to Birdeye', () => {
     const data = composeTokenAudit('mint', { ownershipEvidence: { ...evidence, status: 'unavailable' } }, null,
       { audit: { topHoldersPercentage: 12, devBalancePercentage: 0, mintAuthorityDisabled: true } },

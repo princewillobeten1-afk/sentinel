@@ -149,7 +149,7 @@ export function TerminalTopBar({
           </button>
 
           {showChainMenu && (
-            <div className="absolute left-0 mt-1 w-44 bg-[#0d121a] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-[11px]">
+            <div className="absolute left-0 mt-1 w-44 bg-[#121212] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-[11px]">
               <button
                 onClick={() => { onChainChange('solana'); setShowChainMenu(false); }}
                 className="w-full text-left px-3 py-1.5 hover:bg-sky-500/10 flex items-center justify-between text-sky-400 font-bold"
@@ -296,7 +296,7 @@ export function TerminalTopBar({
           </button>
 
           {showAddMenu && (
-            <div className="discovery-add-menu absolute right-0 mt-1 w-64 bg-[#0d121a] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-xs">
+            <div className="discovery-add-menu absolute right-0 mt-1 w-64 bg-[#121212] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-xs">
               <div className="px-3 py-1.5 text-2xs font-bold uppercase text-slate-400 border-b border-slate-800">
                 Add Feed Column
               </div>

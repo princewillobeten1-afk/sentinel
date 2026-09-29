@@ -1,50 +1,24 @@
 import { NextResponse } from 'next/server';
-import { WalletProfiler } from '@/lib/analytics';
+import { isSolanaMint } from '@/lib/market/chart-model';
+import { dbPool } from '@/lib/server/db/pool';
 
-export async function GET(
-  request: Request,
-  { params }: { params: { walletAddress: string } }
-) {
-  const { walletAddress } = params;
+export const dynamic = 'force-dynamic';
 
-  const profile = WalletProfiler.profileWallet({
-    walletAddress,
-    trades: [
-      {
-        tradeId: 't1',
-        tokenMint: 'TokenA',
-        entryTimestamp: Date.now() - 3600000,
-        exitTimestamp: Date.now() - 1800000,
-        poolCreationTimestamp: Date.now() - 3700000,
-        buyAmountUsd: 5000,
-        sellAmountUsd: 7200,
-        realizedPnlUsd: 2200,
-      },
-      {
-        tradeId: 't2',
-        tokenMint: 'TokenB',
-        entryTimestamp: Date.now() - 86400000,
-        exitTimestamp: Date.now() - 82800000,
-        poolCreationTimestamp: Date.now() - 86500000,
-        buyAmountUsd: 8000,
-        sellAmountUsd: 12400,
-        realizedPnlUsd: 4400,
-      },
-    ],
-    clusterId: `cluster_${walletAddress.slice(0, 6)}`,
-    clusterConfidencePct: 82,
-  });
-
-  const cluster = WalletProfiler.buildClusterNode({
-    clusterId: profile.clusterId!,
-    memberWallets: [walletAddress, 'SolanaClusterMember2...abc', 'SolanaClusterMember3...xyz'],
-    commonFundingSource: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
-    collectiveOwnershipPct: 8.4,
-  });
-
-  return NextResponse.json({
-    walletProfile: profile,
-    clusterDetails: cluster,
-    timestamp: new Date().toISOString(),
-  });
+export async function GET(_request: Request, { params }: { params: { walletAddress: string } }) {
+  if (!isSolanaMint(params.walletAddress)) return NextResponse.json({ error: { code: 'INVALID_WALLET' } }, { status: 400 });
+  try {
+    const { rows } = await dbPool.query<{ mint: string; buys: string; sells: string; last_seen: string }>(
+      `SELECT mint, COUNT(*) FILTER (WHERE side = 'BUY')::text AS buys,
+              COUNT(*) FILTER (WHERE side = 'SELL')::text AS sells, MAX(timestamp)::text AS last_seen
+         FROM realtime_trades WHERE wallet = $1 AND commitment IN ('confirmed', 'finalized')
+           AND timestamp > NOW() - INTERVAL '24 hours'
+        GROUP BY mint ORDER BY MAX(timestamp) DESC LIMIT 50`, [params.walletAddress]);
+    return NextResponse.json({ walletAddress: params.walletAddress, window: '24h',
+      activity: rows.map(row => ({ mint: row.mint, buys: Number(row.buys), sells: Number(row.sells),
+        lastSeen: new Date(row.last_seen).toISOString() })),
+      realizedPnlUsd: null, winRatePct: null, cluster: null,
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch {
+    return NextResponse.json({ error: { code: 'ANALYTICS_UNAVAILABLE' } }, { status: 503 });
+  }
 }

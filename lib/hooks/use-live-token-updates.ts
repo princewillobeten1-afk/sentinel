@@ -73,6 +73,10 @@ export interface LiveTokenUpdate extends Pick<import('@/lib/trading/sidebar-mode
   sniperPercentage?: number;
   insiderHoldingsPct?: number;
   bundlerPercentage?: number;
+  sniperCount?: number;
+  bundlerCount?: number;
+  insiderCount?: number;
+  devCount?: number;
   proTradersCount?: number;
   kolsCount?: number;
   devAddress?: string;

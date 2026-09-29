@@ -42,7 +42,7 @@ export function RegisterForm() {
   };
 
   return (
-    <div className="w-full max-w-md p-8 rounded-2xl bg-[#0d131f] border border-cyan-900/40 shadow-2xl backdrop-blur-xl">
+    <div className="w-full max-w-md p-8 rounded-2xl bg-[#0e0e0e] border border-sentinel-700 shadow-2xl backdrop-blur-xl">
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mb-3 shadow-[0_0_20px_rgba(6,182,212,0.25)]">
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -39,6 +39,10 @@ export interface TokenAudit {
   snipersPct: number | null;
   insidersPct: number | null;
   bundlersPct: number | null;
+  sniperCount: number | null;
+  bundlerCount: number | null;
+  insiderCount: number | null;
+  devCount: number | null;
   holderTop10Pct: number | null;
   totalHolders: number | null;
   holderAuditPending: boolean;
@@ -70,7 +74,8 @@ export function isTokenAudit(value: unknown, mint: string): value is TokenAudit 
   const data = value as Record<string, unknown>;
   if (data.token !== mint || data.chain !== 'solana' || typeof data.holderAuditPending !== 'boolean') return false;
   const numeric = ['top10HoldersPct', 'devBalancePct', 'organicScore', 'devMints', 'devMigrations',
-    'migrationRatePct', 'snipersPct', 'insidersPct', 'bundlersPct', 'holderTop10Pct', 'totalHolders'];
+    'migrationRatePct', 'snipersPct', 'insidersPct', 'bundlersPct', 'sniperCount', 'bundlerCount',
+    'insiderCount', 'devCount', 'holderTop10Pct', 'totalHolders'];
   if (!numeric.every(key => data[key] === null || number(data[key]) !== null)) return false;
   if (!['mintAuthorityDisabled', 'freezeAuthorityDisabled', 'lpTokensBurned', 'honeypotTaxZero']
     .every(key => data[key] === null || typeof data[key] === 'boolean')) return false;
@@ -93,12 +98,13 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
   const audit = jupiter?.audit;
   const source = currentEvidence(jupiterEvidence, now);
   const holderFields = holder ? [holder.top10Pct, holder.devPct, holder.snipersPct, holder.insidersPct,
-    holder.bundlersPct, holder.totalHolders, holder.proTraders, holder.kols] : [];
+    holder.bundlersPct, holder.totalHolders, holder.proTraders, holder.kols,
+    holder.sniperCount, holder.bundlerCount, holder.insiderCount, holder.devCount] : [];
   const holderEvidence: MetricEvidence | undefined = holder ? {
-    status: holderFields.some(value => value !== null) ? 'measured' : 'unavailable',
+    status: holderFields.some(value => value != null) ? 'measured' : 'unavailable',
     source: holder.source ?? 'birdeye-holder-profile', observedAt: new Date(holder.fetchedAt).toISOString(),
     expiresAt: new Date(holder.fetchedAt + (live?.lifecycleState === 'migrated' ? 180_000 : 60_000)).toISOString(),
-    reason: holderFields.every(value => value !== null) ? undefined
+    reason: holderFields.every(value => value != null) ? undefined
       : 'This source does not supply every ownership classification; missing fields remain unverified.',
   } : undefined;
   const ownershipEvidence = currentEvidence(live?.ownershipEvidence ?? holderEvidence ?? (pending
@@ -129,6 +135,10 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
     snipersPct: percent(live?.sniperPercentage) ?? percent(holder?.snipersPct),
     insidersPct: percent(live?.insiderHoldingsPct) ?? percent(holder?.insidersPct),
     bundlersPct: percent(live?.bundlerPercentage) ?? percent(holder?.bundlersPct),
+    sniperCount: number(live?.sniperCount) ?? number(holder?.sniperCount),
+    bundlerCount: number(live?.bundlerCount) ?? number(holder?.bundlerCount),
+    insiderCount: number(live?.insiderCount) ?? number(holder?.insiderCount),
+    devCount: number(live?.devCount) ?? number(holder?.devCount),
     holderTop10Pct: percent(live?.top10HoldingsPct) ?? percent(holder?.top10Pct),
     totalHolders: number(live?.holdersCount) ?? number(holder?.totalHolders),
     holderAuditPending: pending,

@@ -48,14 +48,13 @@ export function seriesColor(index: number): string {
 
 /** Chart chrome. Gridlines sit low-contrast so data reads above them. */
 export const chartSurface = {
-  ground: '#07090D',
-  card: '#12171F',
-  /** ~6% white — visible as structure, never competing with the series. */
+  ground: '#000000',
+  card: '#141414',
   grid: 'rgba(255, 255, 255, 0.06)',
   gridStrong: 'rgba(255, 255, 255, 0.10)',
-  axis: '#6E7A8A',
-  label: '#98A3B3',
-  border: '#1F2733',
+  axis: '#737373',
+  label: '#A3A3A3',
+  border: '#262626',
 } as const;
 
 /** Risk ramp — an ordered scale, so it steps rather than jumps hue randomly. */

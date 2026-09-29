@@ -59,6 +59,10 @@ export interface HolderProfile {
   insidersPct: number | null;
   bundlersPct: number | null;
   devPct: number | null;
+  sniperCount?: number | null;
+  bundlerCount?: number | null;
+  insiderCount?: number | null;
+  devCount?: number | null;
   proTraders: number | null;
   kols: number | null;
   fetchedAt: number;
@@ -124,6 +128,10 @@ export function parseHolderProfile(mint: string, body: unknown): HolderProfile |
     insidersPct: pct('insider'),
     bundlersPct: pct('bundler'),
     devPct: pct('dev'),
+    sniperCount: count('sniper'),
+    bundlerCount: count('bundler'),
+    insiderCount: count('insider'),
+    devCount: count('dev'),
     proTraders: count('smart_trader'),
     kols: count('kol'),
     fetchedAt: Date.now(),

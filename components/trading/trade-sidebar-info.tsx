@@ -29,14 +29,14 @@ export function TradeActivityStrip({ data }: { data: TradeSidebarSnapshot }) {
   </div>;
 }
 
-function AuditTile({ label, value, percent = true, icon: Icon, evidence, loading }: {
-  label: string; value: unknown; percent?: boolean; icon: typeof Shield; evidence?: MetricEvidence; loading: boolean;
+function AuditTile({ label, value, percent = true, icon: Icon, evidence, loading, holderCount }: {
+  label: string; value: unknown; percent?: boolean; icon: typeof Shield; evidence?: MetricEvidence; loading: boolean; holderCount?: number;
 }) {
   const number = measuredNumber(value);
   const stale = evidence?.status === 'stale' || evidence?.status === 'unavailable'
     || (evidence?.expiresAt ? Date.parse(evidence.expiresAt) < Date.now() : false);
   const state = toValueState(number, { isPending: loading || evidence?.status === 'loading', isStale: stale, reason: evidence?.reason });
-  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${label === 'LP Locked' ? 'Measured on deepest liquidity pool; other pools may differ. ' : ''}${evidence ? `Source: ${formatDisplaySource(evidence.source)}; ${evidence.status}; observed ${evidence.observedAt}.` : 'Data is currently pending.'}`}>
+  return <LegendTooltip label={label} className="w-full" definition={`${label}. ${holderCount !== undefined ? `${holderCount.toLocaleString()} classified wallets. ` : ''}${label === 'LP Locked' ? 'Measured on deepest liquidity pool; other pools may differ. ' : ''}${evidence ? `Source: ${formatDisplaySource(evidence.source)}; ${evidence.status}; observed ${evidence.observedAt}.` : 'Data is currently pending.'}`}>
     <div className="flex w-full min-w-0 flex-col items-center gap-1 rounded border border-slate-800 px-1 py-2 text-[11px]">
       <span className="flex items-center gap-1 font-numeric text-slate-200"><Icon className="h-3 w-3 shrink-0" />
         <MetricValue label={label} state={state} format={value => percent ? `${value.toFixed(value < 1 ? 2 : 1)}%` : formatCount(value)}
@@ -69,10 +69,10 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
     {error && <p role="status" className="my-1 text-amber-400">{error}</p>}
     <div className="my-2 grid grid-cols-3 gap-1.5">
       <AuditTile label="Top 10 H." value={data.top10HoldingsPct} icon={Users} evidence={data.ownershipEvidence} loading={loading} />
-      <AuditTile label="Dev H." value={data.devHoldingsPct} icon={Wallet} evidence={data.ownershipEvidence} loading={loading} />
-      <AuditTile label="Snipers H." value={data.sniperPercentage} icon={Target} evidence={data.ownershipEvidence} loading={loading} />
-      <AuditTile label="Insiders" value={data.insiderHoldingsPct} icon={Users} evidence={data.ownershipEvidence} loading={loading} />
-      <AuditTile label="Bundlers" value={data.bundlerPercentage} icon={Boxes} evidence={data.ownershipEvidence} loading={loading} />
+      <AuditTile label="Dev H." value={data.devHoldingsPct} holderCount={data.devCount} icon={Wallet} evidence={data.ownershipEvidence} loading={loading} />
+      <AuditTile label="Snipers H." value={data.sniperPercentage} holderCount={data.sniperCount} icon={Target} evidence={data.ownershipEvidence} loading={loading} />
+      <AuditTile label="Insiders" value={data.insiderHoldingsPct} holderCount={data.insiderCount} icon={Users} evidence={data.ownershipEvidence} loading={loading} />
+      <AuditTile label="Bundlers" value={data.bundlerPercentage} holderCount={data.bundlerCount} icon={Boxes} evidence={data.ownershipEvidence} loading={loading} />
       <AuditTile label="LP Locked" value={data.lpLockedPct} icon={Shield} evidence={data.liquidityEvidence} loading={loading} />
       <AuditTile label="Holders" value={data.holdersCount} icon={Users} percent={false}
         evidence={data.ownershipEvidence?.status === 'measured' || data.ownershipEvidence?.status === 'stale'

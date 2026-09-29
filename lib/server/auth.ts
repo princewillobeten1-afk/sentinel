@@ -5,6 +5,8 @@ import { serverStore } from './store';
 import { logger } from './logger';
 import { sessionStore, type ServerSession } from './session-store';
 import { assertSameOriginForCookieAuth } from './csrf';
+import { isPostgresConfigured } from './db/pool';
+import { dbRepository } from '@/lib/db/repository';
 
 export interface AuthUser {
   userId: string;
@@ -201,18 +203,20 @@ export async function verifyAuthToken(token: string): Promise<AuthUser | null> {
     await sessionStore.touch(payload.sid);
 
     const dbUser = await serverStore.findUserById(payload.userId);
-    if (!dbUser) {
+    const legacyUser = !dbUser && !isPostgresConfigured() ? dbRepository.getUser(payload.userId) : undefined;
+    const account = dbUser ?? legacyUser;
+    if (!account || account.status !== 'active') {
       return null;
     }
 
-    const userWallets = await serverStore.getUserWallets(dbUser.id);
+    const userWallets = await serverStore.getUserWallets(account.id);
     const primaryWallet = userWallets.find((w) => w.isPrimary) || userWallets[0];
 
     return {
-      userId: dbUser.id,
-      email: dbUser.email || undefined,
-      role: dbUser.role,
-      displayName: dbUser.displayName,
+      userId: account.id,
+      email: account.email || undefined,
+      role: account.role,
+      displayName: 'displayName' in account ? account.displayName : account.display_name,
       primaryWalletAddress: primaryWallet?.address || payload.primaryWalletAddress,
     };
   } catch (error) {

@@ -7,7 +7,8 @@ const MARKET_FIELDS = new Set([
   'buysCount5m', 'sellsCount5m', 'buysCount1h', 'sellsCount1h', 'buysCount24h', 'sellsCount24h', 'marketEvidence', 'activityEvidence',
 ]);
 const OWNERSHIP_FIELDS = new Set(['holdersCount', 'top10HoldingsPct', 'devHoldingsPct', 'sniperPercentage',
-  'insiderHoldingsPct', 'bundlerPercentage', 'proTradersCount', 'kolsCount', 'ownershipEvidence']);
+  'insiderHoldingsPct', 'bundlerPercentage', 'sniperCount', 'bundlerCount', 'insiderCount', 'devCount',
+  'proTradersCount', 'kolsCount', 'ownershipEvidence']);
 const LIFECYCLE_FIELDS = new Set(['lifecycleState', 'bondingCurveProgress', 'migrationSignature',
   'migratedPool', 'migratedDex', 'migratedAt', 'lifecycleEvidence']);
 

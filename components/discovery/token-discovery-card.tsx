@@ -61,7 +61,7 @@ export function TokenDiscoveryCard({ token }: TokenDiscoveryCardProps) {
           handleOpenTrade();
         }
       }}
-      className="group relative bg-[#0b0e14]/95 hover:bg-[#111620] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none cursor-pointer focus-visible:ring-1 focus-visible:ring-sky-500"
+      className="group relative bg-[#0a0a0a] hover:bg-[#161616] border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-2.5 transition-all duration-150 flex flex-col justify-between gap-2 shadow-sm font-mono select-none cursor-pointer focus-visible:ring-1 focus-visible:ring-sky-500"
     >
       {/* Top Row */}
       <div className="flex items-start justify-between gap-2 min-w-0">

@@ -39,3 +39,6 @@ npm-debug.log*
 
 # Deployment
 .vercel/
+
+# Scratch directory
+scratch/

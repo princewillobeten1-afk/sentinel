@@ -7,19 +7,19 @@ export const tokens = {
   colors: {
     // Core Dark Backgrounds
     background: {
-      base: '#07090D',       // Deepest app canvas background
-      surface: '#0A0D13',    // Standard component background
-      elevated: '#0a1122',   // Cards & Panels
-      hover: '#101a30',      // Hover state
-      active: '#15223e',     // Active state
+      base: '#000000',       // Deepest app canvas background (pitch black)
+      surface: '#0A0A0A',    // Standard component background
+      elevated: '#141414',   // Cards & Panels
+      hover: '#1F1F1F',      // Hover state
+      active: '#262626',     // Active state
     },
 
     // Borders
     border: {
-      subtle: '#14203a',
-      default: '#1F2733',
+      subtle: '#1E1E1E',
+      default: '#262626',
       focus: '#3B8FF0',
-      strong: '#2B3542',
+      strong: '#383838',
     },
 
     // Typography Text Colors
@@ -27,7 +27,7 @@ export const tokens = {
       primary: '#F2F5F9',    // High-contrast headings and primary content
       secondary: '#C6CEDA',  // Subtitles and table text
       muted: '#6E7A8A',      // Captions and disabled labels
-      inverse: '#07090D',    // Text on bright accents
+      inverse: '#000000',    // Text on bright accents
     },
 
     // Trading Financial & Status Indicators

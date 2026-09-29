@@ -51,6 +51,13 @@ describe('public data boundary', () => {
     expect(publicMessage('Amount must be positive.')).toBe('Amount must be positive.');
     expect(publicMessage('Request https://secret.example/?key=123 failed')).not.toContain('123');
   });
+  it('labels ownership frames by evidence category without exposing the shared vendor stream', () => {
+    const result = publicData({ marketEvidence: { source: 'birdeye-token-stats-ws', status: 'measured' },
+      ownershipEvidence: { source: 'birdeye-token-stats-ws', status: 'measured', observedAt: '2026-09-25T10:00:00Z' } }) as any;
+    expect(result.marketEvidence.source).toBe('Market data');
+    expect(result.ownershipEvidence.source).toBe('Ownership analysis');
+    expect(JSON.stringify(result)).not.toContain('birdeye');
+  });
   it('uses an opaque asset identifier and never accepts arbitrary URLs at the image route', () => {
     const url = 'https://cdn.dexscreener.com/token-images/og/solana/example.png';
     const publicUrl = publicAssetUrl(url)!;

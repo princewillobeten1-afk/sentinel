@@ -46,34 +46,34 @@ export class SessionService {
     }
 
     const duration = opts.expiresInSeconds || this.defaultSessionDurationSeconds;
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + duration * 1000).toISOString();
-    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const serverSession = await sessionStore.create(userId, {
+      ip: opts.ip ?? null,
+      userAgent: opts.userAgent ?? null,
+      expiresInSeconds: duration,
+      mfaVerified: false,
+    });
+    const sessionId = serverSession.id;
 
     const dbSession: DbUserSession = {
       id: sessionId,
       user_id: userId,
       ip_address: opts.ip ?? null,
       user_agent: opts.userAgent ?? null,
-      created_at: now.toISOString(),
-      last_activity_at: now.toISOString(),
-      expires_at: expiresAt,
+      created_at: serverSession.createdAt,
+      last_activity_at: serverSession.lastSeenAt,
+      expires_at: serverSession.expiresAt,
       revoked_at: null,
       revoked_reason: null,
     };
 
-    await identityStore.saveSession(dbSession);
+    try {
+      await identityStore.saveSession(dbSession);
+    } catch (error) {
+      await sessionStore.revoke(serverSession.id, 'session creation failed').catch(() => {});
+      throw error;
+    }
 
-    // Keep sessionStore in sync for legacy middleware integration. Fire-and-
-    // forget: sessionStore is now Postgres-backed (Phase 1) and async, but
-    // this method's own public API stays synchronous — a sync-failure here
-    // must not block session creation on the dbRepository path above.
-    sessionStore.create(userId, {
-      ip: opts.ip ?? null,
-      userAgent: opts.userAgent ?? null,
-      expiresInSeconds: duration,
-      mfaVerified: false,
-    }).catch(() => {});
+    // Both session interfaces now refer to the same revocable ID.
 
     const token = createAuthToken(
       {

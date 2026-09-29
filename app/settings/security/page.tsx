@@ -69,6 +69,15 @@ export default function SecuritySettingsPage() {
       </div>
 
       {/* Multi-Wallet Manager */}
+      {user && <div className="rounded-md border border-slate-700 bg-slate-900/60 p-4">
+        <h2 className="text-sm font-semibold">Google account</h2>
+        <p className="mt-1 text-xs text-slate-400">Link a Google account only while signed in to this Sentinel account.</p>
+        <a href="/api/v1/auth/google?mode=link&returnTo=%2Fsettings%2Fsecurity"
+          className="mt-3 inline-flex min-h-11 items-center rounded-md border border-slate-600 px-4 text-xs font-semibold hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400">
+          Link Google account
+        </a>
+      </div>}
+
       <MultiWalletManager />
 
       {/* Session Manager */}

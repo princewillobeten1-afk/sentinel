@@ -59,6 +59,8 @@ export interface TokenDiscoveryCardProps {
   quickBuyPresets?: number[]; // In SOL or USD
   quickBuyMode?: 'sol' | 'usd';
   timeWindow?: TimeWindow;
+  columnType?: 'new' | 'migrating' | 'graduated' | string;
+  showBondingCurve?: boolean;
   onQuickBuy?: (token: DiscoveryToken, amount: number) => void;
   /**
    * Latest streamed values for this mint, from the column's single planned
@@ -199,6 +201,8 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   quickBuyPresets = [0.05, 0.1, 0.5, 1.0],
   quickBuyMode = 'sol',
   timeWindow = '5m',
+  columnType,
+  showBondingCurve,
   onQuickBuy,
   live,
   liveUnavailable = false,
@@ -524,14 +528,14 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     });
   };
 
-  // Truncated mint display
+  // Truncated mint display (matching Axiom: e.g. 8u5v...nrEv)
   const shortMint = useMemo(() => {
-    if (!token.mint) return '...pump';
-    if (token.source === 'Pump.fun' || token.mint.toLowerCase().endsWith('pump')) {
-      return `${token.mint.slice(0, 4)}...pump`;
+    if (!token.mint) return '—';
+    if (token.mint.length >= 8) {
+      return `${token.mint.slice(0, 4)}...${token.mint.slice(-4)}`;
     }
-    return `${token.mint.slice(0, 4)}...${token.mint.slice(-4)}`;
-  }, [token.mint, token.source]);
+    return token.mint;
+  }, [token.mint]);
 
   // Bonding / Lifecycle Status Resolution
   /**
@@ -571,6 +575,12 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   );
   const migrationAgeMinutes = isMigrated && typeof lifecycle.migratedAt === 'number'
     ? Math.max(0, (Date.now() - lifecycle.migratedAt) / 60_000) : null;
+
+  // Bonding curve is ONLY shown in Final Stretch / migrating column, NEVER in New Pairs
+  const isNewPairs = columnType === 'new' || lifecycleState === 'new_pairs';
+  const shouldRenderBondingCurve = showBondingCurve !== undefined
+    ? showBondingCurve
+    : (!isNewPairs && (columnType === 'migrating' || lifecycleState === 'final_stretch' || lifecycleState === 'migrating'));
 
   // Trader / Holder stats
   /**
@@ -836,15 +846,17 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               dexBadge={token.source}
               className="discovery-card-avatar"
             />
-            {/* Status Pill Badge on bottom-right of avatar */}
-            <span
-              className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] shadow-sm ${
-                isMigrated ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-rose-500 text-white font-bold'
-              }`}
-              title={isMigrated ? 'Graduated pool' : 'Bonding curve'}
-            >
-              {isMigrated ? '👑' : '🔥'}
-            </span>
+            {/* Status Pill Badge on bottom-right of avatar (only for Migrated or Final Stretch) */}
+            {(isMigrated || shouldRenderBondingCurve) && (
+              <span
+                className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] shadow-sm ${
+                  isMigrated ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-rose-500 text-white font-bold'
+                }`}
+                title={isMigrated ? 'Graduated pool' : 'Bonding curve'}
+              >
+                {isMigrated ? '👑' : '🔥'}
+              </span>
+            )}
           </div>
 
           {/* Truncated Address */}
@@ -899,7 +911,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             </div>
             <div className="flex items-center gap-1">
               <span className="text-slate-500 font-medium">MC</span>
-              <span className={`font-bold ${isHighMcap ? 'text-amber-400' : 'text-sky-400'}`}>
+              <span className="font-bold text-amber-400">
                 {formatCompactUSD(marketCapUsd)}
               </span>
             </div>
@@ -953,7 +965,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               <span className="inline-flex items-center gap-1 text-amber-400 font-mono text-[11px]">
                 <Flame size={12} /> Migrating
               </span>
-            ) : curvePct !== null ? (
+            ) : shouldRenderBondingCurve && curvePct !== null ? (
               <LegendTooltip
                 label={`${launchpadConfig.name} bonding curve`}
                 definition={`Last measured completion for ${launchpadConfig.name}. Graduation target: ${gradTarget}. Destination: ${launchpadConfig.destinationDex}. ${curveStale ? 'Delayed reading, being rechecked.' : ''}`}
@@ -1018,30 +1030,26 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           </div>
         </div>
 
-        {/* ROW 3: Twitter handle + Follower count */}
-        <div className="discovery-card-row-social">
-          {twitterHandle ? (
-            <>
-              <Link
-                href={token.twitterUrl || `https://x.com/${twitterHandle.replace(/^@/, '')}`}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(event) => event.stopPropagation()}
-                className="truncate text-sky-400 hover:text-sky-300 font-medium"
-                title={twitterHandle}
-              >
-                {twitterHandle.startsWith('@') ? twitterHandle : `@${twitterHandle}`}
-              </Link>
-              {twitterFollowers != null && (
-                <span className="inline-flex shrink-0 items-center gap-1 text-sky-400 font-mono text-[11px]" title="X followers · official API">
-                  <Users size={11} /> {formatCount(twitterFollowers)}
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-slate-600 text-2xs truncate">No social handle verified</span>
-          )}
-        </div>
+        {/* ROW 3: Twitter handle + Follower count (only if present, matching Photo 2) */}
+        {twitterHandle && (
+          <div className="discovery-card-row-social">
+            <Link
+              href={token.twitterUrl || `https://x.com/${twitterHandle.replace(/^@/, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => event.stopPropagation()}
+              className="truncate text-sky-400 hover:text-sky-300 font-medium"
+              title={twitterHandle}
+            >
+              {twitterHandle.startsWith('@') ? twitterHandle : `@${twitterHandle}`}
+            </Link>
+            {twitterFollowers != null && (
+              <span className="inline-flex shrink-0 items-center gap-1 text-sky-400 font-mono text-[11px]" title="X followers · official API">
+                <Users size={11} /> {formatCount(twitterFollowers)}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ROW 4: Stats: 👥 holders   🛡️ snipers   🎯 insiders   👑 devRecord   👁️ views ... Quick Buy Button */}
         <div className="discovery-card-row-stats">
@@ -1097,23 +1105,10 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               </LegendTooltip>
             )}
           </div>
-
-          {/* Quick Buy Button on the right */}
-          <button
-            type="button"
-            onClick={(event) => handleTriggerBuy(event, quickBuyPresets[0])}
-            disabled={!hasConfirmedVenue}
-            className="discovery-quick-buy"
-            aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode.toUpperCase()}`}
-            title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a trading venue is confirmed'}
-          >
-            <Zap size={12} fill="currentColor" />
-            <span>{quickBuyMode === 'sol' ? `${quickBuyPresets[0]} SOL` : `$${quickBuyPresets[0]}`}</span>
-          </button>
         </div>
 
-        {/* ROW 5: Audit & Security Pills (Top 10, Dev Holding + Wallet Age, Snipers, Insiders, Bundlers, Dex Paid) */}
-        <div className="discovery-card-row-pills">
+        {/* ROW 5: Audit & Security Pills (Left) + Quick Buy Button (Right) matching Axiom Photo 2 */}
+        <div className="discovery-card-row-pills flex items-center justify-between gap-2 mt-0.5">
           <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
             <AuditPills
               top10HoldingsPct={top10 ?? undefined}
@@ -1122,6 +1117,10 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               sniperPercentage={snipersPct ?? undefined}
               insiderHoldingsPct={insidersPct ?? undefined}
               bundlerPercentage={bundlerPct ?? undefined}
+              sniperCount={live?.sniperCount ?? token.sniperCount}
+              bundlerCount={live?.bundlerCount ?? token.bundlerCount}
+              insiderCount={live?.insiderCount ?? token.insiderCount}
+              devCount={live?.devCount ?? token.devCount}
               pending={isAuditLoading}
               evidence={ownershipEvidence}
               alwaysShow
@@ -1140,15 +1139,29 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             ) : null}
           </div>
 
-          <div className="discovery-card-tools" onClick={(event) => event.stopPropagation()}>
+          {/* Right: Quick Buy Button (Bright Blue Pill) & Tools Popover */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                setShowSafety((open) => !open);
-              }}
-              aria-expanded={showSafety}
-              aria-controls={safetyId}
+              onClick={(event) => handleTriggerBuy(event, quickBuyPresets[0])}
+              disabled={!hasConfirmedVenue}
+              className="discovery-quick-buy bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md transition-all disabled:opacity-50 disabled:bg-neutral-800"
+              aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode.toUpperCase()}`}
+              title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a trading venue is confirmed'}
+            >
+              <Zap size={11} fill="currentColor" />
+              <span>{quickBuyMode === 'sol' ? `${quickBuyPresets[0]} SOL` : `$${quickBuyPresets[0]}`}</span>
+            </button>
+
+            <div className="discovery-card-tools hidden md:flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setShowSafety((open) => !open);
+                }}
+                aria-expanded={showSafety}
+                aria-controls={safetyId}
               aria-label={`Safety details for ${token.symbol}`}
               className={`discovery-icon-button ${showSafety ? 'text-sky-400' : ''}`}
               title="Safety details"
@@ -1192,6 +1205,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             </Popover>
           </div>
         </div>
+      </div>
 
         {/* EXPANDABLE SAFETY DETAILS */}
         {showSafety && (

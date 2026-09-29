@@ -49,6 +49,7 @@ describe('parseHolderProfile', () => {
     expect(profile.snipersPct).toBe(0);
     expect(profile.insidersPct).toBeCloseTo(6.01222);
     expect(profile.bundlersPct).toBeCloseTo(0.34245);
+    expect(profile).toMatchObject({ sniperCount: 1, bundlerCount: 3191, insiderCount: 72295, devCount: 1 });
     // And these were `holdersCount * 0.12` and `* 0.04`.
     expect(profile.proTraders).toBe(1207);
     expect(profile.kols).toBe(467);
@@ -65,6 +66,7 @@ describe('parseHolderProfile', () => {
     });
 
     expect(profile?.snipersPct).toBe(0);
+    expect(profile?.sniperCount).toBe(0);
     expect(profile?.bundlersPct).toBe(0);
     expect(profile?.insidersPct).toBe(2);
   });

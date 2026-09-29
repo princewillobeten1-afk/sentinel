@@ -34,19 +34,19 @@ import type { Config } from 'tailwindcss';
 // reads against the surface it sits on. Depth comes from these steps, not from
 // glows — which is what the neon theme was compensating for.
 const neutral = {
-  50: '#F7F9FB',
-  100: '#F2F5F9', // primary text — matches ::selection in globals.css
-  200: '#DDE3EB',
-  300: '#C6CEDA', // secondary text — matches :root color in globals.css
-  400: '#98A3B3', // muted text — matches .label-micro
-  500: '#6E7A8A', // faint decorative text — matches .delta-flat
-  600: '#445366', // elevated border / divider on a raised surface
-  700: '#33404F', // standard border — must read against 800, see note below
-  750: '#26303E', // hover surface
-  800: '#1C2531', // card surface
-  850: '#151C26', // sub-panel surface
-  900: '#0E131B', // app container ground
-  950: '#07090D', // deep page ground — matches html/body in globals.css
+  50: '#FFFFFF',  // pure white for high-contrast highlights
+  100: '#F5F5F5', // primary text
+  200: '#E5E5E5', // secondary-high text
+  300: '#D4D4D4', // standard readable text
+  400: '#A3A3A3', // muted text / .label-micro
+  500: '#737373', // faint decorative text / .delta-flat
+  600: '#383838', // elevated border / divider
+  700: '#262626', // standard border — crisp neutral boundary
+  750: '#1F1F1F', // card hover surface
+  800: '#141414', // standard card & panel surface
+  850: '#0F0F0F', // sub-panel & table header surface
+  900: '#0A0A0A', // app container ground
+  950: '#000000', // true pitch black page ground (Axiom style)
 };
 
 // Azure accent — the one hue used for interactive/emphasis.
@@ -203,7 +203,7 @@ const config: Config = {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-glass': 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)',
         'gradient-glow': 'linear-gradient(to right, rgba(59,143,240,0.10), rgba(18,181,116,0.10))',
-        'gradient-header': 'linear-gradient(180deg, rgba(18,23,31,0.95) 0%, rgba(13,18,25,0.95) 100%)',
+        'gradient-header': 'linear-gradient(180deg, rgba(14,14,14,0.98) 0%, rgba(0,0,0,0.98) 100%)',
       },
 
       boxShadow: {

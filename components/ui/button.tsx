@@ -2,6 +2,8 @@ import React from 'react';
 import { clsx } from 'clsx';
 import { Loader2 } from 'lucide-react';
 
+import Link from 'next/link';
+
 export type ButtonVariant =
   | 'primary'
   | 'secondary'
@@ -23,9 +25,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   isLoading?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
+  href?: string;
+  prefetch?: boolean;
+  target?: string;
+  rel?: string;
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
+export const variantStyles: Record<ButtonVariant, string> = {
   primary:
     'bg-sky-400 text-slate-950 font-semibold border border-sky-400 hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
   default:
@@ -56,7 +62,7 @@ const variantStyles: Record<ButtonVariant, string> = {
     'bg-sky-500/10 text-sky-300 font-semibold border border-sky-500/30 hover:border-sky-400 hover:bg-sky-500/20 hover:text-white shadow-[0_0_10px_rgba(0,240,255,0.2)]',
 };
 
-const sizeStyles: Record<ButtonSize, string> = {
+export const sizeStyles: Record<ButtonSize, string> = {
   xs: 'h-7 px-2 text-2xs rounded-md gap-1',
   sm: 'h-8 px-3 text-xs rounded-md gap-1.5',
   md: 'h-9 px-3.5 text-xs rounded-md gap-1.5',
@@ -65,22 +71,61 @@ const sizeStyles: Record<ButtonSize, string> = {
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', size = 'md', isLoading = false, leftIcon, rightIcon, children, disabled, ...props }, ref) => {
+  (
+    {
+      className,
+      variant = 'primary',
+      size = 'md',
+      isLoading = false,
+      leftIcon,
+      rightIcon,
+      children,
+      disabled,
+      href,
+      type = 'button',
+      ...props
+    },
+    ref
+  ) => {
+    const classes = clsx(
+      'inline-flex items-center justify-center whitespace-nowrap font-medium',
+      'transition-all duration-150 select-none active:scale-[0.98]',
+      'focus:outline-none focus-visible:outline-2 focus-visible:outline-sky-400 focus-visible:outline-offset-2',
+      (disabled || isLoading) && 'disabled:cursor-not-allowed disabled:opacity-40 disabled:pointer-events-none',
+      variantStyles[variant],
+      sizeStyles[size],
+      className
+    );
+
+    if (href) {
+      return (
+        <Link
+          href={href}
+          prefetch={props.prefetch}
+          target={props.target}
+          rel={props.rel}
+          className={classes}
+          onClick={props.onClick as any}
+          data-ui="button"
+        >
+          {isLoading && (
+            <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden="true" />
+          )}
+          {!isLoading && leftIcon && <span className="shrink-0">{leftIcon}</span>}
+          {children}
+          {!isLoading && rightIcon && <span className="shrink-0">{rightIcon}</span>}
+        </Link>
+      );
+    }
+
     return (
       <button
         ref={ref}
+        type={type}
         disabled={disabled || isLoading}
         aria-busy={isLoading || undefined}
         data-ui="button"
-        className={clsx(
-          'inline-flex items-center justify-center whitespace-nowrap font-medium',
-          'transition-all duration-150 select-none active:scale-[0.98]',
-          'focus:outline-none focus-visible:outline-2 focus-visible:outline-sky-400 focus-visible:outline-offset-2',
-          'disabled:cursor-not-allowed disabled:opacity-40 disabled:pointer-events-none',
-          variantStyles[variant],
-          sizeStyles[size],
-          className,
-        )}
+        className={classes}
         {...props}
       >
         {isLoading && (
@@ -95,3 +140,4 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 Button.displayName = 'Button';
+

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { MarketRegimeClassifier, AnalyticsTimeframe } from '@/lib/analytics';
-import { getMarketAggregates } from '@/lib/analytics/market-aggregates';
+import { getMarketAggregates, getMarketMovers } from '@/lib/analytics/market-aggregates';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +22,17 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const timeframe = (searchParams.get('timeframe') as AnalyticsTimeframe) || '24h';
+  if (timeframe !== '24h') return NextResponse.json({ success: false, error: {
+    code: 'UNSUPPORTED_TIMEFRAME', message: 'This market snapshot currently supports the 24h window only.',
+  } }, { status: 400 });
 
   // `realtime_tokens` is the only source here, so a Postgres outage used to
   // throw straight out of the handler — an empty-bodied 500 on every page that
   // loads this. Say what is unavailable instead of failing opaquely.
   let agg: Awaited<ReturnType<typeof getMarketAggregates>>;
+  let movers: Awaited<ReturnType<typeof getMarketMovers>>;
   try {
-    agg = await getMarketAggregates();
+    [agg, movers] = await Promise.all([getMarketAggregates(), getMarketMovers()]);
   } catch (err) {
     return NextResponse.json(
       {
@@ -36,7 +40,6 @@ export async function GET(request: Request) {
         error: {
           code: 'MARKET_AGGREGATES_UNAVAILABLE',
           message: 'Market aggregates are unavailable right now — the token store could not be read.',
-          detail: err instanceof Error ? err.message : String(err),
         },
       },
       { status: 503 },
@@ -73,6 +76,7 @@ export async function GET(request: Request) {
       buyVolumeUsd: agg.buyVolumeUsd,
       sellVolumeUsd: agg.sellVolumeUsd,
       organicVolumeUsd: agg.organicVolumeUsd,
+      organicEligibleVolumeUsd: agg.organicEligibleVolumeUsd,
       organicVolumePct: agg.organicVolumePct,
       suspectedWashVolumeUsd: agg.suspectedWashVolumeUsd,
       washTradingProbabilityPct: agg.washTradingProbabilityPct,
@@ -92,7 +96,16 @@ export async function GET(request: Request) {
       tokenCount: agg.tokenCount,
       totalLiquidityUsd: agg.totalLiquidityUsd,
       updatedAt: agg.updatedAt,
+      organicCoverageTokens: agg.organicCoverageTokens,
+      moverThresholds: { minimumLiquidityUsd: 1000, minimumVolume24hUsd: 100 },
     },
+    breadth: {
+      advancing: agg.advancingCount,
+      declining: agg.decliningCount,
+      unchanged: agg.unchangedCount,
+      unknown: Math.max(0, agg.tokenCount - agg.advancingCount - agg.decliningCount - agg.unchangedCount),
+    },
+    movers,
     timestamp: new Date().toISOString(),
   });
 }

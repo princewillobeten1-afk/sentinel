@@ -28,7 +28,7 @@ export function MultiWalletManager() {
   };
 
   return (
-    <div className="rounded-2xl bg-[#0d131f] border border-cyan-900/40 p-6 space-y-6">
+    <div className="rounded-2xl bg-[#0e0e0e] border border-sentinel-700 p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-white">Linked Wallets</h2>

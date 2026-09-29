@@ -26,6 +26,8 @@ import { Badge } from '@/components/ui/badge';
 import { PriceChange } from '@/components/ui/price-change';
 import { clsx } from 'clsx';
 import { TokenDiscoveryCard } from '@/components/discovery/token-card';
+import { AxiomMobileTokenList } from '@/components/mobile/axiom-mobile-token-list';
+import { subscribeToDiscovery, getDiscoverySnapshot } from '@/lib/discovery/discovery-store';
 import type { DiscoveryToken, TimeWindow } from '@/lib/discovery/types';
 import { useLiveTokenUpdates } from '@/lib/hooks/use-live-token-updates';
 import { AlertCard, AlertCardData } from '@/components/ui/alert-card';
@@ -95,7 +97,28 @@ export function DashboardView() {
     });
   }, [overview.trending, overview.hotTokens, overview.topTokens, watchlistedMints]);
 
-  const activeTokens: DiscoveryToken[] =
+  const [feedTokens, setFeedTokens] = useState<DiscoveryToken[]>(() => {
+    const snap = getDiscoverySnapshot();
+    const trending = snap.sections.trending?.tokens ?? [];
+    const newTokens = snap.sections.new?.tokens ?? [];
+    return trending.length > 0 ? trending : newTokens;
+  });
+
+  React.useEffect(() => {
+    const refreshFeedTokens = () => {
+      const snap = getDiscoverySnapshot();
+      const trending = snap.sections.trending?.tokens ?? [];
+      const newTokens = snap.sections.new?.tokens ?? [];
+      const best = trending.length > 0 ? trending : newTokens;
+      if (best.length > 0) setFeedTokens(best);
+    };
+    const unsubscribeTrending = subscribeToDiscovery(refreshFeedTokens, 'trending');
+    const unsubscribeNew = subscribeToDiscovery(refreshFeedTokens, 'new');
+    refreshFeedTokens();
+    return () => { unsubscribeTrending(); unsubscribeNew(); };
+  }, []);
+
+  const baseTokens =
     marketTab === 'trending'
       ? overview.trending
       : marketTab === 'hot'
@@ -103,6 +126,8 @@ export function DashboardView() {
         : marketTab === 'top'
           ? overview.topTokens
           : watchlistTokens;
+
+  const activeTokens: DiscoveryToken[] = baseTokens.length > 0 ? baseTokens : feedTokens;
 
   const live = useLiveTokenUpdates(activeTokens.map((t) => t.mint));
 
@@ -122,9 +147,22 @@ export function DashboardView() {
 
 
   return (
-    <div className="terminal-overview space-y-4 min-w-0">
-      {/* Top Hero Banner */}
-      <div data-page-header className="flex flex-wrap items-center justify-between gap-3 border-b border-sentinel-700 pb-4">
+    <div className="terminal-overview min-w-0">
+      {/* 1. Mobile View (Photo 1): Dedicated Axiom Mobile Token List matching Photo 1 */}
+      <div className="block md:hidden -mx-2 -mt-2">
+        <AxiomMobileTokenList
+          tokens={activeTokens}
+          marketTab={marketTab}
+          onTabChange={setMarketTab}
+          timeWindow={timeWindow}
+          onTimeWindowChange={setTimeWindow}
+        />
+      </div>
+
+      {/* 2. Desktop View: Full Overview Dashboard with Hero Banner, Metric Tiles, and Panels */}
+      <div className="hidden md:block space-y-4">
+        {/* Top Hero Banner */}
+        <div data-page-header className="flex flex-wrap items-center justify-between gap-3 border-b border-sentinel-700 pb-4">
         <div className="relative z-10">
           <h1 className="text-xl font-bold text-slate-100">
             Market overview
@@ -271,7 +309,7 @@ export function DashboardView() {
               </span>
             }
             headerActions={
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="hidden md:flex flex-wrap items-center gap-2">
                 <Tabs
                   activeTab={marketTab}
                   onChange={(id) => setMarketTab(id as any)}
@@ -284,7 +322,7 @@ export function DashboardView() {
                     { id: 'watchlist', label: 'Watchlist', count: watchlistTokens.length },
                   ]}
                 />
-                <div className="hidden sm:flex items-center bg-sentinel-950/80 rounded-md border border-sentinel-800 p-0.5 text-2xs font-mono">
+                <div className="flex items-center bg-sentinel-950/80 rounded-md border border-sentinel-800 p-0.5 text-2xs font-mono">
                   {(['5m', '1h', '24h'] as TimeWindow[]).map((w) => (
                     <button
                       key={w}
@@ -304,43 +342,41 @@ export function DashboardView() {
               </div>
             }
           >
-            {isLoading ? (
-              <div className="overview-token-grid">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-32 rounded-lg bg-sentinel-900/60 animate-pulse border border-sentinel-800/60"
-                  />
-                ))}
-              </div>
-            ) : (
-              /* Scrolls inside the panel rather than growing the page: 20
-                 trending tokens across three columns is seven rows, which would
-                 push the activity stream and rankings below the fold. The
-                 container keeps the panel a fixed size and the whole list
-                 reachable. */
-              <div className="overview-token-grid max-h-[36rem] overflow-y-auto pr-1">
-                {activeTokens.length === 0 && (
-                  <p className="col-span-full text-2xs text-slate-500 py-8 text-center">
-                    {overview.errors.trending || overview.errors.hotTokens || overview.errors.topTokens
-                      ? (overview.errors.trending ?? overview.errors.hotTokens ?? overview.errors.topTokens)
-                      : marketTab === 'watchlist'
-                        ? 'Nothing on your watchlist yet.'
-                        : 'No tokens returned.'}
-                  </p>
-                )}
-                {activeTokens.map((token) => (
-                  <TokenDiscoveryCard
-                    key={token.id || token.mint}
-                    token={token}
-                    variant="compact"
-                    timeWindow={timeWindow}
-                    live={live.updates.get(token.mint)}
-                    liveUnavailable={live.status !== 'live'}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Desktop View: 3-column responsive card grid */}
+            <div>
+              {isLoading ? (
+                <div className="overview-token-grid">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-32 rounded-lg bg-sentinel-900/60 animate-pulse border border-sentinel-800/60"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="overview-token-grid max-h-[36rem] overflow-y-auto pr-1">
+                  {activeTokens.length === 0 && (
+                    <p className="col-span-full text-2xs text-slate-500 py-8 text-center">
+                      {overview.errors.trending || overview.errors.hotTokens || overview.errors.topTokens
+                        ? (overview.errors.trending ?? overview.errors.hotTokens ?? overview.errors.topTokens)
+                        : marketTab === 'watchlist'
+                          ? 'Nothing on your watchlist yet.'
+                          : 'No tokens returned.'}
+                    </p>
+                  )}
+                  {activeTokens.map((token) => (
+                    <TokenDiscoveryCard
+                      key={token.id || token.mint}
+                      token={token}
+                      variant="compact"
+                      timeWindow={timeWindow}
+                      live={live.updates.get(token.mint)}
+                      liveUnavailable={live.status !== 'live'}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </Panel>
 
           {/* Section: Market Activity Stream */}
@@ -555,6 +591,7 @@ export function DashboardView() {
             </div>
           </Panel>
         </div>
+      </div>
       </div>
     </div>
   );

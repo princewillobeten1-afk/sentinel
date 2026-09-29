@@ -138,9 +138,9 @@ export function AdvancedFilterDrawer({
       />
 
       {/* Slide-over Drawer */}
-      <div className="absolute inset-y-0 right-0 max-w-md w-full bg-[#0a0e15] border-l border-slate-800 shadow-2xl flex flex-col z-10 text-xs">
+      <div className="absolute inset-y-0 right-0 max-w-md w-full bg-[#000000] border-l border-slate-800 shadow-2xl flex flex-col z-10 text-xs">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-[#0d121b] border-b border-slate-800">
+        <div className="flex items-center justify-between px-4 py-3 bg-[#0a0a0a] border-b border-slate-800">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-sky-400" />
             <h2 className="font-bold text-slate-100 text-sm">Advanced Discovery Filters</h2>
@@ -372,7 +372,7 @@ export function AdvancedFilterDrawer({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between p-3 bg-[#0d121b] border-t border-slate-800">
+        <div className="flex items-center justify-between p-3 bg-[#0a0a0a] border-t border-slate-800">
           <button
             onClick={handleReset}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-slate-200 text-xs transition-colors"

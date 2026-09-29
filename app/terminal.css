@@ -65,15 +65,15 @@
   gap: 8px;
   padding: 8px 10px;
   border: 0;
-  border-bottom: 1px solid theme('colors.slate.800');
-  background: theme('colors.slate.950');
-  color: theme('colors.slate.200');
+  border-bottom: 1px solid #141414;
+  background: #000000;
+  color: #e5e5e5;
   font-size: 12px;
   line-height: 1.35;
   transition: background-color 150ms ease;
   min-height: 134px;
 }
-.discovery-token-card:hover, .discovery-token-card:focus-within { background: theme('colors.slate.900'); }
+.discovery-token-card:hover, .discovery-token-card:focus-within { background: #0a0a0a; }
 .discovery-token-card[data-trade-flash='BUY'] {
   border-color: rgba(16, 185, 129, 0.75) !important;
   box-shadow: inset 2px 0 theme('colors.emerald.500'), 0 0 10px rgba(16, 185, 129, 0.25);
@@ -245,15 +245,16 @@
   gap: 4px;
   min-height: 24px;
   padding: 3px 10px;
-  border-radius: 999px;
-  background: theme('colors.sky.500');
-  color: theme('colors.slate.950');
+  border-radius: 9999px;
+  background: #2563eb;
+  color: #ffffff;
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
-  transition: background-color 150ms ease;
+  transition: all 150ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
-.discovery-quick-buy:hover { background: theme('colors.sky.400'); }
+.discovery-quick-buy:hover { background: #1d4ed8; }
 .discovery-quick-buy:disabled { color: theme('colors.slate.500'); background: theme('colors.slate.850'); }
 
 .discovery-icon-button {
@@ -295,20 +296,33 @@
   .discovery-card-row-social, .discovery-activity-stat { font-size: 12px; }
 }
 @container (max-width: 420px) {
-  .discovery-token-card { padding: 6px 8px; gap: 6px; }
+  .discovery-token-card { padding: 8px 10px; gap: 8px; border-bottom: 1px solid #141414; }
   .discovery-card-content { gap: 2px; }
-  .discovery-card-avatar-wrap, .discovery-card-avatar { width: 48px; height: 48px; }
-  .discovery-card-name { display: none; }
-  .discovery-card-symbol { font-size: 13px; max-width: calc(100% - 10px); }
+  .discovery-card-avatar-wrap, .discovery-card-avatar { width: 52px; height: 52px; }
+  .discovery-card-name { display: inline-block; max-width: 90px; }
+  .discovery-card-symbol { font-size: 14px; max-width: calc(100% - 10px); }
   .discovery-card-socials .discovery-icon-button { min-width: 18px; }
   .discovery-hover-actions { display: none; }
-  .discovery-quick-buy { min-height: 26px; padding: 2px 8px; font-size: 10px; }
-  .discovery-card-tools > button { min-height: 26px; min-width: 26px; }
+  .discovery-quick-buy { min-height: 24px; padding: 2px 9px; font-size: 11px; }
+  .discovery-card-tools > button { min-height: 24px; min-width: 24px; }
 }
 @container (max-width: 340px) {
   .discovery-card-ownership { flex-basis: 100%; }
 }
 @media (max-width: 767px) {
+  .discovery-hover-actions { display: none !important; }
+  .discovery-card-tools { display: none !important; }
+  .discovery-token-card { padding: 8px 10px; gap: 8px; border-bottom: 1px solid #141414; background: #000000; width: 100%; }
+  .discovery-card-content { width: 100%; min-width: 0; flex: 1 1 0%; gap: 3px; }
+  .discovery-card-row-header,
+  .discovery-card-row-meta,
+  .discovery-card-row-social,
+  .discovery-card-row-stats,
+  .discovery-card-row-pills {
+    width: 100%;
+  }
+  .discovery-card-avatar-wrap, .discovery-card-avatar { width: 52px; height: 52px; }
+  .discovery-card-address { max-width: 62px; font-size: 9px; text-align: center; justify-content: center; overflow: visible; }
   .discovery-action-item { min-height: 44px; }
   .discovery-card-ownership { flex-basis: auto; }
   .discovery-card-footer { align-items: center; }

@@ -358,7 +358,7 @@ export function CommandPalette() {
         setQuery('');
       }}
       size="lg"
-      className="p-0 border-slate-800/90 bg-[#070a0f] text-slate-100 select-none shadow-2xl rounded-2xl overflow-hidden"
+      className="p-0 border-slate-800/90 bg-[#000000] text-slate-100 select-none shadow-2xl rounded-2xl overflow-hidden"
     >
       {/* Search Input Bar */}
       <div className="flex items-center gap-3 border-b border-slate-800/80 px-4 py-3.5 bg-slate-900/60 backdrop-blur">
@@ -390,7 +390,7 @@ export function CommandPalette() {
       </div>
 
       {/* Category Tabs */}
-      <div className="flex items-center gap-1.5 px-3.5 py-2 border-b border-slate-800/80 bg-[#0b0e14] font-mono text-2xs overflow-x-auto no-scrollbar">
+      <div className="flex items-center gap-1.5 px-3.5 py-2 border-b border-slate-800/80 bg-[#0a0a0a] font-mono text-2xs overflow-x-auto no-scrollbar">
         {(['all', 'tokens', 'commands', 'wallets', 'creators'] as SearchCategory[]).map((cat) => (
           <button
             key={cat}
@@ -629,7 +629,7 @@ export function CommandPalette() {
         )}
       </div>
 
-      <div className="border-t border-slate-800 bg-[#070a0f] px-4 py-2.5 text-2xs text-slate-500 flex items-center justify-between font-mono">
+      <div className="border-t border-slate-800 bg-[#000000] px-4 py-2.5 text-2xs text-slate-500 flex items-center justify-between font-mono">
         <span className="flex items-center gap-2">
           <span>Use ↑↓ arrows to navigate</span>
           <span>•</span>

@@ -11,6 +11,13 @@ import { readPilotStream } from '@/lib/ai/pilot/stream';
 const control = 'min-h-11 rounded-md border border-slate-700 px-3 text-xs hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400';
 type Turn = Omit<SavedTurn, 'answer'> & { answer?: PilotAnswer; notes?: string[] };
 type Session = { id: string; createdAt: string };
+const setupMessages: Record<string, string> = {
+  pilot_disabled: 'The owner has not enabled Copilot.',
+  free_tier_unconfirmed: 'The owner must confirm the AI project billing tier.',
+  model_access: 'The AI model connection needs configuration.',
+  rate_limits: 'The AI project rate limits need configuration.',
+  storage: 'Conversation storage needs configuration.',
+};
 
 function Evidence({ facts, now }: { facts: EvidenceFact[]; now: number }) {
   return <div className="grid min-w-0 grid-cols-2 gap-2">
@@ -63,7 +70,10 @@ export function CopilotChat({ context }: { context: PilotContext }) {
       const data = await json('', 'GET', signal);
       if (signal?.aborted) return;
       setReady(data.status === 'configured');
-      setAvailability(data.status === 'configured' ? 'Public-data pilot · analysis only' : 'Setup required. The owner must configure access, free-tier quotas, and server storage before chat is enabled.');
+      const issues: string[] = Array.isArray(data.setupIssues) ? [...new Set<string>(data.setupIssues.filter((issue: unknown): issue is string => typeof issue === 'string'))] : [];
+      setAvailability(data.status === 'configured' ? 'Public-data pilot · analysis only'
+        : issues.length ? `Setup required. ${issues.map((issue: string) => setupMessages[issue]).filter(Boolean).join(' ')}`
+          : 'Copilot setup is incomplete. Ask the owner to check the server configuration.');
       const saved = await json('/sessions', 'GET', signal);
       if (!signal?.aborted) setSessions(saved.sessions);
     } catch (e) { if (!signal?.aborted) setAvailability(e instanceof Error ? e.message : 'Copilot is unavailable.'); }
@@ -124,7 +134,7 @@ export function CopilotChat({ context }: { context: PilotContext }) {
     <div className="space-y-2 border-b border-slate-800 p-3">
       <p className="text-slate-400">{availability}</p>
       <div className="flex min-w-0 items-center gap-2 text-sky-300"><span className="truncate font-mono" title={context.mint}>{context.mint ? `${context.mint.slice(0, 8)}...${context.mint.slice(-6)}` : context.page === 'discover' ? 'Discover workspace' : 'No token selected'}</span><span>{context.timeframe} · {context.displayUnit === 'mcap' ? 'MCAP' : 'USD'}</span></div>
-      {!isAuthenticated ? <div className="flex gap-2"><Link href="/login" className={`${control} inline-flex items-center`}>Sign in</Link><button className={control} onClick={openModal}>Connect wallet</button></div> : <>
+      {!isAuthenticated ? <div className="flex flex-wrap gap-2"><Link href="/api/v1/auth/google?returnTo=%2Fai" className={`${control} inline-flex items-center`}>Sign in with Google</Link><Link href="/login?returnTo=%2Fai" className={`${control} inline-flex items-center`}>Email sign in</Link><button className={control} onClick={openModal}>Connect wallet</button></div> : <>
         <div className="flex min-w-0 gap-2"><select aria-label="Conversation" className={`${control} min-w-0 flex-1 bg-sentinel-950`} value={sessionId ?? ''} onChange={e => void selectSession(e.target.value)}>
           <option value="">New conversation</option>{sessions.map(s => <option key={s.id} value={s.id}>{new Date(s.createdAt).toLocaleString()}</option>)}
         </select>{sessionId && <button className={control} onClick={() => setDeleting(true)}>Delete</button>}</div>

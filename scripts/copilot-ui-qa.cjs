@@ -20,8 +20,8 @@ async function main() {
     await context.route('**/api/**',async route=>{
       const req=route.request(), url=new URL(req.url());
       const ok=data=>route.fulfill({json:{success:true,data}});
-      if(url.pathname==='/api/v1/auth/me') return route.fulfill({json:{user:{id:'ui-test',displayName:'UI Tester',role:'user'},linkedWallets:[]}});
-      if(url.pathname==='/api/v1/ai') return ok({status:configured?'configured':'setup_required'});
+      if(url.pathname==='/api/v1/auth/me') return ok({user:{id:'ui-test',displayName:'UI Tester',role:'user'},linkedWallets:[]});
+      if(url.pathname==='/api/v1/ai') return ok({status:configured?'configured':'setup_required',setupIssues:configured?[]:['rate_limits']});
       if(url.pathname==='/api/v1/ai/sessions') return ok({sessions:[]});
       if(url.pathname==='/api/v1/ai/sessions/'+sessionId) {
         if(req.method()==='DELETE'){deleted=true;return ok({deleted:true});}
@@ -39,7 +39,7 @@ async function main() {
     const page=await context.newPage();page.setDefaultTimeout(30000);page.setDefaultNavigationTimeout(120000);
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/ai',{waitUntil:'domcontentloaded'});
-    await page.getByText('Setup required.',{exact:false}).waitFor();
+    await page.getByText('Setup required. The AI project rate limits need configuration.').waitFor();
     assert.equal(await page.getByRole('button',{name:'Ask Copilot',exact:true}).isDisabled(),true);
     configured=true;await page.getByRole('button',{name:'Check setup again'}).click();
     await page.getByText('Public-data pilot · analysis only').waitFor();

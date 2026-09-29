@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildBirdeyeSubscriptions } from '../birdeye-client';
+import { buildBirdeyeSubscriptions, classifyBirdeyeWebSocketError } from '../birdeye-client';
 import { normalizeBirdeyeTokenStats } from '../normalizers';
 import { __resetTokenCardCache, getTokenCardPatch, hydrateTokenCards, updateTokenCard } from '../card-cache';
 import { redis } from '@/lib/server/redis';
 
 describe('Birdeye visible-card subscriptions', () => {
+  it('backs off on access and quota rejections without exposing upstream text', () => {
+    const access = classifyBirdeyeWebSocketError({ data: 'Origin or API key is invalid: secret-value', statusCode: 400 });
+    const quota = classifyBirdeyeWebSocketError({ data: 'Compute units usage limit exceeded', statusCode: 400 });
+    expect(access.retryMs).toBe(15 * 60_000);
+    expect(access.reason).not.toContain('secret-value');
+    expect(quota.reason).toContain('quota');
+    expect(classifyBirdeyeWebSocketError({ data: 'Invalid query' }).retryMs).toBe(60_000);
+  });
+
   it('puts every visible mint in each supported multi-token subscription', () => {
     const subscriptions = buildBirdeyeSubscriptions(['MintA', 'MintB', 'MintA']);
     expect(subscriptions).toHaveLength(4);
@@ -13,6 +22,8 @@ describe('Birdeye visible-card subscriptions', () => {
     expect(wire.match(/MintB/g)?.length).toBeGreaterThanOrEqual(3);
     expect((subscriptions[2] as any).data.address).toEqual(['MintA', 'MintB']);
     expect((subscriptions[2] as any).data.select.trade_data.intervals).toEqual(['5m', '1h', '24h']);
+    expect((subscriptions[2] as any).data.select.holder_data).toBe(true);
+    expect((buildBirdeyeSubscriptions(['MintA'], [], false)[2] as any).data.select.holder_data).toBeUndefined();
     expect(subscriptions[3]).toEqual({ type: 'SUBSCRIBE_NEW_PAIR' });
   });
 
@@ -52,6 +63,33 @@ describe('token stats contract', () => {
     });
     expect(parsed?.fields).toMatchObject({ buyVolume5mUsd: 0, sellVolume5mUsd: 7 });
   });
+
+  it('maps all nine documented holder fields without scaling percentages or confusing counts with total holders', () => {
+    const parsed = normalizeBirdeyeTokenStats({
+      type: 'TOKEN_STATS_DATA',
+      data: { address: 'MintHolder', top10_holder_percentage: 90.748, sniper_count: 3,
+        sniper_held_percentage: 0.000049, bundler_count: 115, bundler_held_percentage: 6.0628,
+        insider_count: 0, insider_held_percentage: 0, dev_count: 2, dev_held_percentage: 1.5 },
+    });
+    expect(parsed?.hasOwnershipFields).toBe(true);
+    expect(parsed?.hasMarketFields).toBe(false);
+    expect(parsed?.hasActivityFields).toBe(false);
+    expect(parsed?.fields).toEqual({ top10HoldingsPct: 90.748, sniperCount: 3,
+      sniperPercentage: 0.000049, bundlerCount: 115, bundlerPercentage: 6.0628,
+      insiderCount: 0, insiderHoldingsPct: 0, devCount: 2, devHoldingsPct: 1.5 });
+    expect(parsed?.fields).not.toHaveProperty('holdersCount');
+  });
+
+  it('leaves omitted and malformed classifications unknown while retaining valid zero', () => {
+    const parsed = normalizeBirdeyeTokenStats({ type: 'TOKEN_STATS_DATA', data: {
+      address: 'MintHolder', sniper_count: 0, sniper_held_percentage: 101,
+      bundler_count: -1, insider_held_percentage: null as unknown as number,
+      dev_count: 2.5,
+    } });
+    expect(parsed?.fields).toEqual({ sniperCount: 0 });
+    expect(parsed?.fields.top10HoldingsPct).toBeUndefined();
+    expect(normalizeBirdeyeTokenStats({ type: 'TOKEN_STATS_DATA', data: { address: 'MintHolder' } })).toBeNull();
+  });
 });
 
 describe('token card ordering', () => {
@@ -69,6 +107,18 @@ describe('token card ordering', () => {
     updateTokenCard('MintA', { priceUsd: '2' }, 'market', 'fresh', '2026-09-11T10:00:00.000Z');
     updateTokenCard('MintA', { sniperPercentage: 0 }, 'ownership', 'fresh', '2026-09-11T09:59:00.000Z');
     expect(getTokenCardPatch('MintA')?.changedFields.sniperPercentage).toBe(0);
+  });
+
+  it('keeps measured stream ownership when a later REST request fails', () => {
+    const measured = { status: 'measured' as const, source: 'birdeye-token-stats-ws', observedAt: '2026-09-25T10:00:00.000Z' };
+    updateTokenCard('MintHolder', { sniperPercentage: 0, sniperCount: 0, ownershipEvidence: measured },
+      'birdeye-token-stats-ws', 'fresh', measured.observedAt);
+    updateTokenCard('MintHolder', { auditPending: false, ownershipEvidence: {
+      status: 'unavailable', source: 'birdeye-holder-profile', observedAt: '2026-09-25T10:00:05.000Z',
+    } }, 'birdeye-holder-profile', 'stale', '2026-09-25T10:00:05.000Z');
+    expect(getTokenCardPatch('MintHolder')?.changedFields).toMatchObject({
+      sniperPercentage: 0, sniperCount: 0, auditPending: false, ownershipEvidence: measured,
+    });
   });
 
   it('rejects malformed observation times', () => {

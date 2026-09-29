@@ -317,7 +317,7 @@ export function LegendTooltip({
               zIndex: 99999,
               visibility: coords ? 'visible' : 'hidden',
             }}
-            className="p-3 bg-[#0a0e1a]/98 border border-slate-700/90 rounded-lg shadow-2xl backdrop-blur-md pointer-events-none transition-opacity duration-150 animate-in fade-in zoom-in-95"
+            className="p-3 bg-[#0a0a0a]/98 border border-slate-700/90 rounded-lg shadow-2xl backdrop-blur-md pointer-events-none transition-opacity duration-150 animate-in fade-in zoom-in-95"
           >
             <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-800/90">
               <span className="text-xs font-bold text-slate-100 tracking-tight font-sans truncate">

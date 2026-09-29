@@ -21,12 +21,14 @@ export async function GET(request: Request) {
 
     return jsonResponse({
       user: {
+        id: dbUser.id,
         userId: dbUser.id,
         displayName: ('display_name' in dbUser ? dbUser.display_name : (dbUser as any).displayName) || 'Trader',
         email: dbUser.email || null,
         role: dbUser.role,
         status: dbUser.status,
         createdAt: ('created_at' in dbUser ? dbUser.created_at : (dbUser as any).createdAt),
+        updatedAt: ('updated_at' in dbUser ? dbUser.updated_at : (dbUser as any).updatedAt),
       },
       primaryWallet,
       linkedWallets,

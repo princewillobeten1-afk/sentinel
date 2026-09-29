@@ -36,6 +36,10 @@ export interface TokenCardFields extends Pick<import('@/lib/trading/sidebar-mode
   sniperPercentage?: number;
   insiderHoldingsPct?: number;
   bundlerPercentage?: number;
+  sniperCount?: number;
+  bundlerCount?: number;
+  insiderCount?: number;
+  devCount?: number;
   proTradersCount?: number;
   kolsCount?: number;
   devAddress?: string;
@@ -134,6 +138,14 @@ function applyTokenCard(
   const fieldTimes = state.fieldObservedAt.get(mint) ?? new Map<string, number>();
   const accepted = Object.entries(changedFields).filter(([field, value]) => {
     if (value === undefined) return false;
+    // A failed or queued REST lookup must not erase a measured live ownership
+    // observation. Its expiry turns it stale without inventing an audit gap.
+    if (field === 'ownershipEvidence' && value && typeof value === 'object') {
+      const incoming = value as MetricEvidence;
+      const existing = previous?.changedFields.ownershipEvidence;
+      if ((incoming.status === 'loading' || incoming.status === 'unavailable')
+        && (existing?.status === 'measured' || existing?.status === 'stale')) return false;
+    }
     const previousObserved = fieldTimes.get(field) ?? Number.NEGATIVE_INFINITY;
     const fieldMs = Date.parse(restoredFieldTimes?.[field as keyof TokenCardFields] ?? observedAt);
     return Number.isFinite(fieldMs) && fieldMs >= previousObserved;

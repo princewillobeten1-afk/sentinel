@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, Wallet, UserSession } from '@/lib/auth/types';
+import { authResponseData } from '@/lib/auth/client-response';
 
 interface AuthContextValue {
   user: User | null;
@@ -32,7 +33,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/v1/auth/me', { credentials: 'include' });
       if (res.ok) {
-        const data = await res.json();
+        const data = authResponseData<{ user: User; linkedWallets: Wallet[] }>(await res.json());
+        if (!data.user?.id) throw new Error('Invalid account profile');
         setUser(data.user);
         setWallets(data.linkedWallets || []);
         setStatus('AUTHENTICATED');
@@ -69,7 +71,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error.error?.message || error.message || 'Login failed');
       }
 
-      const data = await res.json();
+      const data = authResponseData<{ user: User; session: UserSession }>(await res.json());
+      if (!data.user?.id || !data.session?.id) throw new Error('Sign-in did not create a session');
       setUser(data.user);
       setSession(data.session);
       setStatus('AUTHENTICATED');
@@ -94,7 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error.error?.message || error.message || 'Registration failed');
       }
 
-      const data = await res.json();
+      const data = authResponseData<{ user: User; session: UserSession }>(await res.json());
+      if (!data.user?.id || !data.session?.id) throw new Error('Registration did not create a session');
       setUser(data.user);
       setSession(data.session);
       setStatus('AUTHENTICATED');

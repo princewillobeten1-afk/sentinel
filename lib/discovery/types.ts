@@ -204,6 +204,11 @@ export interface DiscoveryToken {
   insiderHoldingsPct?: number;
   sniperPercentage?: number;
   bundlerPercentage?: number;
+  /** Wallet counts classified by the live ownership feed, not trade counts. */
+  sniperCount?: number;
+  bundlerCount?: number;
+  insiderCount?: number;
+  devCount?: number;
   /** The creator's wallet, so the dev's holding can be checked independently. */
   devAddress?: string;
   /**

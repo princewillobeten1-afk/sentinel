@@ -29,6 +29,7 @@
     "clsx": "2.1.1",
     "cross-env": "^7.0.3",
     "framer-motion": "^13.1.0",
+    "google-auth-library": "^11.1.0",
     "ioredis": "^6.0.0",
     "js-sha256": "^0.11.1",
     "klinecharts": "^10.0.3",

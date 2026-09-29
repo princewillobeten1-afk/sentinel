@@ -3,7 +3,7 @@ const mocks=vi.hoisted(()=>({auth:vi.fn(),query:vi.fn(),redis:vi.fn()}));
 vi.mock('@/lib/server/auth',()=>({requireAuth:mocks.auth,getBearerToken:()=> 'test.signed.session'}));
 vi.mock('@/lib/server/db/pool',()=>({dbPool:{query:mocks.query}}));
 vi.mock('@/lib/server/redis',()=>({redis:{evalStrict:mocks.redis}}));
-import { requirePilotUser, pilotConfig } from '../pilot/config';
+import { requirePilotUser, pilotConfig, pilotSetupIssues } from '../pilot/config';
 import { getTurns, deleteSession, saveTurn, recordUsage } from '../pilot/repository';
 import { reserveAnswer, reserveModelCall } from '../pilot/quota';
 import type { SavedTurn } from '../pilot/contracts';
@@ -16,6 +16,22 @@ it('permits an authenticated invited tester',async()=>expect(await requirePilotU
 it('can open access to all signed-in accounts without an allowlist',async()=>{vi.stubEnv('AI_COPILOT_ACCESS','authenticated');mocks.auth.mockResolvedValue({userId:'public-user',role:'user'});expect(await requirePilotUser(new Request('http://localhost'))).toMatchObject({userId:'public-user'});});
 it('unknown access modes do not bypass invitations',async()=>{vi.stubEnv('AI_COPILOT_ACCESS','anonymous');mocks.auth.mockResolvedValue({userId:'unknown',role:'user'});await expect(requirePilotUser(new Request('http://localhost'))).rejects.toMatchObject({code:'AI_ACCESS_REQUIRED'});});
 it('does not enable free-tier calls without explicit limits and confirmation',()=>{vi.stubEnv('AI_FREE_TIER_CONFIRMED','false');expect(pilotConfig().success).toBe(false);});
+it('identifies missing setup categories without exposing model credentials',()=>{
+  vi.stubEnv('GEMINI_API_KEY','private-test-key');
+  vi.stubEnv('AI_PILOT_ENABLED','true');
+  vi.stubEnv('AI_FREE_TIER_CONFIRMED','true');
+  vi.stubEnv('AI_MODEL_RPM',''); vi.stubEnv('AI_MODEL_TPM',''); vi.stubEnv('AI_MODEL_RPD','');
+  vi.stubEnv('DATABASE_URL','postgres://private-test'); vi.stubEnv('REDIS_URL','redis://private-test');
+  expect(pilotSetupIssues()).toEqual(['rate_limits']);
+  expect(JSON.stringify(pilotSetupIssues())).not.toContain('private-test');
+});
+it('enables the pilot only when activation, limits, and storage are configured',()=>{
+  for (const [key,value] of Object.entries({GEMINI_API_KEY:'private-test-key',AI_PILOT_ENABLED:'true',
+    AI_FREE_TIER_CONFIRMED:'true',AI_MODEL_RPM:'5',AI_MODEL_TPM:'250000',AI_MODEL_RPD:'20',
+    DATABASE_URL:'postgres://private-test',REDIS_URL:'redis://private-test'})) vi.stubEnv(key,value);
+  expect(pilotSetupIssues()).toEqual([]);
+  expect(pilotConfig().success).toBe(true);
+});
 it('does not fall back to in-memory quotas',async()=>{mocks.redis.mockRejectedValue(new Error('down'));await expect(reserveAnswer('u','r')).rejects.toMatchObject({code:'AI_COORDINATION_UNAVAILABLE'});});
 it.each([['duplicate','AI_DUPLICATE_REQUEST'],['busy','AI_BUSY'],['quota','AI_QUOTA_EXHAUSTED']])('handles Redis %s',async(state,code)=>{mocks.redis.mockResolvedValue(state);await expect(reserveAnswer('u','r')).rejects.toMatchObject({code});});
 it('atomically reserves and releases its own project lease',async()=>{mocks.redis.mockResolvedValue('ok');const release=await reserveAnswer('u','r');await release();expect(mocks.redis.mock.calls[1][0]).toContain("== ARGV[1]");});

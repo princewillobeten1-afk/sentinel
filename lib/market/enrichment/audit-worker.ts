@@ -262,7 +262,8 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
       ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
   const completeProfile = [profile.top10Pct, profile.totalHolders,
     profile.snipersPct, profile.insidersPct, profile.bundlersPct,
-    profile.devPct, profile.proTraders, profile.kols].every((value) => value !== null);
+    profile.devPct, profile.proTraders, profile.kols, profile.sniperCount,
+    profile.bundlerCount, profile.insiderCount, profile.devCount].every((value) => value != null);
   const rugRisk = calculateRugRisk({
     top10Pct: profile.top10Pct,
     devPct: profile.devPct,
@@ -280,6 +281,10 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
     insiderHoldingsPct: profile.insidersPct ?? undefined,
     bundlerPercentage: profile.bundlersPct ?? undefined,
     devHoldingsPct: profile.devPct ?? undefined,
+    sniperCount: profile.sniperCount ?? undefined,
+    bundlerCount: profile.bundlerCount ?? undefined,
+    insiderCount: profile.insiderCount ?? undefined,
+    devCount: profile.devCount ?? undefined,
     proTradersCount: profile.proTraders ?? undefined,
     kolsCount: profile.kols ?? undefined,
     auditPending: false,
@@ -301,6 +306,10 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
     insiderHoldingsPct: profile.insidersPct,
     bundlerPercentage: profile.bundlersPct,
     devHoldingsPct: profile.devPct,
+    sniperCount: profile.sniperCount,
+    bundlerCount: profile.bundlerCount,
+    insiderCount: profile.insiderCount,
+    devCount: profile.devCount,
     proTradersCount: profile.proTraders,
     kolsCount: profile.kols,
     rugRisk,

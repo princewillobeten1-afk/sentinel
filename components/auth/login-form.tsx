@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './auth-provider';
@@ -13,6 +13,22 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [returnTo, setReturnTo] = useState('/trade');
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const destination = params.get('returnTo');
+    if (destination?.startsWith('/') && !destination.startsWith('//') && !destination.includes('\\')) setReturnTo(destination);
+    const code = params.get('google_error');
+    if (code) setGoogleError(code === 'GOOGLE_AUTH_NOT_CONFIGURED'
+      ? 'Google sign-in needs an OAuth client configured by the site owner.'
+      : code === 'GOOGLE_LINK_REQUIRED'
+      ? 'An account already uses this email. Sign in with its existing method, then link Google in Security settings.'
+      : code === 'GOOGLE_AUTH_CANCELLED' ? 'Google sign-in was cancelled.'
+      : code === 'GOOGLE_MFA_REQUIRED' ? 'Additional verification is required. Use your existing sign-in method.'
+      : 'Google sign-in could not be completed. Please retry.');
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +37,7 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
 
     try {
       await login(email, password);
-      router.push('/trade');
+      router.push(returnTo);
     } catch (err: any) {
       setError(err.message || 'Login failed. Please verify your credentials.');
     } finally {
@@ -30,7 +46,7 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
   };
 
   return (
-    <div className="w-full max-w-md p-8 rounded-2xl bg-[#0d131f] border border-cyan-900/40 shadow-2xl backdrop-blur-xl">
+    <div className="w-full max-w-md p-8 rounded-2xl bg-[#0e0e0e] border border-sentinel-700 shadow-2xl backdrop-blur-xl">
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mb-3 shadow-[0_0_20px_rgba(6,182,212,0.25)]">
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -41,12 +57,12 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
         <p className="text-sm text-cyan-200/60 mt-1">Authenticate to access institutional market intelligence</p>
       </div>
 
-      {error && (
+      {(error || googleError) && (
         <div className="mb-6 p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-sm flex items-center gap-3">
           <svg className="w-5 h-5 flex-shrink-0 text-red-400" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>
-          <span>{error}</span>
+          <span>{error || googleError}</span>
         </div>
       )}
 
@@ -102,6 +118,13 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
           )}
         </button>
       </form>
+
+      <div className="mt-5 border-t border-slate-800 pt-5">
+        <Link href={`/api/v1/auth/google?returnTo=${encodeURIComponent(returnTo)}`}
+          className="flex min-h-11 w-full items-center justify-center rounded-md border border-slate-600 bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400">
+          Sign in with Google
+        </Link>
+      </div>
 
       {onWalletConnectRequest && (
         <div className="mt-6 pt-6 border-t border-slate-800/80">

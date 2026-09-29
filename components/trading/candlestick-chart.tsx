@@ -81,8 +81,8 @@ const periodFor = (timeframe: ChartTimeframe): Period => timeframe === '1d' ? { 
 const chartStyles: DeepPartial<Styles> = {
   grid: {
     show: true,
-    horizontal: { show: true, style: 'dashed', dashedValue: [3, 4], size: 1, color: '#223044' },
-    vertical: { show: true, style: 'dashed', dashedValue: [3, 4], size: 1, color: '#1c2838' },
+    horizontal: { show: true, style: 'dashed', dashedValue: [3, 4], size: 1, color: '#1a1a1a' },
+    vertical: { show: true, style: 'dashed', dashedValue: [3, 4], size: 1, color: '#141414' },
   },
   candle: {
     type: 'candle_solid',
@@ -135,30 +135,30 @@ const chartStyles: DeepPartial<Styles> = {
   },
   xAxis: {
     show: true,
-    axisLine: { show: true, color: '#263449', size: 1 },
-    tickLine: { show: true, color: '#263449', size: 1, length: 3 },
+    axisLine: { show: true, color: '#262626', size: 1 },
+    tickLine: { show: true, color: '#262626', size: 1, length: 3 },
     tickText: { show: true, color: '#94a3b8', size: 11, family: 'ui-monospace, monospace' },
   },
   yAxis: {
     show: true,
-    axisLine: { show: true, color: '#263449', size: 1 },
-    tickLine: { show: true, color: '#263449', size: 1, length: 3 },
+    axisLine: { show: true, color: '#262626', size: 1 },
+    tickLine: { show: true, color: '#262626', size: 1, length: 3 },
     tickText: { show: true, color: '#94a3b8', size: 11, family: 'ui-monospace, monospace' },
   },
-  separator: { color: '#1e293b', size: 1, fill: true, activeBackgroundColor: 'rgba(14,165,233,0.1)' },
+  separator: { color: '#262626', size: 1, fill: true, activeBackgroundColor: 'rgba(14,165,233,0.1)' },
   crosshair: {
     show: true,
     horizontal: {
       show: true,
       line: { show: true, style: 'dashed', dashedValue: [4, 2], size: 1, color: '#475569' },
       text: { show: true, style: 'fill', color: '#f8fafc', size: 10, family: 'ui-monospace, monospace',
-        borderColor: '#334155', borderSize: 1, backgroundColor: '#0f172a', borderRadius: 3 },
+        borderColor: '#262626', borderSize: 1, backgroundColor: '#0a0a0a', borderRadius: 3 },
     },
     vertical: {
       show: true,
       line: { show: true, style: 'dashed', dashedValue: [4, 2], size: 1, color: '#475569' },
       text: { show: true, style: 'fill', color: '#f8fafc', size: 10, family: 'ui-monospace, monospace',
-        borderColor: '#334155', borderSize: 1, backgroundColor: '#0f172a', borderRadius: 3 },
+        borderColor: '#262626', borderSize: 1, backgroundColor: '#0a0a0a', borderRadius: 3 },
     },
   },
   overlay: {
@@ -462,8 +462,8 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
   const visualStatus = chartError ? 'Unavailable' : feed.status;
   return (
     <section aria-label="Token price chart" data-chart-status={chartError ? 'Unavailable' : feed.status} data-candle-count={feed.candles.length}
-      className="w-full min-w-0 overflow-hidden rounded-md border border-sentinel-800 bg-[#0b1017]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sentinel-800 bg-[#101721] px-3 py-2">
+      className="w-full min-w-0 overflow-hidden rounded-md border border-sentinel-800 bg-[#000000]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sentinel-800 bg-[#0a0a0a] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <BarChart3 className="h-4 w-4 shrink-0 text-sky-400" aria-hidden="true" />
           <span className="truncate text-xs font-semibold tracking-wide text-slate-100">{displaySymbol(tokenSymbol || symbol)} / {displayUnit === 'mcap' ? 'MCAP' : 'USD'}</span>
@@ -573,7 +573,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
               className="flex min-h-[44px] items-center gap-1 rounded-md px-2 text-[11px] text-slate-300 hover:bg-sentinel-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 sm:min-h-8">
               Indicators <ChevronDown className="h-3 w-3" aria-hidden="true" />
             </button>
-            {indicatorsOpen && <div role="group" aria-label="Indicator settings" className="absolute right-0 top-full z-20 w-56 rounded-md border border-sentinel-700 bg-[#151e2a] p-1.5 shadow-xl">
+            {indicatorsOpen && <div role="group" aria-label="Indicator settings" className="absolute right-0 top-full z-20 w-56 rounded-md border border-sentinel-700 bg-[#141414] p-1.5 shadow-xl">
               <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Chart studies</p>
               {INDICATORS.map(item => <button key={item.name} type="button" aria-pressed={indicators.includes(item.name)}
                 disabled={feed.candles.length < item.minBars}
@@ -590,8 +590,8 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           <button type="button" aria-label="Refresh chart" title="Refresh chart data" aria-busy={feed.refreshing} disabled={feed.refreshing} className={control + ' text-slate-400 hover:text-sky-300 hover:bg-sentinel-800'} onClick={feed.refresh}><RefreshCw className={'mx-auto h-3.5 w-3.5 ' + (feed.refreshing ? 'motion-safe:animate-spin' : '')} /></button>
         </div>
       </div>
-      <div className={(height || (compact ? 'h-[370px]' : 'h-[410px] sm:h-[500px]')) + ' relative w-full bg-[#0b1017]'}>
-        <div ref={container} className="absolute inset-0 z-0 bg-[#0b1017]" />
+      <div className={(height || (compact ? 'h-[370px]' : 'h-[410px] sm:h-[500px]')) + ' relative w-full bg-[#000000]'}>
+        <div ref={container} className="absolute inset-0 z-0 bg-[#000000]" />
         {(empty || chartError) && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-sentinel-950/95 px-5 text-center text-xs text-slate-400">
           <p role={feed.error || chartError ? 'alert' : 'status'}>{chartError || (feed.loading ? 'Loading real ' + timeframe + ' candles…' : feed.error || 'No indexed candles yet. Waiting for trades.')}</p>
           {!feed.loading && !chartError && <button type="button" className={control + ' border border-sentinel-700 text-sky-300'} disabled={feed.refreshing} aria-busy={feed.refreshing} onClick={feed.refresh}>Retry chart</button>}

@@ -4,21 +4,20 @@ export async function GET() {
   return NextResponse.json({
     status: 'online',
     version: '1.0.0',
-    subsystem: 'Sprint 38 — Analytics & Data Intelligence Platform',
+    subsystem: 'Measured analytics',
     principles: [
       'Raw Data -> Metrics -> Signals -> Scores -> Insights',
-      'Bidirectional lineage traceability to raw Solana slot',
-      'Strict Zero Look-Ahead historical backtesting',
-      'Multi-provider data validation and discrepancy auditing',
+      'Unavailable evidence is not represented as a measured value',
+      'Historical signals execute on the next closed candle open',
     ],
     endpoints: {
       market: '/api/v1/analytics/market',
+      research: '/api/v1/analytics/research',
       token: '/api/v1/analytics/token/[tokenAddress]',
-      wallet: '/api/v1/analytics/wallet/[walletAddress]',
-      creator: '/api/v1/analytics/creator/[creatorAddress]',
-      trader: '/api/v1/analytics/trader',
+      walletActivity: '/api/v1/analytics/wallet/[walletAddress]',
+      personalOrders: '/api/v1/trading/history',
       backtest: '/api/v1/analytics/backtest',
-      quality: '/api/v1/analytics/quality',
+      capabilityHealth: '/api/v1/analytics/quality',
     },
   });
 }

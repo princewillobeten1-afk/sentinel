@@ -80,6 +80,15 @@ export interface BirdeyeTokenStatsMessage {
     price_change_1h_percent?: number;
     price_change_24h_percent?: number;
     last_trade_unix_time?: number;
+    top10_holder_percentage?: number;
+    sniper_count?: number;
+    sniper_held_percentage?: number;
+    bundler_count?: number;
+    bundler_held_percentage?: number;
+    insider_count?: number;
+    insider_held_percentage?: number;
+    dev_count?: number;
+    dev_held_percentage?: number;
   };
 }
 
@@ -163,4 +172,6 @@ export interface ConnectionHealth {
   mbPerMinute?: number;
   /** Sanitized provider-level rejection, distinct from transport health. */
   providerError?: string;
+  /** Backoff for an upstream subscription rejection; other feeds keep running. */
+  pausedUntil?: string;
 }

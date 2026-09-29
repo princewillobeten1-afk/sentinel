@@ -2661,6 +2661,10 @@ export function AxiomChartTabs({
                 sniperPercentage={auditData.snipersPct ?? undefined}
                 insiderHoldingsPct={auditData.insidersPct ?? undefined}
                 bundlerPercentage={auditData.bundlersPct ?? undefined}
+                sniperCount={auditData.sniperCount ?? undefined}
+                bundlerCount={auditData.bundlerCount ?? undefined}
+                insiderCount={auditData.insiderCount ?? undefined}
+                devCount={auditData.devCount ?? undefined}
                 pending={auditData.holderAuditPending}
                 evidence={auditData.ownershipEvidence}
                 evidenceByMetric={{ dev: auditData.devBalanceEvidence }}

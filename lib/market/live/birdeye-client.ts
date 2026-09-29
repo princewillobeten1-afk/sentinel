@@ -6,7 +6,8 @@ import type { RawMarketEvent } from '@/lib/market/event-pipeline';
 import { ReconnectingWebSocketClient } from './ws-client';
 import { normalizeBirdeyePrice, normalizeBirdeyeTokenStats, normalizeBirdeyeTx } from './normalizers';
 import type { BirdeyeMessage, ConnectionHealth } from './types';
-import { updateTokenCard } from './card-cache';
+import { getTokenCardPatch, updateTokenCard } from './card-cache';
+import { calculateRugRisk, RUG_RISK_VERSION } from '@/lib/market/enrichment/rug-risk';
 import { lifecycleWorker } from '@/lib/market/lifecycle/lifecycle-worker';
 import { eventBus } from '@/lib/server/events/event-bus';
 import { EVENT_TYPES } from '@/lib/server/events/event-types';
@@ -20,8 +21,25 @@ import { publishBirdeyeCandle, type ChartDemand } from './chart-stream';
 const PRICE_SUBSCRIBE_TYPE = 'SUBSCRIBE_PRICE';
 const TXS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TXS';
 const STATS_SUBSCRIBE_TYPE = 'SUBSCRIBE_TOKEN_STATS';
+const ACCESS_RETRY_MS = 15 * 60_000;
+const SUBSCRIPTION_RETRY_MS = 60_000;
 
-export function buildBirdeyeSubscriptions(mints: string[], charts: ChartDemand[] = []): Record<string, unknown>[] {
+/** Upstream errors may contain credentials, so only return fixed internal labels. */
+export function classifyBirdeyeWebSocketError(message: { data?: unknown; statusCode?: unknown }): {
+  reason: string; retryMs: number;
+} {
+  const detail = JSON.stringify(message.data ?? '');
+  if (/compute\s*units?|quota|usage\s*limit/i.test(detail)) {
+    return { reason: 'Market stream compute-unit quota is exhausted.', retryMs: ACCESS_RETRY_MS };
+  }
+  if (/api.?key|origin|permission|package|premium|plan|unauthori[sz]ed|forbidden/i.test(detail)
+    || message.statusCode === 401 || message.statusCode === 403) {
+    return { reason: 'Market stream access was rejected; check the credential, plan, and compute-unit quota.', retryMs: ACCESS_RETRY_MS };
+  }
+  return { reason: 'Market stream subscription was rejected.', retryMs: SUBSCRIPTION_RETRY_MS };
+}
+
+export function buildBirdeyeSubscriptions(mints: string[], charts: ChartDemand[] = [], includeHolderData = true): Record<string, unknown>[] {
   // Active charts get budget first; the entire price query is rebuilt atomically.
   const visible = [...new Set([...charts.map(chart => chart.mint), ...mints.filter(Boolean)])].slice(0, 100);
   if (visible.length === 0) {
@@ -55,6 +73,7 @@ export function buildBirdeyeSubscriptions(mints: string[], charts: ChartDemand[]
           marketcap: true,
           liquidity: true,
           last_trade: true,
+          ...(includeHolderData ? { holder_data: true } : {}),
         },
       },
     },
@@ -75,6 +94,10 @@ export class BirdeyeClient {
   private readonly onDegraded: (reason: string) => void;
   private providerError: string | undefined;
   private charts: ChartDemand[] = [];
+  private holderDataEnabled = true;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private pausedUntil = 0;
+  private stopped = false;
 
   constructor(options: BirdeyeClientOptions) {
     this.mints = options.mints;
@@ -98,15 +121,21 @@ export class BirdeyeClient {
   }
 
   connect(): void {
+    this.stopped = false;
     this.client.connect();
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.pausedUntil = 0;
     this.client.stop();
   }
 
   getHealth(): ConnectionHealth {
-    return { ...this.client.getHealth(), ...(this.providerError ? { providerError: this.providerError } : {}) };
+    return { ...this.client.getHealth(), ...(this.providerError ? { providerError: this.providerError } : {}),
+      ...(this.pausedUntil > Date.now() ? { pausedUntil: new Date(this.pausedUntil).toISOString() } : {}) };
   }
 
   /** Replaces the visible-mint set and atomically rebuilds each Birdeye subscription. */
@@ -119,10 +148,11 @@ export class BirdeyeClient {
   }
 
   private subscribeAll(): void {
+    if (this.stopped || this.pausedUntil > Date.now()) return;
     // Birdeye allows one active subscription per message type. Repeating a
     // simple subscribe in a loop overwrites the previous mint, which meant
     // only the final card in the array actually received data.
-    for (const message of buildBirdeyeSubscriptions(this.mints, this.charts)) this.client.send(message);
+    for (const message of buildBirdeyeSubscriptions(this.mints, this.charts, this.holderDataEnabled)) this.client.send(message);
     logger.info('[birdeye] subscribed', { mintCount: this.mints.length });
   }
 
@@ -137,16 +167,27 @@ export class BirdeyeClient {
 
     if (message.type === 'ERROR') {
       const detail = JSON.stringify((message as { data?: unknown }).data ?? '');
-      const providerError = /api.?key|origin/i.test(detail)
-        ? 'Birdeye rejected the subscription origin or API key.'
-        : /permission|package|premium|plan/i.test(detail)
-          ? 'Birdeye WebSocket access is not enabled for this API plan.'
-          : 'Birdeye rejected a WebSocket subscription.';
-      if (providerError !== this.providerError) {
-        this.providerError = providerError;
-        this.onDegraded(providerError);
-        logger.warn('[birdeye] provider rejected subscription', { reason: providerError });
+      if (this.holderDataEnabled && /holder_data|invalid select/i.test(detail)) {
+        // A rollout or plan mismatch must not also remove the older market
+        // fields. Retry the complete visible set without the new selector.
+        this.holderDataEnabled = false;
+        logger.warn('[birdeye] holder-data selector rejected; retaining legacy stats subscription');
+        this.subscribeAll();
+        return;
       }
+      const rejection = classifyBirdeyeWebSocketError(message);
+      if (this.pausedUntil > Date.now()) return;
+      this.providerError = rejection.reason;
+      this.pausedUntil = Date.now() + rejection.retryMs;
+      this.client.stop();
+      this.onDegraded(rejection.reason);
+      logger.warn('[birdeye] subscription paused', { reason: rejection.reason, retryMs: rejection.retryMs });
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        this.pausedUntil = 0;
+        if (!this.stopped) this.client.connect();
+      }, rejection.retryMs);
+      this.retryTimer.unref?.();
       return;
     }
 
@@ -199,19 +240,45 @@ export class BirdeyeClient {
     const stats = normalizeBirdeyeTokenStats(message);
     if (stats) {
       this.providerError = undefined;
+      const expiresAt = new Date(Date.parse(stats.observedAt) + 90_000).toISOString();
+      const previous = getTokenCardPatch(stats.mint)?.changedFields;
+      const merged = { ...previous, ...stats.fields };
+      const ownershipChanged = ['top10HoldingsPct', 'devHoldingsPct', 'sniperPercentage', 'insiderHoldingsPct', 'bundlerPercentage']
+        .some((field) => field in stats.fields);
+      const ownershipComplete = ['top10HoldingsPct', 'devHoldingsPct', 'sniperPercentage', 'insiderHoldingsPct',
+        'bundlerPercentage', 'sniperCount', 'bundlerCount', 'insiderCount', 'devCount']
+        .every((field) => field in stats.fields);
+      const rugRisk = ownershipChanged ? calculateRugRisk({
+        top10Pct: merged.top10HoldingsPct,
+        devPct: merged.devHoldingsPct,
+        snipersPct: merged.sniperPercentage,
+        insidersPct: merged.insiderHoldingsPct,
+        bundlersPct: merged.bundlerPercentage,
+        mintAuthorityRevoked: merged.isMintRenounced,
+        freezeAuthorityRevoked: merged.isFreezeDisabled,
+        liquidityLocked: merged.isLiquidityLocked,
+      }) : null;
       updateTokenCard(stats.mint, {
         ...stats.fields,
-        marketEvidence: {
+        ...(rugRisk ? { rugRisk, auditVersion: RUG_RISK_VERSION } : {}),
+        ...(stats.hasMarketFields ? { marketEvidence: {
           status: 'measured',
           source: 'birdeye-token-stats-ws',
           observedAt: stats.observedAt,
-          expiresAt: new Date(Date.now() + 90_000).toISOString(),
-        },
+          expiresAt,
+        } } : {}),
         ...(stats.hasActivityFields ? { activityEvidence: {
           status: 'measured',
           source: 'birdeye-token-stats-ws',
           observedAt: stats.observedAt,
-          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          expiresAt,
+        } } : {}),
+        ...(stats.hasOwnershipFields ? { ownershipEvidence: {
+          status: 'measured',
+          source: 'birdeye-token-stats-ws',
+          observedAt: stats.observedAt,
+          expiresAt: new Date(Date.parse(stats.observedAt) + 60_000).toISOString(),
+          ...(ownershipComplete ? {} : { reason: 'Only classifications returned by the live stream are measured; omitted fields remain unknown.' }),
         } } : {}),
       }, 'birdeye-token-stats-ws', 'fresh', stats.observedAt);
       return;

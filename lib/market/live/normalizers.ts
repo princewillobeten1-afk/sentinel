@@ -78,7 +78,9 @@ export function normalizeBirdeyeTx(mint: string, message: BirdeyeMessage): RawMa
 export interface NormalizedTokenStats {
   mint: string;
   observedAt: string;
+  hasMarketFields: boolean;
   hasActivityFields: boolean;
+  hasOwnershipFields: boolean;
   fields: {
     volume5mUsd?: string;
     buyVolume5mUsd?: number;
@@ -102,6 +104,15 @@ export interface NormalizedTokenStats {
     priceChange5m?: number;
     priceChange1h?: number;
     priceChange24h?: number;
+    top10HoldingsPct?: number;
+    sniperPercentage?: number;
+    bundlerPercentage?: number;
+    insiderHoldingsPct?: number;
+    devHoldingsPct?: number;
+    sniperCount?: number;
+    bundlerCount?: number;
+    insiderCount?: number;
+    devCount?: number;
   };
 }
 
@@ -146,14 +157,38 @@ export function normalizeBirdeyeTokenStats(message: BirdeyeMessage): NormalizedT
   putNumber('priceChange1h', data.price_change_1h_percent);
   putNumber('priceChange24h', data.price_change_24h_percent);
 
+  // September 25 holder-data extension. The percentages are already on a
+  // 0–100 scale; the *_count values count classified wallets, not trades.
+  const putPercent = (key: 'top10HoldingsPct' | 'sniperPercentage' | 'bundlerPercentage' | 'insiderHoldingsPct' | 'devHoldingsPct', value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100) fields[key] = value;
+  };
+  const putCount = (key: 'sniperCount' | 'bundlerCount' | 'insiderCount' | 'devCount', value: unknown) => {
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) fields[key] = value;
+  };
+  putPercent('top10HoldingsPct', data.top10_holder_percentage);
+  putPercent('sniperPercentage', data.sniper_held_percentage);
+  putPercent('bundlerPercentage', data.bundler_held_percentage);
+  putPercent('insiderHoldingsPct', data.insider_held_percentage);
+  putPercent('devHoldingsPct', data.dev_held_percentage);
+  putCount('sniperCount', data.sniper_count);
+  putCount('bundlerCount', data.bundler_count);
+  putCount('insiderCount', data.insider_count);
+  putCount('devCount', data.dev_count);
+
   if (Object.keys(fields).length === 0) return null;
   // `last_trade_unix_time` is the age of the latest trade, not the age of this
   // stats observation. Using it caused quiet-token snapshots to be rejected as
   // older than unrelated REST evidence forever.
   const observedMs = Date.now();
-  const hasActivityFields = ['volume5mUsd', 'buyVolume5mUsd', 'sellVolume5mUsd', 'txCount5m', 'buysCount5m', 'sellsCount5m']
+  const hasActivityFields = ['volume5mUsd', 'volume1hUsd', 'volume24hUsd', 'buyVolume5mUsd', 'sellVolume5mUsd',
+    'txCount5m', 'txCount1h', 'txCount24h', 'buysCount', 'sellsCount', 'buysCount5m', 'sellsCount5m',
+    'buysCount1h', 'sellsCount1h', 'buysCount24h', 'sellsCount24h', 'priceChange5m', 'priceChange1h', 'priceChange24h']
     .some((key) => key in fields);
-  return { mint: data.address, fields, hasActivityFields, observedAt: new Date(observedMs).toISOString() };
+  const hasMarketFields = ['priceUsd', 'marketCapUsd', 'liquidityUsd']
+    .some((key) => key in fields);
+  const hasOwnershipFields = ['top10HoldingsPct', 'sniperPercentage', 'bundlerPercentage', 'insiderHoldingsPct', 'devHoldingsPct',
+    'sniperCount', 'bundlerCount', 'insiderCount', 'devCount'].some((key) => key in fields);
+  return { mint: data.address, fields, hasMarketFields, hasActivityFields, hasOwnershipFields, observedAt: new Date(observedMs).toISOString() };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

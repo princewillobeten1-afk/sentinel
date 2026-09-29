@@ -14,7 +14,9 @@ import {
   Layers,
   Smartphone,
   LayoutGrid,
+  Settings,
 } from 'lucide-react';
+import { ChainPillSelector } from '@/components/mobile/chain-pill-selector';
 import { TerminalTopBar } from '@/components/discovery/terminal-top-bar';
 import { TerminalColumn } from '@/components/discovery/terminal-column';
 import { AdvancedFilterDrawer } from '@/components/discovery/advanced-filter-drawer';
@@ -261,62 +263,90 @@ export function DiscoverView() {
   ).length;
 
   return (
-    <div className="discovery-workspace flex flex-1 min-h-0 min-w-0 flex-col w-full bg-sentinel-950 text-xs">
-      {/* Sticky Global Top Bar */}
-      <TerminalTopBar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        selectedChain={selectedChain}
-        onChainChange={setSelectedChain}
-        timeWindow={timeWindow}
-        onTimeWindowChange={setTimeWindow}
-        activeFilterCount={activeFilterCount}
-        onOpenFilterDrawer={() => setIsFilterDrawerOpen(true)}
-        columns={columns}
-        showZeroLiquidity={showZeroLiquidity}
-        onToggleZeroLiquidity={(next) => {
-          setShowZeroLiquidity(next);
-          setDiscoveryQuery({ includeZeroLiquidity: next });
-        }}
-        onAddColumn={handleAddColumn}
-        onResetLayout={handleResetLayout}
-        quickBuyPresets={quickBuyPresets}
-        quickBuyEnabled={quickBuyEnabled}
-        onToggleQuickBuy={handleToggleQuickBuy}
-        onCycleQuickBuyPreset={handleCycleQuickBuyPreset}
-        quickBuyMode={quickBuyMode}
-        onUpdateQuickBuySettings={handleUpdateQuickBuySettings}
-        health={feedHealth}
-        paused={feedSnapshot.paused}
-        pendingRefresh={feedSnapshot.pendingRefresh}
-        freshnessAt={freshnessAt}
-        onTogglePause={() => (feedSnapshot.paused ? resumeDiscovery() : pauseDiscovery())}
-      />
+    <div className="discovery-workspace flex flex-1 min-h-0 min-w-0 flex-col w-full bg-[#000000] text-xs">
+      {/* Sticky Global Top Bar (Desktop Only) */}
+      <div className="hidden md:block">
+        <TerminalTopBar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selectedChain={selectedChain}
+          onChainChange={setSelectedChain}
+          timeWindow={timeWindow}
+          onTimeWindowChange={setTimeWindow}
+          activeFilterCount={activeFilterCount}
+          onOpenFilterDrawer={() => setIsFilterDrawerOpen(true)}
+          columns={columns}
+          showZeroLiquidity={showZeroLiquidity}
+          onToggleZeroLiquidity={(next) => {
+            setShowZeroLiquidity(next);
+            setDiscoveryQuery({ includeZeroLiquidity: next });
+          }}
+          onAddColumn={handleAddColumn}
+          onResetLayout={handleResetLayout}
+          quickBuyPresets={quickBuyPresets}
+          quickBuyEnabled={quickBuyEnabled}
+          onToggleQuickBuy={handleToggleQuickBuy}
+          onCycleQuickBuyPreset={handleCycleQuickBuyPreset}
+          quickBuyMode={quickBuyMode}
+          onUpdateQuickBuySettings={handleUpdateQuickBuySettings}
+          health={feedHealth}
+          paused={feedSnapshot.paused}
+          pendingRefresh={feedSnapshot.pendingRefresh}
+          freshnessAt={freshnessAt}
+          onTogglePause={() => (feedSnapshot.paused ? resumeDiscovery() : pauseDiscovery())}
+        />
+      </div>
 
-      {/* Mobile Feed Tab Selector (visible only on small screens) */}
-      <div aria-label="Discovery columns" className="md:hidden flex items-center gap-1 py-2 border-b border-slate-700 overflow-x-auto shrink-0">
-        {columns.map((col) => (
+      {/* Mobile Sub-Header & Feed Tab Selector matching Axiom Photo 2 */}
+      <div className="md:hidden flex flex-col gap-2 pt-2 px-2 border-b border-[#141414] bg-[#000000] shrink-0">
+        {/* Chain Pill + Preset/Settings row */}
+        <div className="flex items-center justify-between px-1">
+          <ChainPillSelector selectedChain={selectedChain} onSelectChain={setSelectedChain} />
           <button
-            key={col.id}
-            aria-pressed={selectedColumnId === col.id}
-            onClick={() => setActiveMobileColumnId(col.id)}
-            className={`min-h-11 flex-1 px-3 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-              selectedColumnId === col.id
-                ? 'bg-sky-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-            }`}
+            type="button"
+            onClick={handleCycleQuickBuyPreset}
+            className="flex items-center gap-1.5 bg-[#0a0a0a] hover:bg-[#141414] border border-[#262626] rounded-full px-2.5 py-1 text-xs text-[#a3a3a3] hover:text-white transition-colors"
+            title="Preset 1 (Click to cycle Quick Buy amount)"
           >
-            {col.title}
+            <span className="font-semibold text-white font-mono">P1</span>
+            <Settings className="w-3 h-3 text-[#737373]" />
           </button>
-        ))}
+        </div>
+
+        {/* Axiom Segmented Pill Tabs: New Pairs | Final Stretch | Migrated */}
+        <div
+          role="tablist"
+          aria-label="Discovery columns"
+          className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-full p-1 flex items-center justify-between gap-1 mb-1"
+        >
+          {columns.map((col) => {
+            const isSelected = selectedColumnId === col.id;
+            return (
+              <button
+                key={col.id}
+                role="tab"
+                aria-selected={isSelected}
+                aria-pressed={isSelected}
+                onClick={() => setActiveMobileColumnId(col.id)}
+                className={`flex-1 py-1.5 px-3 rounded-full text-xs font-semibold whitespace-nowrap transition-all text-center ${
+                  isSelected
+                    ? 'bg-[#262626] text-white shadow-sm'
+                    : 'text-[#737373] hover:text-white'
+                }`}
+              >
+                {col.title}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Main Workspace Feed Area */}
-      <div className="flex-1 min-h-0 min-w-0 pt-2 flex flex-col h-full">
+      <div className="flex-1 min-h-0 min-w-0 pt-0 md:pt-2 flex flex-col h-full">
         {/* Mount each feed once; hidden duplicate copies competed for the
             same visible-card enrichment and socket budget. */}
         <div
-          className="discovery-columns-grid grid flex-1 h-full min-h-0 gap-3 overflow-x-auto pb-1"
+          className="discovery-columns-grid grid flex-1 h-full min-h-0 gap-0 md:gap-3 overflow-x-auto pb-1"
           style={{ gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : `repeat(${columns.length}, minmax(290px, 1fr))` }}
         >
           {(isMobile ? columns.filter((column) => column.id === selectedColumnId) : columns).map((col) => (

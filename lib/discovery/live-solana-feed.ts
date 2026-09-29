@@ -184,7 +184,8 @@ export async function enrichTokensWithAudits(tokens: DiscoveryToken[], section?:
         audit.top10Pct, audit.totalHolders, audit.snipersPct,
         audit.insidersPct, audit.bundlersPct, audit.devPct,
         audit.proTraders, audit.kols,
-      ].every((v) => v !== null);
+        audit.sniperCount, audit.bundlerCount, audit.insiderCount, audit.devCount,
+      ].every((v) => v != null);
 
       t = {
         ...t,
@@ -194,6 +195,10 @@ export async function enrichTokensWithAudits(tokens: DiscoveryToken[], section?:
         insiderHoldingsPct: t.insiderHoldingsPct ?? audit.insidersPct ?? undefined,
         bundlerPercentage: t.bundlerPercentage ?? audit.bundlersPct ?? undefined,
         devHoldingsPct: t.devHoldingsPct ?? audit.devPct ?? undefined,
+        sniperCount: t.sniperCount ?? audit.sniperCount ?? undefined,
+        bundlerCount: t.bundlerCount ?? audit.bundlerCount ?? undefined,
+        insiderCount: t.insiderCount ?? audit.insiderCount ?? undefined,
+        devCount: t.devCount ?? audit.devCount ?? undefined,
         proTradersCount: t.proTradersCount ?? audit.proTraders ?? undefined,
         kolsCount: t.kolsCount ?? audit.kols ?? undefined,
         auditPending: false,

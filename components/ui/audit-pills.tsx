@@ -43,6 +43,10 @@ export interface AuditPillsProps {
   sniperPercentage?: number;
   insiderHoldingsPct?: number;
   bundlerPercentage?: number;
+  sniperCount?: number;
+  bundlerCount?: number;
+  insiderCount?: number;
+  devCount?: number;
   /** True while a lookup is queued, so unknown can be told from unmeasured. */
   pending?: boolean;
   evidence?: MetricEvidence;
@@ -58,6 +62,7 @@ interface PillSpec {
   definition: string;
   icon: React.ComponentType<{ className?: string }>;
   value: number | undefined;
+  holderCount?: number;
   /** Above this, the pill is red. */
   danger: number;
   /** Above this (but below danger), amber. */
@@ -76,6 +81,10 @@ export function AuditPills({
   sniperPercentage,
   insiderHoldingsPct,
   bundlerPercentage,
+  sniperCount,
+  bundlerCount,
+  insiderCount,
+  devCount,
   pending = false,
   evidence,
   evidenceByMetric,
@@ -106,27 +115,30 @@ export function AuditPills({
       key: 'dev',
       label: 'Dev Holding %',
       definition:
-        "Share still held by the deployer wallet, plus how long ago that wallet was funded.",
+        'Share held by wallets classified as developer-linked. Wallet age, when available, is a separate observation.',
       icon: Shield,
       value: devHoldingsPct,
+      holderCount: devCount,
       warn: 5,
       danger: 20,
     },
     {
       key: 'snipers',
       label: 'Snipers %',
-      definition: 'Share bought by bots in the first blocks after launch.',
+      definition: 'Share held by wallets classified as snipers. This classification is heuristic.',
       icon: Target,
       value: sniperPercentage,
+      holderCount: sniperCount,
       warn: 5,
       danger: 10,
     },
     {
       key: 'insiders',
       label: 'Insiders %',
-      definition: 'Share held by wallets linked to the deployer before launch.',
+      definition: 'Share held by wallets classified as insiders. This classification is heuristic.',
       icon: Users,
       value: insiderHoldingsPct,
+      holderCount: insiderCount,
       warn: 5,
       danger: 15,
     },
@@ -134,9 +146,10 @@ export function AuditPills({
       key: 'bundlers',
       label: 'Bundlers %',
       definition:
-        'Share bought in the same block as pool creation — one operator across many wallets in a single bundle.',
+        'Share held by wallets classified as bundlers. This classification is heuristic.',
       icon: Users,
       value: bundlerPercentage,
+      holderCount: bundlerCount,
       warn: 5,
       danger: 20,
     },
@@ -181,6 +194,9 @@ export function AuditPills({
                 <p className="text-[11px] leading-relaxed text-slate-200 font-normal">
                   {pill.definition}
                 </p>
+                {pill.holderCount !== undefined && (
+                  <p className="text-[10px] text-slate-300">Classified wallets: {pill.holderCount.toLocaleString()}</p>
+                )}
 
                 <div className="flex items-center gap-2 text-[10px] font-mono bg-slate-900/90 rounded px-2 py-1 border border-slate-800">
                   <span className="text-amber-400 font-medium">Caution: &gt;{pill.warn}%</span>

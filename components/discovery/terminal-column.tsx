@@ -306,10 +306,10 @@ export function TerminalColumn({
   return (
     <div
       onWheel={handleColumnWheel}
-      className="discovery-column flex flex-col h-full min-h-0 bg-slate-900 border border-slate-700 rounded-md overflow-hidden min-w-[290px]"
+      className="discovery-column flex flex-col h-full min-h-0 bg-[#000000] md:bg-slate-900 border-0 md:border md:border-slate-700 md:rounded-md overflow-hidden min-w-0 md:min-w-[290px]"
     >
-      {/* Sticky Column Header */}
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between px-3 h-10 bg-slate-850 border-b border-slate-700 text-xs">
+      {/* Sticky Column Header (Desktop only - mobile uses Axiom segmented pill tabs) */}
+      <div className="hidden md:flex sticky top-0 z-10 shrink-0 items-center justify-between px-3 h-10 bg-slate-850 border-b border-slate-700 text-xs">
         {/* Title + Icon + Count */}
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">
@@ -471,6 +471,8 @@ export function TerminalColumn({
               key={token.id || token.mint}
               token={token}
               variant="compact"
+              columnType={config.type}
+              showBondingCurve={config.type === 'migrating'}
               quickBuyPresets={quickBuyPresets}
               quickBuyMode={quickBuyMode}
               timeWindow={timeWindow}
