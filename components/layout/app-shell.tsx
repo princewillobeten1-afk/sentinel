@@ -11,6 +11,8 @@ import { HotkeyModal } from '@/components/layout/hotkey-modal';
 import { NotificationsDrawer } from '@/components/layout/notifications-drawer';
 import { ExecutionConsole } from '@/components/layout/execution-console';
 import { XTrackerDrawer } from '@/components/x-tracker/x-tracker-drawer';
+import { TopAlertBanner } from '@/components/alerts/top-alert-banner';
+import { LiveAlertsDrawer } from '@/components/alerts/live-alerts-drawer';
 import { useAppActions, useAppState, AppView } from '@/lib/store';
 import { clsx } from 'clsx';
 import { CopilotContextProvider } from '@/components/ai/copilot-context';
@@ -50,6 +52,9 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       {/* Axiom-Style Full-Width Header Navigation */}
       <TopBar />
 
+      {/* Floating Top Real-Time Alert Banner (Trojan & BullX Style) */}
+      <TopAlertBanner />
+
       {/* Core Workspace / Main Page Content Area */}
       <main
         id="main-content"
@@ -76,6 +81,7 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       <NotificationsDrawer />
       <ExecutionConsole />
       <XTrackerDrawer />
+      <LiveAlertsDrawer />
       <CopilotPanel />
     </div>
     </CopilotContextProvider>

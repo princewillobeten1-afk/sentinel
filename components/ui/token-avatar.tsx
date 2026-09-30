@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { clsx } from 'clsx';
-import { resolveTokenLogoUrl, getTokenGradient } from '@/lib/tokens/token-logos';
+import { resolveTokenLogoCandidates, getTokenGradient } from '@/lib/tokens/token-logos';
 
 export type TokenAvatarSize = '2xs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
@@ -34,11 +34,21 @@ export function TokenAvatar({
   className,
   dexBadge,
 }: TokenAvatarProps) {
-  const [hasError, setHasError] = useState(false);
+  const [candidateIndex, setCandidateIndex] = useState(0);
 
   const cleanSymbol = (symbol || 'TOK').replace(/^\$/, '').toUpperCase();
   const initials = cleanSymbol.slice(0, 3) || 'TOK';
-  const resolvedSrc = resolveTokenLogoUrl({ src, symbol: cleanSymbol, mint });
+
+  const candidates = useMemo(
+    () => resolveTokenLogoCandidates({ src, symbol: cleanSymbol, mint }),
+    [src, cleanSymbol, mint]
+  );
+
+  useEffect(() => {
+    setCandidateIndex(0);
+  }, [src, cleanSymbol, mint]);
+
+  const currentSrc = candidateIndex < candidates.length ? candidates[candidateIndex] : null;
   const gradient = getTokenGradient(mint || cleanSymbol);
   const sizeConfig = SIZE_CLASSES[size] || SIZE_CLASSES.md;
 
@@ -67,14 +77,15 @@ export function TokenAvatar({
       )}
       title={name || cleanSymbol}
     >
-      {resolvedSrc && !hasError ? (
+      {currentSrc ? (
         <img
-          src={resolvedSrc}
+          key={currentSrc}
+          src={currentSrc}
           alt={name || cleanSymbol}
           className="w-full h-full object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => setHasError(true)}
+          onError={() => setCandidateIndex((prev) => prev + 1)}
         />
       ) : (
         <div

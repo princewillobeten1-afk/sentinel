@@ -2,6 +2,7 @@ import type { DiscoveryToken } from './types';
 import { calculateDiscoveryScore } from './score-engine';
 import { sanitizeTokenName } from './sanitize-name';
 import { isSupportedLaunchpad, resolveLaunchpad } from '@/lib/market/lifecycle/launchpads';
+import { normalizeIpfsUrl } from '@/lib/tokens/token-logos';
 
 /**
  * Live Solana token feeds from Jupiter's public token API.
@@ -291,7 +292,15 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     originLaunchpad: padConfig?.name,
     graduationTarget: padConfig?.graduationThreshold,
     liquidityPoolAddress: token.graduatedPool ?? (token.firstPool?.id !== token.id ? token.firstPool?.id : undefined),
-    logoURI: token.icon,
+    logoURI: (() => {
+      if (token.icon && typeof token.icon === 'string' && token.icon.trim() !== '') {
+        return normalizeIpfsUrl(token.icon);
+      }
+      if (token.id && (token.id.toLowerCase().endsWith('pump') || isPad)) {
+        return `https://images.pump.fun/coin-image/${token.id}?variant=80x80`;
+      }
+      return undefined;
+    })(),
     ageMinutes,
     ageFormatted: formatAge(ageMinutes),
     priceUsd: money(num(token.usdPrice)),

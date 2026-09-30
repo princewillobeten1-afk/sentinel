@@ -73,6 +73,61 @@ interface UpstreamImage {
   location?: string;
 }
 
+function detectImageContentType(body: Buffer, declaredType: string): string | null {
+  if (declaredType.startsWith('image/')) return declaredType;
+  if (body.length >= 4) {
+    // PNG
+    if (body[0] === 0x89 && body[1] === 0x50 && body[2] === 0x4e && body[3] === 0x47) {
+      return 'image/png';
+    }
+    // JPEG
+    if (body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) {
+      return 'image/jpeg';
+    }
+    // GIF
+    if (body[0] === 0x47 && body[1] === 0x49 && body[2] === 0x46) {
+      return 'image/gif';
+    }
+    // WebP (RIFF....WEBP)
+    if (
+      body.length >= 12 &&
+      body[0] === 0x52 &&
+      body[1] === 0x49 &&
+      body[2] === 0x46 &&
+      body[3] === 0x46 &&
+      body[8] === 0x57 &&
+      body[9] === 0x45 &&
+      body[10] === 0x42 &&
+      body[11] === 0x50
+    ) {
+      return 'image/webp';
+    }
+    // SVG
+    const head = body.slice(0, 200).toString('utf-8').toLowerCase();
+    if (head.includes('<svg') || (head.includes('<?xml') && head.includes('<svg'))) {
+      return 'image/svg+xml';
+    }
+  }
+  return null;
+}
+
+function extractIpfsCid(urlStr: string): { cid: string; subpath: string } | null {
+  try {
+    const u = new URL(urlStr);
+    const pathMatch = u.pathname.match(/\/ipfs\/([a-zA-Z0-9]+)(.*)/i);
+    if (pathMatch) {
+      return { cid: pathMatch[1], subpath: pathMatch[2] || '' };
+    }
+    const subMatch = u.hostname.match(/^([a-zA-Z0-9]+)\.ipfs\./i);
+    if (subMatch) {
+      return { cid: subMatch[1], subpath: u.pathname || '' };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 /** Fetches over a connection pinned to `address`. */
 function fetchPinned(
   url: URL,
@@ -90,7 +145,12 @@ function fetchPinned(
         port: url.port ? Number(url.port) : 443,
         path: url.pathname + url.search,
         method: 'GET',
-        headers: { host: url.hostname, accept: 'image/*' },
+        headers: {
+          host: url.hostname,
+          accept: 'image/*,*/*;q=0.8',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'cache-control': 'no-cache',
+        },
         timeout: FETCH_TIMEOUT_MS,
       },
       (res) => {
@@ -153,6 +213,25 @@ function fetchPinned(
   });
 }
 
+async function fetchWithRedirects(initialUrl: string): Promise<UpstreamImage | null> {
+  let next = initialUrl;
+  let upstream: UpstreamImage | null = null;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const verdict = await vetOutboundUrl(next);
+    if (!verdict.ok) return null;
+
+    const { url, address, family } = verdict.target;
+    upstream = await fetchPinned(url, address, family);
+
+    if (!upstream.redirected) break;
+    if (!upstream.location || hop === MAX_REDIRECTS) return null;
+    next = new URL(upstream.location, url).toString();
+  }
+
+  return upstream;
+}
+
 export async function GET(request: Request) {
   const requested = new URL(request.url).searchParams.get('url');
   if (!requested) {
@@ -160,47 +239,61 @@ export async function GET(request: Request) {
   }
 
   try {
-    let next = requested;
+    const ipfsInfo = extractIpfsCid(requested);
+
+    // Build URL attempt list: if it's a known-blocked IPFS gateway, prioritize fast gateways
+    const urlAttempts: string[] = [];
+
+    if (ipfsInfo) {
+      const { cid, subpath } = ipfsInfo;
+      const isKnownBlocked =
+        requested.includes('ipfs.io') ||
+        requested.includes('dweb.link') ||
+        requested.includes('nftstorage.link') ||
+        requested.includes('cf-ipfs.com') ||
+        requested.includes('w3s.link');
+
+      if (isKnownBlocked) {
+        urlAttempts.push(`https://pump.mypinata.cloud/ipfs/${cid}${subpath}`);
+        urlAttempts.push(`https://ipfs.filebase.io/ipfs/${cid}${subpath}`);
+        urlAttempts.push(`https://gateway.pinata.cloud/ipfs/${cid}${subpath}`);
+        urlAttempts.push(requested);
+      } else {
+        urlAttempts.push(requested);
+        urlAttempts.push(`https://pump.mypinata.cloud/ipfs/${cid}${subpath}`);
+        urlAttempts.push(`https://ipfs.filebase.io/ipfs/${cid}${subpath}`);
+      }
+    } else {
+      urlAttempts.push(requested);
+    }
+
     let upstream: UpstreamImage | null = null;
+    let finalContentType: string | null = null;
 
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      // Every hop is vetted, including the ones an upstream chose for us.
-      const verdict = await vetOutboundUrl(next);
-      if (!verdict.ok) {
-        return NextResponse.json({ error: verdict.reason }, { status: 400 });
+    for (const candidateUrl of urlAttempts) {
+      try {
+        const res = await fetchWithRedirects(candidateUrl);
+        if (res && res.status >= 200 && res.status < 300 && !res.tooLarge) {
+          const type = detectImageContentType(res.body, res.contentType);
+          if (type) {
+            upstream = res;
+            finalContentType = type;
+            break;
+          }
+        }
+      } catch {
+        // try next candidate
       }
-
-      const { url, address, family } = verdict.target;
-      upstream = await fetchPinned(url, address, family);
-
-      if (!upstream.redirected) break;
-      if (!upstream.location) {
-        return NextResponse.json({ error: 'Redirect without a location' }, { status: 502 });
-      }
-      if (hop === MAX_REDIRECTS) {
-        return NextResponse.json({ error: 'Too many redirects' }, { status: 502 });
-      }
-      // Relative Locations are normal; resolve against the hop we just made.
-      next = new URL(upstream.location, url).toString();
     }
 
-    if (!upstream) {
+    if (!upstream || !finalContentType) {
       return NextResponse.json({ error: 'Failed to fetch image' }, { status: 502 });
-    }
-    if (upstream.status < 200 || upstream.status >= 300) {
-      return NextResponse.json({ error: `Upstream ${upstream.status}` }, { status: 502 });
-    }
-    if (upstream.tooLarge) {
-      return NextResponse.json({ error: 'Image too large' }, { status: 413 });
-    }
-    if (!upstream.contentType.startsWith('image/')) {
-      return NextResponse.json({ error: 'Not an image' }, { status: 415 });
     }
 
     return new NextResponse(upstream.body, {
       status: 200,
       headers: {
-        'content-type': upstream.contentType,
+        'content-type': finalContentType,
         // Token art is immutable in practice; a long cache keeps a scrolling
         // column from re-fetching the same icons every poll.
         'cache-control': 'public, max-age=86400, stale-while-revalidate=604800',

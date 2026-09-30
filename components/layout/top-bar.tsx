@@ -32,6 +32,7 @@ import { useAppState, useAppActions, DensityMode, AppView } from '@/lib/store';
 import { useGlobalTicker } from '@/lib/hooks/use-global-ticker';
 import { useMarketSummary } from '@/lib/hooks/use-market-summary';
 import { viewRouteMap, NavItemConfig } from '@/components/layout/mobile-nav-drawer';
+import { LiveAlertsTopbarButton } from '@/components/alerts/live-alerts-topbar-button';
 
 export const primaryNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
@@ -124,6 +125,9 @@ export function TopBar() {
               {threatCount === null ? tick : `${threatCount} Flagged`}
             </span>
           </div>
+
+          {/* Live Alerts Stream Ticker & Audio Control */}
+          <LiveAlertsTopbarButton variant="ticker" className="hidden sm:flex" />
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 ml-2">
@@ -351,6 +355,9 @@ export function TopBar() {
               )}
             </button>
           </Tooltip>
+
+          {/* Live Trade & Call Alerts Drawer Trigger */}
+          <LiveAlertsTopbarButton variant="button" className="hidden md:flex" />
 
           {/* User Profile Popover */}
           <div className="hidden sm:block"><UserProfilePopover /></div>

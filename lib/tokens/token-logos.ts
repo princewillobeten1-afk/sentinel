@@ -53,16 +53,7 @@ const GRADIENT_PALETTES = [
 ];
 
 /**
- * Resolves a reliable token logo URI, mapping IPFS gateways and known token mints.
- */
-/**
- * Routes a third-party image through this origin.
- *
- * Token metadata points at IPFS and Arweave gateways, which send a restrictive
- * `Cross-Origin-Resource-Policy`; the browser then refuses the image with
- * `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and every card falls back to a
- * lettermark. The proxy also keeps viewers' IP addresses away from those
- * gateways. Same-origin and data URLs are passed through untouched.
+ * Routes a third-party image through this origin to avoid CORS/CORP issues.
  */
 function proxied(url: string): string {
   if (url.startsWith('/') || url.startsWith('data:')) return url;
@@ -75,33 +66,115 @@ function proxied(url: string): string {
   return `/api/v1/media/token-icon?url=${encodeURIComponent(url)}`;
 }
 
+export function normalizeIpfsUrl(url: string): string {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+
+  // ipfs://<cid>
+  if (trimmed.startsWith('ipfs://')) {
+    const raw = trimmed.replace(/^ipfs:\/\//, '').replace(/^ipfs\//, '');
+    return `https://pump.mypinata.cloud/ipfs/${raw}`;
+  }
+
+  // <cid>.ipfs.<gateway>
+  const subMatch = trimmed.match(/https?:\/\/([a-zA-Z0-9]+)\.ipfs\.[^/]+(\/.*)?/i);
+  if (subMatch) {
+    const cid = subMatch[1];
+    const path = subMatch[2] || '';
+    return `https://pump.mypinata.cloud/ipfs/${cid}${path}`;
+  }
+
+  // https://<gateway>/ipfs/<cid>
+  const pathMatch = trimmed.match(/https?:\/\/[^/]+\/ipfs\/([a-zA-Z0-9]+)(.*)?/i);
+  if (pathMatch) {
+    const cid = pathMatch[1];
+    const rest = pathMatch[2] || '';
+    // Rewrite gateways known to rate-limit or 403 public scrapers
+    if (
+      trimmed.includes('ipfs.io') ||
+      trimmed.includes('dweb.link') ||
+      trimmed.includes('nftstorage.link') ||
+      trimmed.includes('cf-ipfs.com') ||
+      trimmed.includes('cloudflare-ipfs.com') ||
+      trimmed.includes('w3s.link')
+    ) {
+      return `https://pump.mypinata.cloud/ipfs/${cid}${rest}`;
+    }
+  }
+
+  return trimmed;
+}
+
+export function resolveTokenLogoCandidates(params: {
+  src?: string | null;
+  symbol?: string | null;
+  mint?: string | null;
+}): string[] {
+  const { src, symbol, mint } = params;
+  const candidates: string[] = [];
+
+  const addCandidate = (url?: string | null) => {
+    if (!url || typeof url !== 'string') return;
+    const clean = url.trim();
+    if (!clean || candidates.includes(clean)) return;
+    candidates.push(clean);
+  };
+
+  const isPumpToken = Boolean(
+    mint && (mint.toLowerCase().endsWith('pump') || (mint.length >= 32 && mint.length <= 44))
+  );
+
+  // 1. Primary src if provided
+  if (src && typeof src === 'string' && src.trim() !== '') {
+    const normalized = normalizeIpfsUrl(src);
+    addCandidate(proxied(normalized));
+
+    // If normalized is an IPFS URL, also provide a secondary fast gateway
+    const cidMatch = normalized.match(/\/ipfs\/([a-zA-Z0-9]+)/i);
+    if (cidMatch) {
+      addCandidate(proxied(`https://ipfs.filebase.io/ipfs/${cidMatch[1]}`));
+    }
+
+    if (normalized !== src.trim()) {
+      addCandidate(proxied(src.trim()));
+    }
+  }
+
+  // 2. Known mint mapping (SOL, USDC, BONK, etc.)
+  if (mint && MINT_LOGOS[mint]) {
+    addCandidate(proxied(MINT_LOGOS[mint]));
+  }
+
+  // 3. Pump.fun coin image CDN if pump token or Solana mint
+  if (mint && isPumpToken) {
+    addCandidate(proxied(`https://images.pump.fun/coin-image/${mint}?variant=80x80`));
+    addCandidate(`https://images.pump.fun/coin-image/${mint}?variant=80x80`);
+    addCandidate(proxied(`https://cdn.dexscreener.com/token-images/og/solana/${mint}`));
+  }
+
+  // 4. Known symbol logo (BONK, JUP, WIF, etc.)
+  if (symbol) {
+    const cleanSym = symbol.replace(/^\$/, '').toUpperCase();
+    if (KNOWN_LOGOS[cleanSym]) {
+      addCandidate(proxied(KNOWN_LOGOS[cleanSym]));
+    }
+  }
+
+  // 5. Direct unproxied src fallback (for browsers that can load directly)
+  if (src && typeof src === 'string' && src.trim().startsWith('http')) {
+    addCandidate(normalizeIpfsUrl(src));
+  }
+
+  return candidates;
+}
+
 export function resolveTokenLogoUrl(params: {
   src?: string | null;
   symbol?: string | null;
   mint?: string | null;
 }): string | null {
-  const { src, symbol, mint } = params;
-
-  if (src && typeof src === 'string' && src.trim() !== '') {
-    const trimmed = src.trim();
-    const direct = trimmed.startsWith('ipfs://')
-      ? trimmed.replace('ipfs://', 'https://ipfs.io/ipfs/')
-      : trimmed;
-    return proxied(direct);
-  }
-
-  if (mint && MINT_LOGOS[mint]) {
-    return proxied(MINT_LOGOS[mint]);
-  }
-
-  if (symbol) {
-    const cleanSym = symbol.replace(/^\$/, '').toUpperCase();
-    if (KNOWN_LOGOS[cleanSym]) {
-      return proxied(KNOWN_LOGOS[cleanSym]);
-    }
-  }
-
-  return null;
+  const candidates = resolveTokenLogoCandidates(params);
+  return candidates[0] || null;
 }
 
 /**

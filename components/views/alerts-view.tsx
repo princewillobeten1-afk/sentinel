@@ -1,25 +1,26 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ShieldAlert, AlertTriangle, CheckCircle2, Inbox, Bell, Pause, Play, Trash2 } from 'lucide-react';
+import {
+  ShieldAlert,
+  AlertTriangle,
+  CheckCircle2,
+  Inbox,
+  Bell,
+  Pause,
+  Play,
+  Trash2,
+  Radio,
+  Sparkles,
+  RefreshCw,
+} from 'lucide-react';
+import { clsx } from 'clsx';
 import { Panel } from '@/components/ui/panel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData, ApiRequestError } from '@/lib/api/response';
-
-/**
- * The triggered-alert feed, read from `/api/v1/alerts`.
- *
- * This view previously rendered a three-item array declared inline — the same
- * three fabricated threats for every user, on every load, forever. The Phase 4
- * alert domain (Postgres-backed rules, events and read state) existed but
- * nothing in the mounted UI read from it.
- *
- * Fields rendered here are exactly the ones the event DTO carries. The mock's
- * `confidence`, `evidence` and `impact` strings had no counterpart in the
- * schema, so they are not reproduced as invented values.
- */
+import { LiveAlertsPanel } from '@/components/alerts/live-alerts-panel';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 type ReadState = 'UNREAD' | 'READ' | 'ACTIONED' | 'DISMISSED';
@@ -66,6 +67,7 @@ function relativeTime(iso: string): string {
 }
 
 export function AlertsView() {
+  const [viewTab, setViewTab] = useState<'live' | 'risk' | 'rules'>('live');
   const [alerts, setAlerts] = useState<AlertEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -159,22 +161,20 @@ export function AlertsView() {
     const previous = rules;
     setRules((items) => items.filter((item) => item.id !== rule.id));
     try {
-      const response = await fetch(apiUrl(endpoints.alerts.rule(rule.id)), { method: 'DELETE', credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to delete alert rule.');
+      const response = await fetch(apiUrl(endpoints.alerts.rule(rule.id)), {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (err) {
       setRules(previous);
       setRuleError(err instanceof Error ? err.message : 'Failed to delete alert rule.');
     }
   };
 
-  /**
-   * Optimistic, but reverted on failure. The read state is server-authoritative
-   * (the transition table rejects illegal moves), so a local flip that the
-   * server refused must not be left on screen.
-   */
   const acknowledge = async (id: string) => {
     const previous = alerts;
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, readState: 'READ' } : a)));
+    setAlerts((items) => items.map((a) => (a.id === id ? { ...a, readState: 'READ' as const } : a)));
     try {
       const res = await fetch(apiUrl(endpoints.alerts.event(id)), {
         method: 'PATCH',
@@ -190,127 +190,237 @@ export function AlertsView() {
 
   return (
     <div className="space-y-6">
-      <div data-page-header className="flex items-center justify-between">
+      <div data-page-header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <ShieldAlert className="h-6 w-6 text-rose-400" /> Risk alerts
+            <Radio className="h-6 w-6 text-emerald-400 animate-pulse" /> Terminal Alerts & Signals
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Explainable risk evidence detailing why a token is flagged rather than unexplained scores.
+            Real-time alpha calls, people's trades, whale swaps, and Sentinel risk intelligence.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
-          {isLoading ? 'Refreshing…' : 'Refresh'}
-        </Button>
+
+        {/* Tab Navigation Strip */}
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-sentinel-800 bg-sentinel-900/60 text-xs font-mono">
+          <button
+            onClick={() => setViewTab('live')}
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              viewTab === 'live'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Live Stream (BullX)</span>
+          </button>
+
+          <button
+            onClick={() => setViewTab('risk')}
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              viewTab === 'risk'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+            <span>Threat Events ({alerts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setViewTab('rules')}
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              viewTab === 'rules'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            )}
+          >
+            <Bell className="w-3.5 h-3.5 text-sky-400" />
+            <span>Rules ({rules.length})</span>
+          </button>
+        </div>
       </div>
 
-      {isLoading && alerts.length === 0 && (
-        <div className="p-12 text-center text-slate-400 font-mono">
-          <div className="inline-block animate-spin h-6 w-6 border-2 border-sky-400 border-t-transparent rounded-full mb-3" />
-          <p>Loading threat intelligence…</p>
-        </div>
-      )}
+      {/* TAB 1: LIVE CALLS & TRADES STREAM (TROJAN / BULLX) */}
+      {viewTab === 'live' && <LiveAlertsPanel />}
 
-      {error && !isLoading && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-bold text-amber-300">Alerts unavailable</h4>
-            <p className="text-xs text-slate-300 mt-1">{error}</p>
+      {/* TAB 2: THREAT EVENTS FEED */}
+      {viewTab === 'risk' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-200">On-Chain Risk & Flagged Threat Log</h3>
+            <Button variant="outline" size="xs" onClick={load} disabled={isLoading} leftIcon={<RefreshCw className="h-3 w-3" />}>
+              {isLoading ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          </div>
+
+          {isLoading && alerts.length === 0 && (
+            <div className="p-12 text-center text-slate-400 font-mono">
+              <div className="inline-block animate-spin h-6 w-6 border-2 border-sky-400 border-t-transparent rounded-full mb-3" />
+              <p>Loading threat intelligence…</p>
+            </div>
+          )}
+
+          {error && !isLoading && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-300">Alerts unavailable</h4>
+                <p className="text-xs text-slate-300 mt-1">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && !error && alerts.length === 0 && (
+            <div className="p-12 text-center rounded-xl border border-sentinel-800 bg-sentinel-900/30">
+              <Inbox className="w-10 h-10 text-slate-600 mx-auto mb-4" />
+              <h2 className="text-lg font-semibold text-slate-100">No threat events yet</h2>
+              <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
+                No active threats detected. Alerts appear here when one of your rules matches live market risk heuristics.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {alerts.map((item) => (
+              <Panel
+                key={item.id}
+                title={
+                  <div className="flex items-center justify-between w-full gap-3">
+                    <span className="flex items-center gap-2 font-bold text-slate-100 text-sm">
+                      <AlertTriangle
+                        className={
+                          item.severity === 'CRITICAL' ? 'h-4 w-4 text-rose-400' : 'h-4 w-4 text-amber-400'
+                        }
+                      />
+                      {item.title || 'Alert triggered'}
+                      {item.token && (
+                        <>
+                          {' — '}
+                          <strong className="text-sky-300">${item.token}</strong>
+                        </>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.readState === 'UNREAD' && (
+                        <span className="h-2 w-2 rounded-full bg-sky-400" aria-label="Unread" />
+                      )}
+                      {item.severity && (
+                        <Badge variant={(SEVERITY_BADGE[item.severity] ?? 'risk-med') as never}>
+                          {item.severity.toLowerCase()} severity
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                }
+                subtitle={`Triggered ${relativeTime(item.timestamp)}${item.category ? ` • ${item.category}` : ''}`}
+              >
+                <div className="space-y-3 text-xs">
+                  {item.summary && (
+                    <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 space-y-1">
+                      <p className="label-micro">Supporting Evidence</p>
+                      <p className="text-slate-200 leading-relaxed font-sans">{item.summary}</p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1 font-mono text-2xs">
+                    <span className="text-slate-400">
+                      {item.readState === 'UNREAD' ? 'Awaiting review' : `Marked ${item.readState.toLowerCase()}`}
+                    </span>
+                    {item.readState === 'UNREAD' && (
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => acknowledge(item.id)}
+                        leftIcon={<CheckCircle2 className="h-3 w-3" />}
+                      >
+                        Mark as read
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            ))}
           </div>
         </div>
       )}
 
-      <Panel title={<span className="flex items-center gap-2"><Bell className="h-4 w-4 text-sky-400" /> Alert rules</span>} subtitle="Create, pause, resume, and remove the rules that produce risk events.">
-        <form onSubmit={createRule} className="grid gap-2 md:grid-cols-[1fr_150px_130px_auto]">
-          <input aria-label="Alert rule name" value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="Rule name" className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100" />
-          <select aria-label="Alert type" value={ruleType} onChange={(event) => setRuleType(event.target.value)} className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100"><option value="RISK">Risk</option><option value="PRICE">Price</option><option value="LIQUIDITY">Liquidity</option><option value="WALLET">Wallet</option></select>
-          <select aria-label="Alert severity" value={ruleSeverity} onChange={(event) => setRuleSeverity(event.target.value as Severity)} className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100">{(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as Severity[]).map((severity) => <option key={severity} value={severity}>{severity}</option>)}</select>
-          <Button type="submit" disabled={isRuleSaving || !ruleName.trim()}>{isRuleSaving ? 'Saving…' : 'Create rule'}</Button>
-        </form>
-        {ruleError && <p role="alert" className="mt-2 text-xs text-amber-400">{ruleError}</p>}
-        <div className="mt-4 space-y-2">
-          {rules.filter((rule) => rule.status !== 'DELETED').map((rule) => (
-            <div key={rule.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sentinel-800 bg-sentinel-950 p-2 text-xs">
-              <div className="min-w-0"><p className="truncate font-semibold text-slate-100">{rule.name}</p><p className="text-2xs text-slate-500">{rule.alertType} · {rule.severity ?? 'unspecified'} · {rule.status.toLowerCase()}</p></div>
-              <div className="flex items-center gap-1"><Button variant="ghost" size="xs" onClick={() => void updateRule(rule, rule.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')} leftIcon={rule.status === 'PAUSED' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}>{rule.status === 'PAUSED' ? 'Resume' : 'Pause'}</Button><button type="button" onClick={() => void deleteRule(rule)} aria-label={`Delete ${rule.name}`} className="p-2 text-slate-500 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" /></button></div>
-            </div>
-          ))}
-          {rules.length === 0 && <p className="text-xs text-slate-500">No saved rules yet.</p>}
-        </div>
-      </Panel>
-
-      {!isLoading && !error && alerts.length === 0 && (
-        <div className="p-12 text-center">
-          <Inbox className="w-10 h-10 text-slate-600 mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-slate-100">No alerts yet</h2>
-          <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
-            Nothing has triggered. Alerts appear here when one of your rules matches live market data.
-          </p>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        {alerts.map((item) => (
-          <Panel
-            key={item.id}
-            title={
-              <div className="flex items-center justify-between w-full gap-3">
-                <span className="flex items-center gap-2 font-bold text-slate-100 text-sm">
-                  <AlertTriangle
-                    className={
-                      item.severity === 'CRITICAL' ? 'h-4 w-4 text-rose-400' : 'h-4 w-4 text-amber-400'
-                    }
-                  />
-                  {item.title || 'Alert triggered'}
-                  {item.token && (
-                    <>
-                      {' — '}
-                      <strong className="text-sky-300">${item.token}</strong>
-                    </>
-                  )}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  {item.readState === 'UNREAD' && (
-                    <span className="h-2 w-2 rounded-full bg-sky-400" aria-label="Unread" />
-                  )}
-                  {item.severity && (
-                    <Badge variant={(SEVERITY_BADGE[item.severity] ?? 'risk-med') as never}>
-                      {item.severity.toLowerCase()} severity
-                    </Badge>
-                  )}
+      {/* TAB 3: CUSTOM ALERT RULES */}
+      {viewTab === 'rules' && (
+        <Panel
+          title={<span className="flex items-center gap-2"><Bell className="h-4 w-4 text-sky-400" /> Alert rules</span>}
+          subtitle="Create, pause, resume, and remove the rules that produce risk events."
+        >
+          <form onSubmit={createRule} className="grid gap-2 md:grid-cols-[1fr_150px_130px_auto]">
+            <input
+              aria-label="Alert rule name"
+              value={ruleName}
+              onChange={(event) => setRuleName(event.target.value)}
+              placeholder="Rule name"
+              className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100"
+            />
+            <select
+              aria-label="Alert type"
+              value={ruleType}
+              onChange={(event) => setRuleType(event.target.value)}
+              className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100"
+            >
+              <option value="RISK">Risk</option>
+              <option value="PRICE">Price</option>
+              <option value="LIQUIDITY">Liquidity</option>
+              <option value="WALLET">Wallet</option>
+            </select>
+            <select
+              aria-label="Alert severity"
+              value={ruleSeverity}
+              onChange={(event) => setRuleSeverity(event.target.value as Severity)}
+              className="h-9 rounded-md border border-sentinel-800 bg-sentinel-950 px-2 text-xs text-slate-100"
+            >
+              {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as Severity[]).map((severity) => (
+                <option key={severity} value={severity}>{severity}</option>
+              ))}
+            </select>
+            <Button type="submit" disabled={isRuleSaving || !ruleName.trim()}>
+              {isRuleSaving ? 'Saving…' : 'Create rule'}
+            </Button>
+          </form>
+          {ruleError && <p role="alert" className="mt-2 text-xs text-amber-400">{ruleError}</p>}
+          <div className="mt-4 space-y-2">
+            {rules.filter((rule) => rule.status !== 'DELETED').map((rule) => (
+              <div
+                key={rule.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sentinel-800 bg-sentinel-950 p-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-100">{rule.name}</p>
+                  <p className="text-2xs text-slate-500">{rule.alertType} · {rule.severity ?? 'unspecified'} · {rule.status.toLowerCase()}</p>
                 </div>
-              </div>
-            }
-            subtitle={`Triggered ${relativeTime(item.timestamp)}${item.category ? ` • ${item.category}` : ''}`}
-          >
-            <div className="space-y-3 text-xs">
-              {item.summary && (
-                <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 space-y-1">
-                  <p className="label-micro">Supporting Evidence</p>
-                  <p className="text-slate-200 leading-relaxed font-sans">{item.summary}</p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-1 font-mono text-2xs">
-                <span className="text-slate-400">
-                  {item.readState === 'UNREAD' ? 'Awaiting review' : `Marked ${item.readState.toLowerCase()}`}
-                </span>
-                {item.readState === 'UNREAD' && (
+                <div className="flex items-center gap-1">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="xs"
-                    onClick={() => acknowledge(item.id)}
-                    leftIcon={<CheckCircle2 className="h-3 w-3" />}
+                    onClick={() => void updateRule(rule, rule.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}
+                    leftIcon={rule.status === 'PAUSED' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
                   >
-                    Mark as read
+                    {rule.status === 'PAUSED' ? 'Resume' : 'Pause'}
                   </Button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => void deleteRule(rule)}
+                    aria-label={`Delete ${rule.name}`}
+                    className="p-2 text-slate-500 hover:text-rose-400"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          </Panel>
-        ))}
-      </div>
+            ))}
+            {rules.length === 0 && <p className="text-xs text-slate-500">No saved rules yet.</p>}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
