@@ -10,6 +10,7 @@ import type {
 
 const SOUND_STORAGE_KEY = 'sentinel_live_alerts_sound';
 const MIN_SOL_STORAGE_KEY = 'sentinel_live_alerts_min_sol';
+const PAUSED_STORAGE_KEY = 'sentinel_live_alerts_paused';
 
 // Web Audio API chime synthesizer for zero-dependency, ultra-low-latency sound
 export function playAlertChime(urgency: 'high' | 'medium' | 'normal' = 'normal') {
@@ -74,6 +75,7 @@ interface LiveAlertsActions {
   toggleSound: () => void;
   setSoundEnabled: (enabled: boolean) => void;
   setPaused: (paused: boolean) => void;
+  toggleAlerts: () => void;
   setCategoryFilter: (category: LiveAlertCategory) => void;
   setMinSolFilter: (minSol: number) => void;
   setSearchQuery: (query: string) => void;
@@ -120,6 +122,10 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
       if (savedSound !== null) {
         setSoundEnabledState(savedSound === 'true');
       }
+      const savedPaused = window.localStorage.getItem(PAUSED_STORAGE_KEY);
+      if (savedPaused !== null) {
+        setIsPaused(savedPaused === 'true');
+      }
       const savedMinSol = window.localStorage.getItem(MIN_SOL_STORAGE_KEY);
       if (savedMinSol !== null) {
         setFilter((prev) => ({ ...prev, minSol: Number(savedMinSol) || 0 }));
@@ -152,6 +158,29 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
 
   const setPaused = useCallback((paused: boolean) => {
     setIsPaused(paused);
+    if (paused) {
+      setActiveAlert(null);
+    }
+    try {
+      window.localStorage.setItem(PAUSED_STORAGE_KEY, String(paused));
+    } catch {
+      // Non-fatal
+    }
+  }, []);
+
+  const toggleAlerts = useCallback(() => {
+    setIsPaused((prev) => {
+      const next = !prev;
+      if (next) {
+        setActiveAlert(null);
+      }
+      try {
+        window.localStorage.setItem(PAUSED_STORAGE_KEY, String(next));
+      } catch {
+        // Non-fatal
+      }
+      return next;
+    });
   }, []);
 
   const setCategoryFilter = useCallback((category: LiveAlertCategory) => {
@@ -277,6 +306,7 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
           toggleSound,
           setSoundEnabled,
           setPaused,
+          toggleAlerts,
           setCategoryFilter,
           setMinSolFilter,
           setSearchQuery,

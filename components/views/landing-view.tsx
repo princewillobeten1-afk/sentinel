@@ -58,11 +58,11 @@ export function LandingView() {
           </Link>
 
           <div className="flex items-center gap-3">
-            <Button href="/discover" variant="ghost" size="sm">
-              Explore Screener
+            <Button href="/trade" variant="ghost" size="sm">
+              Trade Terminal
             </Button>
-            <Button href="/trade" variant="primary" size="sm" rightIcon={<ArrowRight className="h-4 w-4" />}>
-              Launch Terminal
+            <Button href="/discover" variant="primary" size="sm" rightIcon={<ArrowRight className="h-4 w-4" />}>
+              Enter Screener
             </Button>
           </div>
         </motion.header>
@@ -88,12 +88,9 @@ export function LandingView() {
             Sentinel is not merely another DEX clone interface. It is a financial intelligence and execution operating system designed to filter wash trading, analyze holder funding clusters, and enforce personal risk rules before avoidable losses happen.
           </motion.p>
 
-          <motion.div variants={fadeInUp} className="flex flex-wrap items-center justify-center gap-4 pt-4">
-            <Button href="/trade" variant="buy" size="lg" className="px-8 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95" rightIcon={<ArrowRight className="h-5 w-5" />}>
-              Enter Trade Terminal
-            </Button>
-            <Button href="/discover" variant="outline" size="lg" className="px-8 text-base backdrop-blur-md bg-sentinel-950/40 transition-transform hover:scale-105 active:scale-95">
-              View Organic Screener
+          <motion.div variants={fadeInUp} className="flex items-center justify-center pt-4">
+            <Button href="/discover" variant="buy" size="lg" className="px-8 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95" rightIcon={<ArrowRight className="h-5 w-5" />}>
+              Enter Screener
             </Button>
           </motion.div>
         </motion.section>
@@ -268,8 +265,8 @@ export function LandingView() {
           <p className="text-sm text-slate-400 max-w-lg mx-auto">
             Start exploring fresh token mints, holder clusters, and trading routes on Solana Mainnet.
           </p>
-          <Button href="/trade" variant="buy" size="lg" className="px-10 py-3 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95">
-            Enter Sentinel Terminal Now
+          <Button href="/discover" variant="buy" size="lg" className="px-10 py-3 text-base shadow-glow-buy transition-transform hover:scale-105 active:scale-95" rightIcon={<ArrowRight className="h-5 w-5" />}>
+            Enter Screener Now
           </Button>
         </motion.section>
 

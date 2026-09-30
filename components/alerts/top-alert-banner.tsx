@@ -36,6 +36,7 @@ export function TopAlertBanner() {
     toggleSound,
     setHistoryDrawerOpen,
     unreadCount,
+    isPaused,
   } = useLiveAlerts();
 
   const { setQuickBuyOpen, setSelectedToken } = useAppActions();
@@ -48,7 +49,7 @@ export function TopAlertBanner() {
 
   // Auto-dismiss countdown with hover pause
   useEffect(() => {
-    if (!activeAlert) {
+    if (!activeAlert || isPaused) {
       setProgress(100);
       return;
     }
@@ -82,7 +83,7 @@ export function TopAlertBanner() {
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [activeAlert, isHovered, dismissActiveAlert]);
+  }, [activeAlert, isPaused, isHovered, dismissActiveAlert]);
 
   const handleMouseEnter = () => {
     setIsHovered(true);
@@ -94,7 +95,7 @@ export function TopAlertBanner() {
     setIsHovered(false);
   };
 
-  if (!activeAlert) return null;
+  if (!activeAlert || isPaused) return null;
 
   const {
     type,
