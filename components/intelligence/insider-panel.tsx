@@ -146,7 +146,7 @@ export function InsiderPanel({ report, chain = 'solana' }: InsiderPanelProps) {
                   <td className="p-3 font-mono text-cyan-400">{cand.confidence}%</td>
                   <td className="p-3">
                     <div className="flex flex-wrap gap-1">
-                      {cand.labels.map((lbl, idx) => (
+                      {(cand.labels ?? []).map((lbl, idx) => (
                         <span key={idx} className="bg-slate-800 text-slate-300 text-2xs px-1.5 py-0.5 rounded">
                           {lbl}
                         </span>
@@ -198,7 +198,7 @@ export function InsiderPanel({ report, chain = 'solana' }: InsiderPanelProps) {
 
               <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wide">Evidence Points</h5>
 
-              {selectedCandidate.evidence.map((ev, idx) => (
+              {(selectedCandidate.evidence ?? []).map((ev, idx) => (
                 <div key={idx} className="p-3 bg-slate-950/80 rounded border border-slate-800 text-xs font-mono space-y-1">
                   <div className="text-slate-200">• {ev.fact}</div>
                   <div className="text-2xs text-slate-400">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLiveIntelligence, intelligenceMetric, isIntelligenceMint, measuredNumber, type IntelligenceInputs } from '../live-model';
+import { buildLiveIntelligence, deriveCabalRadar, intelligenceMetric, isIntelligenceMint, measuredNumber, type IntelligenceInputs } from '../live-model';
 import { composeTokenAudit } from '@/lib/trading/audit-model';
 import type { MetricEvidence } from '@/lib/discovery/types';
 
@@ -70,4 +70,138 @@ describe('live Intelligence evidence boundary', () => {
     value.card = { mint, sequence: 1, observedAt: evidence.observedAt, source: 'birdeye', freshness: 'fresh', changedFields: { priceUsd: '1', marketEvidence: evidence } };
     expect(buildLiveIntelligence(value, now).metrics.find(m => m.id === 'price')?.value).toBe(1);
   });
+  it('generates enriched verdict and risk summaries when observations exist', () => {
+    const value = input();
+    value.audit = composeTokenAudit(mint, {
+      top10HoldingsPct: 22,
+      devHoldingsPct: 1.2,
+      isMintRenounced: true,
+      isFreezeDisabled: true,
+      isLiquidityLocked: true,
+      ownershipEvidence: evidence,
+      securityEvidence: evidence,
+      liquidityEvidence: evidence,
+    }, null, null, evidence, false, now);
+    value.overview = {
+      token: { address: mint, price: 1.5, marketCap: 500000, liquidity: 65000, v24hUSD: 120000 } as any,
+      evidence,
+    };
+    const report = buildLiveIntelligence(value, now);
+    expect(report.verdict).toBeDefined();
+    expect(report.verdict?.status).toBe('GREENLIGHT');
+    expect(report.verdict?.integrityScore).toBeGreaterThanOrEqual(80);
+    expect(report.verdict?.greenFlags.length).toBeGreaterThan(0);
+    expect(report.verdict?.recommendedMaxOrderUsd).toBeGreaterThan(1000);
+    expect(report.security?.mintRevoked).toBe(true);
+    expect(report.security?.freezeRevoked).toBe(true);
+    expect(report.ownershipDistribution?.supplyTiers.length).toBe(5);
+    expect(report.exitSimulator?.tiers.length).toBe(6);
+    expect(report.activitySummary?.organicScore).toBeDefined();
+    expect(report.cabalRadar).toBeDefined();
+    expect(report.cabalRadar?.clusters.length).toBeGreaterThan(0);
+    expect(report.cabalRadar?.sentinel.isArmed).toBe(false);
+  });
+  it('flags active mint authority as HIGH_RISK or CRITICAL_DANGER in verdict', () => {
+    const value = input();
+    value.audit = composeTokenAudit(mint, {
+      top10HoldingsPct: 65,
+      devHoldingsPct: 18,
+      isMintRenounced: false,
+      isFreezeDisabled: false,
+      isLiquidityLocked: false,
+      ownershipEvidence: evidence,
+      securityEvidence: evidence,
+      liquidityEvidence: evidence,
+    }, null, null, evidence, false, now);
+    const report = buildLiveIntelligence(value, now);
+    expect(report.verdict).toBeDefined();
+    expect(['HIGH_RISK', 'CRITICAL_DANGER']).toContain(report.verdict?.status);
+    expect(report.verdict?.redFlags.some(f => f.includes('Mint authority remains active'))).toBe(true);
+  });
 });
+
+describe('deriveCabalRadar', () => {
+  const baseAudit: import('@/lib/trading/audit-model').TokenAudit = {
+    token: mint,
+    chain: 'solana',
+    symbol: 'TEST',
+    creatorAddress: '4k2q111111111111111111111111111111119xLk',
+    mintAuthorityDisabled: true,
+    freezeAuthorityDisabled: true,
+    lpTokensBurned: true,
+    liquidityLocked: true,
+    honeypotTaxZero: true,
+    top10HoldersPct: 45,
+    devBalancePct: 3,
+    organicScore: 35,
+    organicScoreLabel: 'Heavy Wash Trading',
+    devMints: 2,
+    devMigrations: 1,
+    migrationRatePct: 50,
+    snipersPct: 6,
+    insidersPct: 12,
+    bundlersPct: 14,
+    sniperCount: 3,
+    bundlerCount: 5,
+    insiderCount: 4,
+    devCount: 1,
+    holderTop10Pct: 45,
+    totalHolders: 450,
+    holderAuditPending: false,
+    rugRisk: null,
+    auditVersion: '2.0',
+    marketEvidence: evidence,
+    ownershipEvidence: evidence,
+    securityEvidence: evidence,
+    creatorEvidence: evidence,
+    lifecycleEvidence: evidence,
+    liquidityEvidence: evidence,
+    top10Evidence: evidence,
+    devBalanceEvidence: evidence,
+    mintAuthorityEvidence: evidence,
+    freezeAuthorityEvidence: evidence,
+  };
+
+  it('detects STEALTH_DISTRIBUTION stage when bundlers and cabal supply are elevated', () => {
+    const radar = deriveCabalRadar(baseAudit, {
+      token: { address: mint, price: 0.005, marketCap: 800000, liquidity: 45000, v24hUSD: 250000 } as any,
+      evidence,
+    });
+
+    expect(radar.cabalStage).toBe('STEALTH_DISTRIBUTION');
+    expect(radar.dumpAlertLevel).toBe('WARNING');
+    expect(radar.collectiveCabalSharePct).toBeGreaterThan(25);
+    expect(radar.netFlow15mUsd).toBeLessThan(0); // Dumping
+    expect(radar.clusters.length).toBeGreaterThanOrEqual(1);
+    expect(radar.clusters[0].wallets.length).toBeGreaterThan(0);
+    expect(radar.organicVolumeRatio).toBe(0.35);
+    expect(radar.washTradingRingsCount).toBe(4);
+    expect(radar.realFloorPriceUsd).toBeLessThan(0.005);
+  });
+
+  it('detects ORGANIC_TAKEOVER when cabal concentration is low and activity is organic', () => {
+    const cleanAudit: import('@/lib/trading/audit-model').TokenAudit = {
+      ...baseAudit,
+      top10HoldersPct: 15,
+      devBalancePct: 0,
+      bundlersPct: 0,
+      snipersPct: 0,
+      organicScore: 92,
+      organicScoreLabel: 'Clean Organic Maker Activity',
+    };
+
+    const radar = deriveCabalRadar(cleanAudit, {
+      token: { address: mint, price: 0.02, marketCap: 2000000, liquidity: 150000, v24hUSD: 400000 } as any,
+      evidence,
+    });
+
+    expect(radar.cabalStage).toBe('ORGANIC_TAKEOVER');
+    expect(radar.dumpAlertLevel).toBe('SAFE');
+    expect(radar.netFlow15mUsd).toBe(0);
+    expect(radar.summaryBrief).toContain('CLEAN');
+    expect(radar.organicVolumeRatio).toBe(0.92);
+    expect(radar.washTradingRingsCount).toBe(0);
+  });
+});
+
+

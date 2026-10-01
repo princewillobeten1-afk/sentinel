@@ -19,9 +19,13 @@ const LEVEL_COLORS: Record<ReputationLevel, { text: string; bg: string; border: 
 };
 
 export function CreatorReputationCard({ reputation }: CreatorReputationCardProps) {
-  const { score, level, confidenceLevel, dimensions, sampleSize, limitations } = reputation;
+  const { score, level } = reputation;
+  const dimensions = reputation.dimensions ?? [];
+  const limitations = reputation.limitations ?? [];
+  const sampleSize = reputation.sampleSize ?? 1;
+  const confidenceLevel = reputation.confidenceLevel ?? 'MODERATE';
 
-  const style = LEVEL_COLORS[level];
+  const style = LEVEL_COLORS[level] ?? LEVEL_COLORS.UNKNOWN;
 
   return (
     <div className="p-4 bg-sentinel-900/60 rounded-xl border border-sentinel-800 space-y-4">

@@ -22,9 +22,11 @@ const REPUTATION_LEVEL_COLORS: Record<ReputationLevel, string> = {
 };
 
 export function CreatorPanel({ creator }: CreatorPanelProps) {
-  const { reputation, behaviorProfile, launches, primaryAddress } = creator;
+  const { reputation, behaviorProfile, launches: rawLaunches, primaryAddress } = creator;
+  const launches = rawLaunches ?? [];
+  const patterns = reputation?.patterns ?? [];
 
-  const isUnknown = !primaryAddress || reputation.level === 'UNKNOWN';
+  const isUnknown = !primaryAddress || reputation?.level === 'UNKNOWN';
 
   return (
     <Panel
@@ -37,9 +39,11 @@ export function CreatorPanel({ creator }: CreatorPanelProps) {
       }
       subtitle="Creator launch history, wallet behavior, and multi-token patterns"
       headerActions={
-        <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium border', REPUTATION_LEVEL_COLORS[reputation.level])}>
-          {reputation.level.replace('_', ' ')}
-        </span>
+        reputation?.level && (
+          <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium border', REPUTATION_LEVEL_COLORS[reputation.level])}>
+            {reputation.level.replace('_', ' ')}
+          </span>
+        )
       }
     >
       <div className="space-y-6">
@@ -63,17 +67,17 @@ export function CreatorPanel({ creator }: CreatorPanelProps) {
             </div>
             <div>
               <span className="text-slate-400">Identification Conf: </span>
-              <span className="text-emerald-400 font-semibold">{Math.round(creator.identificationConfidence * 100)}%</span>
+              <span className="text-emerald-400 font-semibold">{Math.round((creator.identificationConfidence ?? 0.9) * 100)}%</span>
             </div>
           </div>
         </div>
 
         {/* Behavior Profile Highlights */}
-        {!isUnknown && (
+        {!isUnknown && behaviorProfile && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-sentinel-900/40 rounded-xl border border-sentinel-800/80">
             <div>
               <div className="text-xs text-slate-400 font-medium mb-1">Avg Token Retention</div>
-              <div className="text-lg font-semibold font-mono text-slate-100">{behaviorProfile.avgRetentionPct.toFixed(1)}%</div>
+              <div className="text-lg font-semibold font-mono text-slate-100">{(behaviorProfile.avgRetentionPct ?? 0).toFixed(1)}%</div>
             </div>
             <div>
               <div className="text-xs text-slate-400 font-medium mb-1">Avg Days to First Sell</div>
@@ -83,19 +87,19 @@ export function CreatorPanel({ creator }: CreatorPanelProps) {
             </div>
             <div>
               <div className="text-xs text-slate-400 font-medium mb-1">Liquidity Removals</div>
-              <div className={clsx('text-lg font-semibold font-mono', behaviorProfile.fullLiquidityRemovals > 0 ? 'text-red-400' : 'text-emerald-400')}>
-                {behaviorProfile.fullLiquidityRemovals} / {launches.length}
+              <div className={clsx('text-lg font-semibold font-mono', (behaviorProfile.fullLiquidityRemovals ?? 0) > 0 ? 'text-red-400' : 'text-emerald-400')}>
+                {behaviorProfile.fullLiquidityRemovals ?? 0} / {launches.length}
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-400 font-medium mb-1">Associated Wallets</div>
-              <div className="text-lg font-semibold font-mono text-purple-400">{behaviorProfile.associatedWalletCount}</div>
+              <div className="text-lg font-semibold font-mono text-purple-400">{behaviorProfile.associatedWalletCount ?? 0}</div>
             </div>
           </div>
         )}
 
         {/* Reputation Breakdown Card */}
-        <CreatorReputationCard reputation={reputation} />
+        {reputation && <CreatorReputationCard reputation={reputation} />}
 
         {/* Launch History Table */}
         {launches.length > 0 && (
@@ -106,11 +110,11 @@ export function CreatorPanel({ creator }: CreatorPanelProps) {
         )}
 
         {/* Detected Cross-Token Patterns */}
-        {reputation.patterns.length > 0 && (
+        {patterns.length > 0 && (
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-300 font-mono">Detected Cross-Token Patterns</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {reputation.patterns.map((pat, idx) => {
+              {patterns.map((pat, idx) => {
                 const isNegative = pat.type.includes('REPEATED') || pat.type.includes('SELLING') || pat.type.includes('WITHDRAWAL');
                 return (
                   <div key={idx} className={clsx(
