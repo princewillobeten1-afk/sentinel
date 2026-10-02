@@ -46,7 +46,7 @@ function MiniSparkline({
       pts.push({ x, y: Math.max(2, Math.min(height - 2, y)) });
     }
     return pts;
-  }, [isPositive, changePct]);
+  }, [isPositive]);
 
   const polylineStr = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const strokeColor = isPositive ? '#10b981' : '#f43f5e';

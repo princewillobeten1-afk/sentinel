@@ -683,23 +683,6 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
     }
   };
 
-  if (!validMint) {
-    return (
-      <section className="mx-auto max-w-3xl space-y-4">
-        <Link href="/intelligence" className={`${control} w-fit`}>
-          <ArrowLeft className="h-4 w-4" />
-          Intelligence
-        </Link>
-        <div className={`${panel} p-6`}>
-          <h1 className="text-lg font-semibold text-white">An exact Solana mint is required</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Symbol-only reports have been retired to prevent look-alike honeypot attacks. Search Intelligence to select the correct token.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   // Fallback / mock structures for dormant components if not in report
   const effectiveOwnershipData = useMemo(() => {
     if (!report) return null;
@@ -844,6 +827,23 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
       report.metrics
     );
   }, [report, mint]);
+
+  if (!validMint) {
+    return (
+      <section className="mx-auto max-w-3xl space-y-4">
+        <Link href="/intelligence" className={`${control} w-fit`}>
+          <ArrowLeft className="h-4 w-4" />
+          Intelligence
+        </Link>
+        <div className={`${panel} p-6`}>
+          <h1 className="text-lg font-semibold text-white">An exact Solana mint is required</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Symbol-only reports have been retired to prevent look-alike honeypot attacks. Search Intelligence to select the correct token.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   const tabItems = [
     { id: 'overview', label: 'Overview & Risk Matrix', icon: ShieldCheck },

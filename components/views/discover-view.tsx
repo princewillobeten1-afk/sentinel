@@ -326,7 +326,6 @@ export function DiscoverView() {
                 key={col.id}
                 role="tab"
                 aria-selected={isSelected}
-                aria-pressed={isSelected}
                 onClick={() => setActiveMobileColumnId(col.id)}
                 className={`flex-1 py-1.5 px-3 rounded-full text-xs font-semibold whitespace-nowrap transition-all text-center ${
                   isSelected

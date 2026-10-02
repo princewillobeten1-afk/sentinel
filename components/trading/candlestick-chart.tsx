@@ -208,6 +208,10 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
   const chart = useRef<Chart | null>(null);
   const feedRef = useRef(feed);
   feedRef.current = feed;
+  const displayUnitRef = useRef(displayUnit);
+  displayUnitRef.current = displayUnit;
+  const tokenSupplyRef = useRef(tokenSupply);
+  tokenSupplyRef.current = tokenSupply;
   const pendingInit = useRef<DataLoaderGetBarsParams['callback'] | null>(null);
   const restoreTimestamp = useRef<number | null>(null);
   const onBar = useRef<((bar: KLineData) => void) | null>(null);
@@ -284,7 +288,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
         thousandsSeparator: {
           sign: ',',
           format: (value: string | number) => {
-            if (displayUnit === 'mcap') {
+            if (displayUnitRef.current === 'mcap') {
               const num = Number(value);
               if (Number.isFinite(num)) {
                 if (Math.abs(num) >= 1e9) return '$' + (num / 1e9).toFixed(2) + 'B';
@@ -296,7 +300,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
             return utils?.formatThousands ? utils.formatThousands(value, ',') : String(value);
           },
         },
-        decimalFold: { threshold: displayUnit === 'mcap' ? 6 : 3 },
+        decimalFold: { threshold: displayUnitRef.current === 'mcap' ? 6 : 3 },
         zoomAnchor: { main: 'last_bar', xAxis: 'last_bar' },
         hotkey: {
           enabled: true,
@@ -316,7 +320,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
       if (!api) { setChartError('The chart could not initialize.'); return; }
       chart.current = api;
       api.overrideYAxis({
-        name: displayUnit === 'mcap' ? 'sentinel_mcap_y_axis' : 'sentinel_price_y_axis',
+        name: displayUnitRef.current === 'mcap' ? 'sentinel_mcap_y_axis' : 'sentinel_price_y_axis',
         paneId: 'candle_pane',
       });
       const syncChartSize = () => api.resize();
@@ -331,12 +335,12 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
       });
       const existing = feedRef.current.candles;
       const precision = existing.length
-        ? (displayUnit === 'mcap'
-            ? (Math.min(...existing.map(c => c.low)) * tokenSupply < 1 ? 4 : 2)
+        ? (displayUnitRef.current === 'mcap'
+            ? (Math.min(...existing.map(c => c.low)) * tokenSupplyRef.current < 1 ? 4 : 2)
             : chartPrecision(Math.min(...existing.map(c => c.low))).precision)
-        : (displayUnit === 'mcap' ? 2 : 12);
+        : (displayUnitRef.current === 'mcap' ? 2 : 12);
       api.setSymbol({
-        ticker: `${tokenSymbol || displaySymbol(symbol)}${displayUnit === 'mcap' ? ' (MCAP)' : ''}`,
+        ticker: `${tokenSymbol || displaySymbol(symbol)}${displayUnitRef.current === 'mcap' ? ' (MCAP)' : ''}`,
         pricePrecision: precision,
         volumePrecision: 4
       });
@@ -349,7 +353,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           if (current.loading) { pendingInit.current = callback; return; }
           queueMicrotask(() => {
             if (disposed) return;
-            callback(toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply), false);
+            callback(toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnitRef.current, tokenSupplyRef.current), false);
             const restore = restoreTimestamp.current;
             restoreTimestamp.current = null;
             if (restore !== null) requestAnimationFrame(() => { if (!disposed) api.scrollToTimestamp(restore, 0); });
@@ -361,7 +365,7 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
           queueMicrotask(() => {
             if (disposed || onBar.current !== callback) return;
             for (const bar of barsAfterLoaded(api.getDataList(),
-              toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnit, tokenSupply))) callback(bar);
+              toKLineDataList(feedRef.current.candles, feedRef.current.market === 'pool' ? 'usd' : 'token', displayUnitRef.current, tokenSupplyRef.current))) callback(bar);
           });
         },
         unsubscribeBar: () => { onBar.current = null; },

@@ -283,6 +283,11 @@ export function AxiomChartTabs({
   const safePrice = typeof currentPrice === 'number' && Number.isFinite(currentPrice) && currentPrice > 0 ? currentPrice : 142.5;
   const safePriceFormatted = safePrice < 0.0001 ? `$0.0₄${(safePrice * 10000).toFixed(2)}` : safePrice < 0.01 ? `$${safePrice.toFixed(4)}` : `$${safePrice.toFixed(4)}`;
 
+  const currentPriceRef = useRef(currentPrice);
+  currentPriceRef.current = currentPrice;
+  const safePriceRef = useRef(safePrice);
+  safePriceRef.current = safePrice;
+
   const [activeTab, setActiveTab] = useState<AxiomTabType>('trades');
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'SOL'>('USD');
   const [tradeFilter, setTradeFilter] = useState<'all' | 'buy' | 'sell' | 'whale'>('all');
@@ -783,7 +788,9 @@ export function AxiomChartTabs({
         setTopHolders(
           payload.holders.map((h: any) => {
             const rawBal = Number(h.balance) || 0;
-            const usd = typeof currentPrice === 'number' && currentPrice > 0 ? rawBal * currentPrice : (safePrice > 0 ? rawBal * safePrice : null);
+            const cp = currentPriceRef.current;
+            const sp = safePriceRef.current;
+            const usd = typeof cp === 'number' && cp > 0 ? rawBal * cp : (sp > 0 ? rawBal * sp : null);
             return {
               rank: h.rank,
               address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
