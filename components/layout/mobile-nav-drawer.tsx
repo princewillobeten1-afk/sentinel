@@ -19,7 +19,6 @@ import {
   Zap,
   CheckCircle2,
   Users,
-  Flame,
 } from 'lucide-react';
 import { useAppState, useAppActions, AppView } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +58,6 @@ export const mainNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
   { id: 'wallets', label: 'Smart Wallets', icon: Users, hotkey: 'G M' },
-  { id: 'social', label: '𝕏 Alpha Tracker', icon: Flame, hotkey: 'G X' },
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
   { id: 'watchlist', label: 'Watchlist', icon: Bookmark, hotkey: 'G W' },
