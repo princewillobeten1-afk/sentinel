@@ -1205,14 +1205,20 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
           )}
 
           {/* TAB 2: CABAL RADAR™ & AUTONOMOUS FRONT-RUN SENTINEL */}
-          {activeTab === 'cabal_radar' && cabalRadarData && (
+          {activeTab === 'cabal_radar' && (
             <div className="space-y-6">
-              <CabalRadarCard
-                cabalRadar={cabalRadarData}
-                symbol={report.token.symbol}
-                tokenMint={mint}
-                onEmergencyExit={() => router.push(`/trade/solana/${mint}`)}
-              />
+              {cabalRadarData ? (
+                <CabalRadarCard
+                  cabalRadar={cabalRadarData}
+                  symbol={report.token.symbol}
+                  tokenMint={mint}
+                  onEmergencyExit={() => router.push(`/trade/solana/${mint}`)}
+                />
+              ) : (
+                <div className={`${panel} p-8 text-center text-slate-400`}>
+                  <p>Cabal Radar™ telemetry is analyzing wallet coordination and cluster dynamics.</p>
+                </div>
+              )}
             </div>
           )}
 
