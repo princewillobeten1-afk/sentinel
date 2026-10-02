@@ -25,6 +25,8 @@ export function HotkeyModal() {
         { key: 'G then H', description: 'Navigate to Overview Dashboard' },
         { key: 'G then D', description: 'Navigate to Token Discovery Screener' },
         { key: 'G then T', description: 'Navigate to Trade Terminal' },
+        { key: 'G then M', description: 'Navigate to Smart Money & Wallet Tracker' },
+        { key: 'G then X', description: 'Navigate to 𝕏 Social Alpha Tracker' },
         { key: 'G then L', description: 'Navigate to Launchpad' },
         { key: 'G then P', description: 'Navigate to Portfolio & Wallet P&L' },
         { key: 'G then A', description: 'Navigate to Risk Intelligence Alerts' },

@@ -21,6 +21,8 @@ import {
   ChevronRight,
   Zap,
   CheckCircle2,
+  Users,
+  Flame,
 } from 'lucide-react';
 import { useAppState, useAppActions, AppView } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +45,8 @@ export const viewRouteMap: Record<AppView, string> = {
   discover: '/discover',
   portfolio: '/portfolio',
   watchlist: '/watchlist',
+  wallets: '/wallets',
+  social: '/social',
   alerts: '/alerts',
   launchpad: '/launchpad',
   intelligence: '/intelligence',
@@ -58,6 +62,8 @@ export const mainNavItems: NavItemConfig[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
+  { id: 'wallets', label: 'Smart Wallets', icon: Users, hotkey: 'G M' },
+  { id: 'social', label: '𝕏 Alpha Tracker', icon: Flame, hotkey: 'G X' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
   { id: 'watchlist', label: 'Watchlist', icon: Bookmark, hotkey: 'G W' },
   // No badge literal here. It read '4' unconditionally — for signed-out

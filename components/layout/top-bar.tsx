@@ -21,6 +21,7 @@ import {
   Sparkles,
   BarChart3,
   ChevronDown,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,7 @@ import { LiveAlertsTopbarButton } from '@/components/alerts/live-alerts-topbar-b
 export const primaryNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
+  { id: 'wallets', label: 'Smart Wallets', icon: Users, hotkey: 'G M' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
   { id: 'watchlist', label: 'Watchlist', icon: Bookmark, hotkey: 'G W' },
   { id: 'alerts', label: 'Alerts', icon: ShieldAlert, hotkey: 'G A', badgeVariant: 'danger' },

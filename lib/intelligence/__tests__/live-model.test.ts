@@ -160,6 +160,10 @@ describe('deriveCabalRadar', () => {
     devBalanceEvidence: evidence,
     mintAuthorityEvidence: evidence,
     freezeAuthorityEvidence: evidence,
+    organicEvidence: evidence,
+    historyEvidence: evidence,
+    coverage: '100%',
+    lastAuditedAt: new Date(now).toISOString(),
   };
 
   it('detects STEALTH_DISTRIBUTION stage when bundlers and cabal supply are elevated', () => {

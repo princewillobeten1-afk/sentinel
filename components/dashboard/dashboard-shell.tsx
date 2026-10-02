@@ -63,17 +63,25 @@ const HelpView = dynamic(() => import('@/components/views/help-view').then((m) =
 const AdminView = dynamic(() => import('@/components/views/admin-view').then((m) => m.AdminView), {
   loading: ViewLoadingFallback,
 });
+const WalletTrackerView = dynamic(() => import('@/components/views/wallet-tracker-view').then((m) => m.WalletTrackerView), {
+  loading: ViewLoadingFallback,
+});
+const SocialTrackerView = dynamic(() => import('@/components/views/social-tracker-view').then((m) => m.SocialTrackerView), {
+  loading: ViewLoadingFallback,
+});
 
 export function DashboardShell() {
   const { activeView } = useAppState();
 
   return (
-    <div data-active-view={activeView} className={activeView === 'discover' ? 'flex flex-col w-full flex-1 min-w-0 min-h-0 h-full' : 'w-full min-w-0 flex-1'}>
+    <div data-active-view={activeView} className={activeView === 'discover' || activeView === 'social' || activeView === 'wallets' ? 'flex flex-col w-full flex-1 min-w-0 min-h-0 h-full' : 'w-full min-w-0 flex-1'}>
       {activeView === 'dashboard' && <DashboardView />}
       {activeView === 'trade' && <TradeView />}
       {activeView === 'discover' && <DiscoverView />}
       {activeView === 'portfolio' && <PortfolioView />}
       {activeView === 'watchlist' && <WatchlistView />}
+      {activeView === 'wallets' && <WalletTrackerView />}
+      {activeView === 'social' && <SocialTrackerView />}
       {activeView === 'alerts' && <AlertsView />}
       {activeView === 'launchpad' && <LaunchpadView />}
       {activeView === 'intelligence' && <IntelligenceView />}
@@ -86,3 +94,4 @@ export function DashboardShell() {
     </div>
   );
 }
+

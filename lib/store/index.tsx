@@ -8,8 +8,9 @@ import { PreferencesProvider, usePreferencesState, usePreferencesActions } from 
 import { WatchlistProvider, useWatchlist } from './watchlist-store';
 import { TradeHistoryProvider, useTradeHistory } from './trade-history-store';
 import { TokenFiltersProvider, useTokenFilters } from './token-filters-store';
+import { TrackedWalletsProvider, useTrackedWallets, type TrackedWallet, type TrackedWalletTrade, type TrackedWalletCategory } from './tracked-wallets-store';
 
-export type { ThemeMode, QuickBuyTokenData, AppNotification, ExecutionLog, SelectedToken };
+export type { ThemeMode, QuickBuyTokenData, AppNotification, ExecutionLog, SelectedToken, TrackedWallet, TrackedWalletTrade, TrackedWalletCategory };
 export type AppView =
   | 'dashboard'
   | 'trade'
@@ -21,6 +22,8 @@ export type AppView =
   | 'intelligence'
   | 'ai'
   | 'analytics'
+  | 'social'
+  | 'wallets'
   | 'settings'
   | 'developers'
   | 'help'
@@ -37,7 +40,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           <TokenFiltersProvider>
             <WatchlistProvider>
               <TradeHistoryProvider>
-                <NotificationsStoreProvider>{children}</NotificationsStoreProvider>
+                <TrackedWalletsProvider>
+                  <NotificationsStoreProvider>{children}</NotificationsStoreProvider>
+                </TrackedWalletsProvider>
               </TradeHistoryProvider>
             </WatchlistProvider>
           </TokenFiltersProvider>
@@ -106,4 +111,5 @@ export {
 export { useWatchlist } from './watchlist-store';
 export { useTradeHistory } from './trade-history-store';
 export { useTokenFilters } from './token-filters-store';
+export { useTrackedWallets } from './tracked-wallets-store';
 

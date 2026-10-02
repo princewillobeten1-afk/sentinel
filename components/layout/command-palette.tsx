@@ -30,6 +30,8 @@ import {
   TrendingUp,
   Loader2,
   ArrowRight,
+  Users,
+  Flame,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Badge } from '@/components/ui/badge';
@@ -157,6 +159,22 @@ export function CommandPalette() {
       icon: Wallet,
       action: () => handleSelectNav('trade'),
       shortcut: 'G T',
+    },
+    {
+      id: 'cmd_wallets',
+      label: 'Go to Smart Money & Wallet Tracker',
+      description: 'Track profitable Solana wallets, view real-time smart trades, and copy trade',
+      icon: Users,
+      action: () => handleSelectNav('wallets'),
+      shortcut: 'G M',
+    },
+    {
+      id: 'cmd_social',
+      label: 'Go to 𝕏 Social Alpha Tracker',
+      description: 'Monitor verified KOL callouts, smart money tweets, and token multipliers',
+      icon: Flame,
+      action: () => handleSelectNav('social'),
+      shortcut: 'G X',
     },
     {
       id: 'cmd_portfolio',

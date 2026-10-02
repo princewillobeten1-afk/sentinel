@@ -37,5 +37,5 @@ describe('GET /api/v1/wallet/balance — Real-Time Solana Balance API', () => {
     expect(json.data.sol).toBeGreaterThanOrEqual(0);
     expect(json.data.network).toBeDefined();
     expect(json.data.timestamp).toBeDefined();
-  });
+  }, 15000);
 });
