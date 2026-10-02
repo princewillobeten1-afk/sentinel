@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import './terminal.css';
@@ -28,9 +28,60 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sentinel-mu-jade.vercel.app';
+
+export const viewport: Viewport = {
+  themeColor: '#030712',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: 'Project Sentinel',
-  description: 'Solana-first token intelligence, trading terminal, and launchpad foundation.',
+  metadataBase: new URL(appUrl),
+  title: {
+    default: 'Project Sentinel · Solana Intelligence & Trading Terminal',
+    template: '%s · Project Sentinel',
+  },
+  description:
+    'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, deep liquidity telemetry, and execution terminal.',
+  applicationName: 'Project Sentinel',
+  keywords: [
+    'Solana',
+    'Trading Terminal',
+    'Token Intelligence',
+    'Cabal Radar',
+    'Solana Screener',
+    'Pump.fun',
+    'Raydium',
+    'Jupiter Swap',
+    'Crypto Security',
+  ],
+  authors: [{ name: 'Project Sentinel Team' }],
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: appUrl,
+    siteName: 'Project Sentinel',
+    title: 'Project Sentinel · Solana Intelligence & Trading Terminal',
+    description:
+      'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Project Sentinel · Solana Intelligence & Trading Terminal',
+    description:
+      'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
