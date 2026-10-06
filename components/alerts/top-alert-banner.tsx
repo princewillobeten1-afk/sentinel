@@ -169,6 +169,24 @@ export function TopAlertBanner() {
           icon: Brain,
           label: 'SMART MONEY',
         };
+      case 'INSIDER_ACTIVITY':
+        return {
+          glow: 'shadow-[0_4px_30px_rgba(245,158,11,0.22)]',
+          border: 'border-amber-500/40 hover:border-amber-400/70',
+          badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+          barBg: 'bg-gradient-to-r from-amber-500 to-yellow-400',
+          icon: Brain,
+          label: 'POTENTIAL INSIDER',
+        };
+      case 'DEV_ACTIVITY':
+        return {
+          glow: 'shadow-[0_4px_30px_rgba(14,165,233,0.22)]',
+          border: 'border-sky-500/40 hover:border-sky-400/70',
+          badgeBg: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+          barBg: 'bg-gradient-to-r from-sky-500 to-cyan-400',
+          icon: ShieldAlert,
+          label: 'DEVELOPER ACTIVITY',
+        };
       case 'LAUNCHPAD_MILESTONE':
         return {
           glow: 'shadow-[0_4px_30px_rgba(245,158,11,0.22)]',
@@ -216,25 +234,25 @@ export function TopAlertBanner() {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       className={clsx(
-        'fixed top-12 sm:top-14 left-1/2 -translate-x-1/2 z-50 w-[96%] max-w-[580px]',
+        'fixed top-12 sm:top-14 left-1/2 -translate-x-1/2 z-50 w-[94vw] sm:w-[410px] max-w-[410px]',
         'animate-in slide-in-from-top-4 fade-in duration-300 select-none'
       )}
     >
       <div
         className={clsx(
-          'relative overflow-hidden rounded-xl border bg-sentinel-950/98 backdrop-blur-xl',
+          'relative overflow-hidden rounded-xl border bg-sentinel-950/98 backdrop-blur-xl shadow-2xl',
           'transition-all duration-200 text-slate-100',
           theme.border,
           theme.glow
         )}
       >
         {/* Top Meta Bar */}
-        <div className="flex items-center justify-between px-3 pt-2 pb-1.5 border-b border-white/[0.06] bg-black/40 text-2xs">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center justify-between px-2.5 pt-1.5 pb-1 border-b border-white/[0.06] bg-black/40 text-2xs">
+          <div className="flex items-center gap-1.5 min-w-0">
             {/* Category Pill */}
             <span
               className={clsx(
-                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-3xs font-mono font-bold uppercase tracking-wider border',
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-3xs font-mono font-bold uppercase tracking-wider border shrink-0',
                 theme.badgeBg
               )}
             >
@@ -244,7 +262,7 @@ export function TopAlertBanner() {
 
             {/* Caller or Trader Identity */}
             {caller && (
-              <div className="flex items-center gap-1.5 truncate">
+              <div className="flex items-center gap-1 min-w-0 truncate">
                 {caller.avatarUrl && (
                   <img
                     src={caller.avatarUrl}
@@ -255,14 +273,14 @@ export function TopAlertBanner() {
                     }}
                   />
                 )}
-                <span className="font-semibold text-slate-200 truncate">{caller.name}</span>
+                <span className="font-semibold text-slate-200 text-3xs truncate">{caller.name}</span>
                 {caller.isVerified && (
-                  <span title="Verified Alpha Caller" className="inline-flex items-center">
-                    <CheckCircle2 className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span title="Verified Alpha Caller" className="inline-flex items-center shrink-0">
+                    <CheckCircle2 className="w-2.5 h-2.5 text-cyan-400" />
                   </span>
                 )}
                 {caller.winRate && (
-                  <span className="px-1 py-0.2 rounded bg-cyan-950/80 border border-cyan-800/40 text-cyan-300 font-mono text-3xs">
+                  <span className="px-1 py-0.2 rounded bg-cyan-950/80 border border-cyan-800/40 text-cyan-300 font-mono text-4xs shrink-0">
                     {caller.winRate}% WR
                   </span>
                 )}
@@ -270,10 +288,10 @@ export function TopAlertBanner() {
             )}
 
             {trade && (
-              <div className="flex items-center gap-1.5 truncate font-mono">
-                <span className="text-slate-400">{trade.traderLabel || trade.traderAddress}</span>
+              <div className="flex items-center gap-1 truncate font-mono text-3xs min-w-0">
+                <span className="text-slate-400 truncate">{trade.traderLabel || trade.traderAddress}</span>
                 {trade.winRate30d && (
-                  <span className="px-1 py-0.2 rounded bg-purple-950/80 border border-purple-800/40 text-purple-300 text-3xs">
+                  <span className="px-1 py-0.2 rounded bg-purple-950/80 border border-purple-800/40 text-purple-300 text-4xs shrink-0">
                     {trade.winRate30d}% WR
                   </span>
                 )}
@@ -281,12 +299,12 @@ export function TopAlertBanner() {
             )}
 
             {milestone && (
-              <span className="text-amber-300 font-medium truncate">{milestone.description}</span>
+              <span className="text-amber-300 font-medium text-3xs truncate">{milestone.description}</span>
             )}
           </div>
 
           {/* Right Controls: Sound, Feed Drawer, Dismiss */}
-          <div className="flex items-center gap-1 shrink-0 ml-2">
+          <div className="flex items-center gap-1 shrink-0 ml-1.5">
             <button
               onClick={toggleSound}
               className={clsx(
@@ -304,9 +322,9 @@ export function TopAlertBanner() {
               title="Open Live Alerts History"
             >
               <History className="w-2.5 h-2.5" />
-              <span>Feed</span>
+              <span className="hidden sm:inline">Feed</span>
               {unreadCount > 1 && (
-                <span className="px-1 rounded-full bg-sky-500 text-black font-bold">
+                <span className="px-1 rounded-full bg-sky-500 text-black font-bold text-4xs">
                   +{unreadCount - 1}
                 </span>
               )}
@@ -323,13 +341,13 @@ export function TopAlertBanner() {
         </div>
 
         {/* Card Body */}
-        <div className="p-3 flex items-start gap-3">
+        <div className="p-2.5 flex items-start gap-2.5">
           {/* Token Avatar + Launchpad Badge */}
           <div className="relative shrink-0">
             <img
               src={token.avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${token.symbol}`}
               alt={token.symbol}
-              className="w-10 h-10 rounded-lg object-cover bg-sentinel-900 border border-white/10"
+              className="w-8 h-8 rounded-lg object-cover bg-sentinel-900 border border-white/10"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${token.symbol}`;
               }}
@@ -337,7 +355,7 @@ export function TopAlertBanner() {
             {token.launchpad && token.launchpad !== 'unknown' && (
               <span
                 className={clsx(
-                  'absolute -bottom-1 -right-1 px-1 py-0.2 rounded font-mono text-4xs font-bold uppercase border shadow-sm',
+                  'absolute -bottom-1 -right-1 px-0.5 py-0.2 rounded font-mono text-4xs font-bold uppercase border shadow-sm scale-90',
                   token.launchpad === 'pump.fun'
                     ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60'
                     : 'bg-sky-950 text-sky-300 border-sky-700/60'
@@ -349,14 +367,14 @@ export function TopAlertBanner() {
           </div>
 
           {/* Token Details & Message Text */}
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-bold text-sm text-white tracking-tight">${token.symbol}</span>
-                <span className="text-xs text-slate-400 truncate max-w-[130px] hidden sm:inline">
+          <div className="flex-1 min-w-0 space-y-0.5">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-bold text-xs text-white tracking-tight">${token.symbol}</span>
+                <span className="text-3xs text-slate-400 truncate max-w-[90px] hidden sm:inline">
                   {token.name}
                 </span>
-                <span className="px-1.5 py-0.2 rounded bg-white/[0.06] border border-white/[0.08] text-slate-300 font-numeric text-2xs">
+                <span className="px-1 py-0.2 rounded bg-white/[0.06] border border-white/[0.08] text-slate-300 font-numeric text-3xs">
                   {formatMarketCap(token.marketCapUsd)}
                 </span>
                 {token.priceChange24h !== undefined && (
@@ -377,45 +395,45 @@ export function TopAlertBanner() {
               {/* Trade or Call Sol Tag */}
               {trade && (
                 <div className="text-right shrink-0">
-                  <span className="font-mono text-xs font-bold text-purple-300">
+                  <span className="font-mono text-2xs font-bold text-purple-300">
                     +{trade.amountSol} SOL
                   </span>
-                  <span className="text-3xs text-slate-400 block font-numeric">
-                    ${trade.amountUsd.toLocaleString()}
+                  <span className="text-4xs text-slate-400 block font-numeric">
+                    ${trade.amountUsd != null ? trade.amountUsd.toLocaleString() : '—'}
                   </span>
                 </div>
               )}
             </div>
 
             {/* Headline / Message */}
-            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+            <p className="text-2xs text-slate-300 line-clamp-2 leading-relaxed">
               {headline ? <strong className="text-white font-medium">{headline}: </strong> : null}
               {message}
             </p>
           </div>
 
           {/* Fast Action Buttons */}
-          <div className="flex flex-col gap-1.5 shrink-0 self-center">
+          <div className="flex flex-col gap-1 shrink-0 self-center">
             {/* Quick Buy Button */}
             <button
               onClick={handleQuickBuy}
               className={clsx(
-                'flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition shadow-md select-none',
+                'flex items-center justify-center gap-1 px-2.5 py-1 rounded-md font-mono text-2xs font-bold transition shadow-sm select-none',
                 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 hover:brightness-110 active:scale-95'
               )}
               title={`Quick Buy $${token.symbol} (${quickBuyDefaultSol} SOL)`}
             >
-              <Zap className="w-3.5 h-3.5 fill-current" />
+              <Zap className="w-3 h-3 fill-current" />
               <span>Buy {quickBuyDefaultSol}</span>
             </button>
 
             {/* Chart Button */}
             <button
               onClick={handleOpenChart}
-              className="flex items-center justify-center gap-1 px-2.5 py-1 rounded-md bg-sentinel-850 hover:bg-sentinel-800 border border-sentinel-700 text-slate-300 hover:text-white transition font-mono text-2xs"
+              className="flex items-center justify-center gap-1 px-2 py-0.5 rounded bg-sentinel-850 hover:bg-sentinel-800 border border-sentinel-700 text-slate-300 hover:text-white transition font-mono text-3xs"
               title="Open Chart in Terminal"
             >
-              <BarChart2 className="w-3 h-3 text-sky-400" />
+              <BarChart2 className="w-2.5 h-2.5 text-sky-400" />
               <span>Chart</span>
             </button>
           </div>

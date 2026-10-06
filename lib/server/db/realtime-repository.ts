@@ -247,6 +247,35 @@ export class RealtimeRepository {
     return this.inMemoryTrades.filter((t) => t.mint === mint).slice(-limit);
   }
 
+  /** Queries the most recent captured on-chain trades across all tokens. */
+  public async getRecentTrades(limit = 300): Promise<TradeRecord[]> {
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 500));
+    try {
+      const res = await dbPool.query<TradeRecord>(
+        `SELECT event_id as "eventId", signature, mint, wallet, side, amount, amount_sol as "amountSol",
+                price_usd as "priceUsd", slot, timestamp, source, commitment
+         FROM realtime_trades
+         WHERE timestamp >= NOW() - INTERVAL '24 hours'
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [boundedLimit],
+      );
+      if (res.rows.length > 0) return res.rows;
+    } catch (err) {
+      logger.warn('[realtime-repo] recent trades DB read failed, using in-memory store', {
+        error: describeError(err),
+      });
+    }
+
+    return this.inMemoryTrades
+      .filter((trade) => {
+        const timestamp = Date.parse(String(trade.timestamp ?? ''));
+        return Number.isFinite(timestamp) && timestamp >= Date.now() - 24 * 60 * 60 * 1000;
+      })
+      .sort((left, right) => Date.parse(String(right.timestamp)) - Date.parse(String(left.timestamp)))
+      .slice(0, boundedLimit);
+  }
+
   /**
    * Reads captured trades for a mint from the in-memory buffer only, with no
    * DB attempt.

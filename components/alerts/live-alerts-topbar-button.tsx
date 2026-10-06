@@ -62,6 +62,8 @@ export function LiveAlertsTopbarButton({ variant = 'ticker', className }: LiveAl
             {activeAlert.type === 'CALL' && '📞 '}
             {activeAlert.type === 'WHALE_TRADE' && '🐋 '}
             {activeAlert.type === 'SMART_MONEY' && '🧠 '}
+            {activeAlert.type === 'INSIDER_ACTIVITY' && '⚠️ '}
+            {activeAlert.type === 'DEV_ACTIVITY' && '🛠️ '}
             {activeAlert.type === 'LAUNCHPAD_MILESTONE' && '👑 '}
             ${activeAlert.token.symbol}
           </span>

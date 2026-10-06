@@ -56,6 +56,7 @@ import { ActivityQualityCard } from './activity-quality-card';
 import { EvidencePanel } from './evidence-panel';
 import { RiskBreakdown } from './risk-breakdown';
 import { IntelligenceTimeline } from './intelligence-timeline';
+import { TrendIntelligenceTab } from '@/components/trends/trend-intelligence-tab';
 
 const control =
   'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-sentinel-700 bg-sentinel-900 px-3.5 text-xs font-semibold text-slate-200 hover:bg-sentinel-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-wait disabled:opacity-60 transition-all';
@@ -374,8 +375,10 @@ export function IntelligenceWorkspace() {
 
       {error && <ErrorNotice message={data ? `${error} Retaining previous observed tokens.` : error} retry={refresh} />}
 
-      {/* Candidate Matrix Table */}
-      {!data && busy ? (
+      {/* Candidate Matrix Table OR Viral Trends & Narratives */}
+      {activeCategory === 'trending_memes' ? (
+        <TrendIntelligenceTab />
+      ) : !data && busy ? (
         <Loading />
       ) : (
         <div className={panel}>

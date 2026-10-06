@@ -106,6 +106,8 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
     callsCount: 0,
     whaleBuysCount: 0,
     smartMoneyCount: 0,
+    insiderActivityCount: 0,
+    devActivityCount: 0,
     milestonesCount: 0,
     risksCount: 0,
     totalAlertsToday: 0,
@@ -238,12 +240,16 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
       let callsCount = prev.callsCount;
       let whaleBuysCount = prev.whaleBuysCount;
       let smartMoneyCount = prev.smartMoneyCount;
+      let insiderActivityCount = prev.insiderActivityCount;
+      let devActivityCount = prev.devActivityCount;
       let milestonesCount = prev.milestonesCount;
       let risksCount = prev.risksCount;
 
       if (alert.type === 'CALL') callsCount++;
       if (alert.type === 'WHALE_TRADE') whaleBuysCount++;
       if (alert.type === 'SMART_MONEY') smartMoneyCount++;
+      if (alert.type === 'INSIDER_ACTIVITY') insiderActivityCount++;
+      if (alert.type === 'DEV_ACTIVITY') devActivityCount++;
       if (alert.type === 'LAUNCHPAD_MILESTONE') milestonesCount++;
       if (alert.type === 'RISK_ALERT') risksCount++;
 
@@ -251,6 +257,8 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
         callsCount,
         whaleBuysCount,
         smartMoneyCount,
+        insiderActivityCount,
+        devActivityCount,
         milestonesCount,
         risksCount,
         totalAlertsToday: prev.totalAlertsToday + 1,
@@ -262,12 +270,15 @@ export function LiveAlertsProvider({ children }: { children: React.ReactNode }) 
     setUnreadCount((prev) => prev + 1);
 
     // Check filter criteria before promoting to top toast
-    if (filter.minSol > 0 && alert.trade && alert.trade.amountSol < filter.minSol) {
+    if (filter.minSol > 0 && alert.trade && alert.trade.direction !== 'TRANSFER'
+      && alert.trade.amountSol < filter.minSol) {
       return;
     }
     if (filter.category === 'calls' && alert.type !== 'CALL') return;
     if (filter.category === 'trades' && alert.type !== 'WHALE_TRADE') return;
     if (filter.category === 'smart_money' && alert.type !== 'SMART_MONEY') return;
+    if (filter.category === 'insiders' && alert.type !== 'INSIDER_ACTIVITY') return;
+    if (filter.category === 'developers' && alert.type !== 'DEV_ACTIVITY') return;
     if (filter.category === 'launchpad' && alert.type !== 'LAUNCHPAD_MILESTONE') return;
     if (filter.category === 'risks' && alert.type !== 'RISK_ALERT') return;
 

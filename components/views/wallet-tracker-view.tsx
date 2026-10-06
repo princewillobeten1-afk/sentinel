@@ -172,7 +172,7 @@ export function WalletTrackerView() {
   }, [trackedWallets]);
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col overflow-y-auto bg-sentinel-950 text-slate-100">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-sentinel-950 text-slate-100">
       <div className="shrink-0 border-b border-sentinel-800/80 bg-sentinel-950 px-5 py-4 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
           <div className="flex min-w-0 items-center gap-3.5">
@@ -435,7 +435,7 @@ export function WalletTrackerView() {
 
       {/* Tab 1: Smart Money Leaderboard */}
       {activeTab === 'leaderboard' && (
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+        <div className="flex-none p-5 sm:p-6">
           {isLoadingLeaderboard && smartWallets.length === 0 ? (
             <div className="flex items-center justify-center py-20 text-slate-400 text-xs font-mono">
               <RefreshCw className="w-4 h-4 animate-spin mr-2 text-sky-400" />
@@ -521,7 +521,7 @@ export function WalletTrackerView() {
 
       {/* Tab 2: My Tracked Wallets */}
       {activeTab === 'my-tracked' && (
-        <div className="flex-1 p-4 overflow-y-auto">
+        <div className="flex-none p-4">
           {filteredTrackedWallets.length === 0 ? (
             <div className="text-center py-24 bg-sentinel-900/30 rounded-2xl border border-dashed border-sentinel-800 p-8 max-w-lg mx-auto">
               <Users className="w-10 h-10 text-slate-600 mx-auto mb-3" />
@@ -693,7 +693,7 @@ export function WalletTrackerView() {
 
       {/* Tab 3: Live Alpha Feed */}
       {activeTab === 'live-feed' && (
-        <div className="flex-1 p-4 overflow-y-auto space-y-2.5">
+        <div className="flex-none space-y-2.5 p-4">
           <div className="flex items-center justify-between text-2xs font-mono text-slate-400 mb-2">
             <span>Streaming transactions from {trackedWallets.length} tracked wallets</span>
             <span className="flex items-center gap-1 text-emerald-400">
@@ -775,7 +775,7 @@ export function WalletTrackerView() {
 
       {/* Tab 4: Copy Trading & Paper Mirroring Simulator */}
       {activeTab === 'copy-trading' && (
-        <div className="flex-1 p-6 overflow-y-auto max-w-4xl mx-auto space-y-6">
+        <div className="flex-none p-6 max-w-4xl mx-auto space-y-6">
           <div className="p-4 rounded-xl border border-sky-500/20 bg-sky-500/5 flex items-start gap-3">
             <Zap className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
             <div>

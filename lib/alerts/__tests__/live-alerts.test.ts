@@ -12,18 +12,17 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
-    expect(body.data.length).toBeGreaterThan(0);
-
-    const first: LiveTradeAlert = body.data[0];
-    expect(first).toHaveProperty('id');
-    expect(first).toHaveProperty('type');
-    expect(first).toHaveProperty('headline');
-    expect(first).toHaveProperty('message');
-    expect(first).toHaveProperty('token');
-    expect(first.token).toHaveProperty('mint');
-    expect(first.token).toHaveProperty('symbol');
-    expect(first.token).toHaveProperty('priceUsd');
-    expect(first.token).toHaveProperty('marketCapUsd');
+    body.data.forEach((alert: LiveTradeAlert) => {
+      expect(alert).toHaveProperty('id');
+      expect(alert).toHaveProperty('type');
+      expect(alert).toHaveProperty('headline');
+      expect(alert).toHaveProperty('message');
+      expect(alert).toHaveProperty('token');
+      expect(alert.token).toHaveProperty('mint');
+      expect(alert.token).toHaveProperty('symbol');
+      expect(alert.token).toHaveProperty('priceUsd');
+      expect(alert.token).toHaveProperty('marketCapUsd');
+    });
   }, 15000);
 
   it('correctly filters live alerts by category', async () => {
@@ -32,6 +31,7 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     const resCalls = await GET(reqCalls);
     const bodyCalls = await resCalls.json();
     expect(bodyCalls.success).toBe(true);
+    expect(bodyCalls.data.length).toBeGreaterThan(0);
     bodyCalls.data.forEach((alert: LiveTradeAlert) => {
       expect(alert.type).toBe('CALL');
       expect(alert.caller).toBeDefined();
@@ -42,6 +42,7 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     const resTrades = await GET(reqTrades);
     const bodyTrades = await resTrades.json();
     expect(bodyTrades.success).toBe(true);
+    expect(bodyTrades.data.length).toBeGreaterThan(0);
     bodyTrades.data.forEach((alert: LiveTradeAlert) => {
       expect(alert.type).toBe('WHALE_TRADE');
       expect(alert.trade).toBeDefined();
@@ -53,6 +54,7 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     const resSmart = await GET(reqSmart);
     const bodySmart = await resSmart.json();
     expect(bodySmart.success).toBe(true);
+    expect(bodySmart.data.length).toBeGreaterThan(0);
     bodySmart.data.forEach((alert: LiveTradeAlert) => {
       expect(alert.type).toBe('SMART_MONEY');
     });
@@ -62,9 +64,30 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     const resLaunchpad = await GET(reqLaunchpad);
     const bodyLaunchpad = await resLaunchpad.json();
     expect(bodyLaunchpad.success).toBe(true);
+    expect(bodyLaunchpad.data.length).toBeGreaterThan(0);
     bodyLaunchpad.data.forEach((alert: LiveTradeAlert) => {
       expect(alert.type).toBe('LAUNCHPAD_MILESTONE');
       expect(alert.milestone).toBeDefined();
+    });
+
+    // 5. Insiders only
+    const reqInsiders = new NextRequest('http://localhost:3000/api/v1/live-alerts?category=insiders');
+    const resInsiders = await GET(reqInsiders);
+    const bodyInsiders = await resInsiders.json();
+    expect(bodyInsiders.success).toBe(true);
+    expect(bodyInsiders.data.length).toBeGreaterThan(0);
+    bodyInsiders.data.forEach((alert: LiveTradeAlert) => {
+      expect(alert.type).toBe('INSIDER_ACTIVITY');
+    });
+
+    // 6. Developers only
+    const reqDevs = new NextRequest('http://localhost:3000/api/v1/live-alerts?category=developers');
+    const resDevs = await GET(reqDevs);
+    const bodyDevs = await resDevs.json();
+    expect(bodyDevs.success).toBe(true);
+    expect(bodyDevs.data.length).toBeGreaterThan(0);
+    bodyDevs.data.forEach((alert: LiveTradeAlert) => {
+      expect(alert.type).toBe('DEV_ACTIVITY');
     });
   }, 15000);
 
@@ -76,7 +99,7 @@ describe('Live Alerts System (Trojan & BullX style)', () => {
     expect(body.success).toBe(true);
 
     body.data.forEach((alert: LiveTradeAlert) => {
-      if (alert.trade) {
+      if (alert.trade && alert.trade.direction !== 'TRANSFER') {
         expect(alert.trade.amountSol).toBeGreaterThanOrEqual(minSol);
       }
     });

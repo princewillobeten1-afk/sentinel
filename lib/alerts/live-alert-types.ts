@@ -2,10 +2,20 @@ export type LiveAlertType =
   | 'CALL'
   | 'WHALE_TRADE'
   | 'SMART_MONEY'
+  | 'INSIDER_ACTIVITY'
+  | 'DEV_ACTIVITY'
   | 'LAUNCHPAD_MILESTONE'
   | 'RISK_ALERT';
 
-export type LiveAlertCategory = 'all' | 'calls' | 'trades' | 'smart_money' | 'launchpad' | 'risks';
+export type LiveAlertCategory =
+  | 'all'
+  | 'calls'
+  | 'trades'
+  | 'smart_money'
+  | 'insiders'
+  | 'developers'
+  | 'launchpad'
+  | 'risks';
 
 export type LiveAlertLaunchpad = 'pump.fun' | 'raydium' | 'moonshot' | 'meteora' | 'unknown';
 
@@ -37,9 +47,10 @@ export interface LiveAlertCaller {
 export interface LiveAlertTrade {
   traderAddress: string;
   traderLabel?: string; // e.g. "Top 10 PnL Whale", "Smart Sniper"
-  direction: 'BUY' | 'SELL';
+  direction: 'BUY' | 'SELL' | 'TRANSFER';
   amountSol: number;
   amountUsd: number;
+  tokenAmount?: number;
   winRate30d?: number;
   pnl30dUsd?: number;
   txSignature?: string;
@@ -88,6 +99,8 @@ export interface LiveAlertStats {
   callsCount: number;
   whaleBuysCount: number;
   smartMoneyCount: number;
+  insiderActivityCount: number;
+  devActivityCount: number;
   milestonesCount: number;
   risksCount: number;
   totalAlertsToday: number;

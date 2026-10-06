@@ -43,6 +43,9 @@ export interface NormalizedRealtimeEvent {
   decimals?: number;
   imageUrl?: string;
   wallet?: string;
+  fromWallet?: string;
+  toWallet?: string;
+  tokenAmount?: number;
   program?: string;
   pool?: string;
   dex?: string;

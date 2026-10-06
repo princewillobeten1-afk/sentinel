@@ -55,6 +55,8 @@ export function LiveAlertsDrawer() {
     { id: 'calls', label: 'KOL Calls', icon: Sparkles, count: stats.callsCount },
     { id: 'trades', label: 'Whale Buys', icon: Coins, count: stats.whaleBuysCount },
     { id: 'smart_money', label: 'Smart Money', icon: Brain, count: stats.smartMoneyCount },
+    { id: 'insiders', label: 'Insiders', icon: Brain, count: stats.insiderActivityCount },
+    { id: 'developers', label: 'Developer Activity', icon: ShieldAlert, count: stats.devActivityCount },
     { id: 'launchpad', label: 'Milestones', icon: Crown, count: stats.milestonesCount },
     { id: 'risks', label: 'Risks', icon: ShieldAlert, count: stats.risksCount },
   ];
@@ -91,10 +93,13 @@ export function LiveAlertsDrawer() {
     if (filter.category === 'calls' && alert.type !== 'CALL') return false;
     if (filter.category === 'trades' && alert.type !== 'WHALE_TRADE') return false;
     if (filter.category === 'smart_money' && alert.type !== 'SMART_MONEY') return false;
+    if (filter.category === 'insiders' && alert.type !== 'INSIDER_ACTIVITY') return false;
+    if (filter.category === 'developers' && alert.type !== 'DEV_ACTIVITY') return false;
     if (filter.category === 'launchpad' && alert.type !== 'LAUNCHPAD_MILESTONE') return false;
     if (filter.category === 'risks' && alert.type !== 'RISK_ALERT') return false;
 
-    if (filter.minSol > 0 && alert.trade && alert.trade.amountSol < filter.minSol) {
+    if (filter.minSol > 0 && alert.trade && alert.trade.direction !== 'TRANSFER'
+      && alert.trade.amountSol < filter.minSol) {
       return false;
     }
 
@@ -255,7 +260,7 @@ export function LiveAlertsDrawer() {
             <Radio className="w-10 h-10 mx-auto text-slate-600 mb-2" />
             <p className="text-xs font-medium text-slate-300">No alerts in this view</p>
             <p className="text-2xs text-slate-500">
-              {localSearch ? `No matches for "${localSearch}"` : 'Waiting for incoming calls and trades...'}
+              {localSearch ? `No matches for "${localSearch}"` : 'Waiting for qualifying on-chain activity...'}
             </p>
           </div>
         ) : (
@@ -263,6 +268,8 @@ export function LiveAlertsDrawer() {
             const isCall = item.type === 'CALL';
             const isWhale = item.type === 'WHALE_TRADE';
             const isSmart = item.type === 'SMART_MONEY';
+            const isInsider = item.type === 'INSIDER_ACTIVITY';
+            const isDeveloper = item.type === 'DEV_ACTIVITY';
 
             return (
               <div
@@ -281,6 +288,10 @@ export function LiveAlertsDrawer() {
                           ? 'bg-purple-950/80 text-purple-300 border-purple-700/50'
                           : isSmart
                           ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/50'
+                          : isInsider
+                          ? 'bg-amber-950/80 text-amber-300 border-amber-700/50'
+                          : isDeveloper
+                          ? 'bg-sky-950/80 text-sky-300 border-sky-700/50'
                           : 'bg-amber-950/80 text-amber-300 border-amber-700/50'
                       )}
                     >

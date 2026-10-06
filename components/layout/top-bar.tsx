@@ -277,17 +277,9 @@ export function TopBar() {
           type="button"
           aria-label="Search tokens and commands"
           onClick={() => setCommandPaletteOpen(true)}
-          className="terminal-search flex h-9 w-9 shrink-0 items-center justify-center xl:justify-between rounded-md border border-sentinel-700/80 bg-sentinel-900 px-2 xl:px-3 text-slate-300 hover:border-sky-400 transition-colors xl:w-52 group"
+          className="terminal-search group flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-sentinel-700/80 bg-sentinel-900 text-slate-300 transition-colors hover:border-sky-400"
         >
-          <div className="flex items-center gap-2 text-xs truncate">
-            <Search className="h-3.5 w-3.5 text-slate-400 group-hover:text-sky-400 transition-colors shrink-0" />
-            <span className="hidden xl:inline text-slate-400 group-hover:text-slate-200 transition-colors truncate">
-              Search tokens...
-            </span>
-          </div>
-          <kbd className="hidden xl:inline-flex items-center gap-1 rounded bg-sentinel-950 px-1.5 py-0.5 text-2xs text-slate-400 font-mono border border-sentinel-800 shrink-0">
-            ⌘K
-          </kbd>
+          <Search className="h-5 w-5 text-slate-400 transition-colors group-hover:text-sky-400" />
         </button>
 
         {/* Right: Quick Trade, Notifications, Wallet Connection, User Profile */}

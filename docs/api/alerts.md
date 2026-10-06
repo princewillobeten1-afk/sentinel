@@ -43,3 +43,16 @@ different concept from this developer-platform alerting and was
 deliberately left untouched this sprint: rewiring it onto the API gateway
 would have changed its response shape and broken the existing UI that
 already consumes it.
+
+## Live on-chain alerts
+
+`GET /api/v1/live-alerts` provides an integrated multi-category real-time stream covering:
+- **Alpha Calls & KOLs (`calls`)**: DEX-extracted and verified community alpha calls with caller win rates and multipliers.
+- **Whale Swaps (`trades`)**: High-conviction on-chain and tracked whale swaps (>= 10 SOL default, configurable via `LIVE_ALERT_WHALE_MIN_SOL` or `minSol` query parameter).
+- **Smart Money Inflow (`smart_money`)**: Tracked sniper clusters and high-win-rate copyable alpha wallets.
+- **Potential Insiders (`insiders`)**: Early-entry accumulation patterns occurring shortly after contract creation or bonding curve launch.
+- **Developer Activity (`developers`)**: Token developer wallet movements, contract deployer buybacks, and LP transfers.
+- **Launchpad Milestones (`launchpad`)**: King of the Hill achievements and verified token migrations.
+- **Security Threats (`risks`)**: Contract and liquidity risk warnings.
+
+Clients can filter using the `category` query parameter (`all`, `calls`, `trades`, `smart_money`, `insiders`, `developers`, `launchpad`, `risks`) and set a `minSol` threshold.

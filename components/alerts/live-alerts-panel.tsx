@@ -47,7 +47,9 @@ export function LiveAlertsPanel() {
     { id: 'calls', label: 'Alpha Calls & KOLs', icon: Sparkles, count: stats.callsCount },
     { id: 'trades', label: 'Whale Swaps', icon: Coins, count: stats.whaleBuysCount },
     { id: 'smart_money', label: 'Smart Money Inflow', icon: Brain, count: stats.smartMoneyCount },
-    { id: 'launchpad', label: 'Pump.fun & KotH', icon: Crown, count: stats.milestonesCount },
+    { id: 'insiders', label: 'Potential Insiders', icon: Brain, count: stats.insiderActivityCount },
+    { id: 'developers', label: 'Developer Activity', icon: ShieldAlert, count: stats.devActivityCount },
+    { id: 'launchpad', label: 'Token Migrations', icon: Crown, count: stats.milestonesCount },
     { id: 'risks', label: 'Security Threats', icon: ShieldAlert, count: stats.risksCount },
   ];
 
@@ -81,10 +83,13 @@ export function LiveAlertsPanel() {
     if (filter.category === 'calls' && alert.type !== 'CALL') return false;
     if (filter.category === 'trades' && alert.type !== 'WHALE_TRADE') return false;
     if (filter.category === 'smart_money' && alert.type !== 'SMART_MONEY') return false;
+    if (filter.category === 'insiders' && alert.type !== 'INSIDER_ACTIVITY') return false;
+    if (filter.category === 'developers' && alert.type !== 'DEV_ACTIVITY') return false;
     if (filter.category === 'launchpad' && alert.type !== 'LAUNCHPAD_MILESTONE') return false;
     if (filter.category === 'risks' && alert.type !== 'RISK_ALERT') return false;
 
-    if (filter.minSol > 0 && alert.trade && alert.trade.amountSol < filter.minSol) {
+    if (filter.minSol > 0 && alert.trade && alert.trade.direction !== 'TRANSFER'
+      && alert.trade.amountSol < filter.minSol) {
       return false;
     }
 
@@ -201,10 +206,10 @@ export function LiveAlertsPanel() {
             onChange={(e) => setMinSolFilter(Number(e.target.value))}
             className="bg-black/60 border border-sentinel-700 rounded-lg px-2 py-1 text-xs font-mono text-slate-300 focus:outline-none focus:border-sky-500"
           >
-            <option value="0">All Sizes</option>
-            <option value="1">&gt; 1 SOL</option>
-            <option value="5">&gt; 5 SOL</option>
-            <option value="10">&gt; 10 SOL</option>
+            <option value="0">All whale buys (&ge;10 SOL)</option>
+            <option value="10">&ge; 10 SOL</option>
+            <option value="25">&ge; 25 SOL</option>
+            <option value="50">&ge; 50 SOL</option>
           </select>
 
           {/* Stream Pause/Play */}
@@ -243,13 +248,15 @@ export function LiveAlertsPanel() {
           <div className="py-20 text-center text-slate-500 rounded-xl border border-dashed border-sentinel-800">
             <Radio className="w-8 h-8 mx-auto text-slate-600 mb-2" />
             <p className="text-sm font-medium text-slate-300">No live alerts matching criteria</p>
-            <p className="text-xs text-slate-500">Listening to Telegram alpha channels, smart wallets, and launchpad feeds...</p>
+            <p className="text-xs text-slate-500">Waiting for qualifying on-chain trades, developer movements, and token migrations.</p>
           </div>
         ) : (
           filtered.map((item) => {
             const isCall = item.type === 'CALL';
             const isWhale = item.type === 'WHALE_TRADE';
             const isSmart = item.type === 'SMART_MONEY';
+            const isInsider = item.type === 'INSIDER_ACTIVITY';
+            const isDeveloper = item.type === 'DEV_ACTIVITY';
             const isKoth = item.type === 'LAUNCHPAD_MILESTONE';
 
             return (
@@ -260,6 +267,8 @@ export function LiveAlertsPanel() {
                   isCall && 'border-cyan-500/25 hover:border-cyan-500/50',
                   isWhale && 'border-purple-500/25 hover:border-purple-500/50',
                   isSmart && 'border-emerald-500/25 hover:border-emerald-500/50',
+                  isInsider && 'border-amber-500/25 hover:border-amber-500/50',
+                  isDeveloper && 'border-sky-500/25 hover:border-sky-500/50',
                   isKoth && 'border-amber-500/25 hover:border-amber-500/50',
                   item.type === 'RISK_ALERT' && 'border-rose-500/25 hover:border-rose-500/50'
                 )}
@@ -285,6 +294,8 @@ export function LiveAlertsPanel() {
                             isCall && 'bg-cyan-950/80 text-cyan-300 border-cyan-700/50',
                             isWhale && 'bg-purple-950/80 text-purple-300 border-purple-700/50',
                             isSmart && 'bg-emerald-950/80 text-emerald-300 border-emerald-700/50',
+                            isInsider && 'bg-amber-950/80 text-amber-300 border-amber-700/50',
+                            isDeveloper && 'bg-sky-950/80 text-sky-300 border-sky-700/50',
                             isKoth && 'bg-amber-950/80 text-amber-300 border-amber-700/50',
                             item.type === 'RISK_ALERT' && 'bg-rose-950/80 text-rose-300 border-rose-700/50'
                           )}
@@ -312,7 +323,10 @@ export function LiveAlertsPanel() {
 
                         {item.trade && (
                           <span className="flex items-center gap-1 text-2xs text-purple-300 font-mono">
-                            • {item.trade.traderLabel || item.trade.traderAddress} (+{item.trade.amountSol} SOL)
+                            • {item.trade.traderLabel || item.trade.traderAddress}
+                            {item.trade.direction === 'TRANSFER'
+                              ? ` (${item.trade.tokenAmount?.toLocaleString() ?? 0} tokens moved)`
+                              : ` (+${item.trade.amountSol} SOL)`}
                           </span>
                         )}
                       </div>

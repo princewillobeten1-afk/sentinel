@@ -11,6 +11,7 @@ import { HotkeyModal } from '@/components/layout/hotkey-modal';
 import { NotificationsDrawer } from '@/components/layout/notifications-drawer';
 import { ExecutionConsole } from '@/components/layout/execution-console';
 import { XTrackerDrawer } from '@/components/x-tracker/x-tracker-drawer';
+import { TrendRadarDrawer } from '@/components/trends/trend-radar-drawer';
 import { TopAlertBanner } from '@/components/alerts/top-alert-banner';
 import { LiveAlertsDrawer } from '@/components/alerts/live-alerts-drawer';
 import { useAppActions, useAppState, AppView } from '@/lib/store';
@@ -81,6 +82,7 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       <NotificationsDrawer />
       <ExecutionConsole />
       <XTrackerDrawer />
+      <TrendRadarDrawer />
       <LiveAlertsDrawer />
       <CopilotPanel />
     </div>

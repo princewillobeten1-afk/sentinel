@@ -196,7 +196,7 @@ export function AlertsView() {
             <Radio className="h-6 w-6 text-emerald-400 animate-pulse" /> Terminal Alerts & Signals
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time alpha calls, people's trades, whale swaps, and Sentinel risk intelligence.
+            On-chain whale buys, potential early insiders, developer-wallet movements, and confirmed token migrations.
           </p>
         </div>
 

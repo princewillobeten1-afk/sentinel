@@ -17,6 +17,9 @@ export interface DecodedBlockchainEvent {
   amount?: number;
   amountSol?: number;
   amountUsd?: number;
+  fromWallet?: string;
+  toWallet?: string;
+  tokenAmount?: number;
   price?: number;
   liquidityUsd?: number;
   chainTimestamp?: number;
@@ -66,7 +69,82 @@ export class BlockchainDecoder {
       events.push(...meteoraEvents);
     }
 
+    events.push(...this.decodeTokenTransfers(tx, signature, slot, chainTimestamp));
     return events;
+  }
+
+  /**
+   * Identifies SPL-token movements from explicit transfer instructions and
+   * owner-level token balance changes. No transfer is inferred from balance
+   * deltas alone, since swaps also change token balances.
+   */
+  private static decodeTokenTransfers(
+    tx: any,
+    signature: string,
+    slot: number | undefined,
+    chainTimestamp: number | undefined,
+  ): DecodedBlockchainEvent[] {
+    const logs: string[] = tx.meta?.logMessages || tx.logs || [];
+    if (!logs.some((line) => /Instruction: Transfer(?:Checked)?$/.test(line.trim()))) return [];
+
+    type TokenBalance = {
+      mint?: string;
+      owner?: string;
+      uiTokenAmount?: { uiAmount?: number | null; amount?: string; decimals?: number };
+    };
+    const pre = (tx.meta?.preTokenBalances ?? []) as TokenBalance[];
+    const post = (tx.meta?.postTokenBalances ?? []) as TokenBalance[];
+    const balance = (entry: TokenBalance): number | null => {
+      const uiAmount = entry.uiTokenAmount?.uiAmount;
+      if (typeof uiAmount === 'number' && Number.isFinite(uiAmount)) return uiAmount;
+      const rawAmount = Number(entry.uiTokenAmount?.amount);
+      const decimals = entry.uiTokenAmount?.decimals;
+      if (!Number.isFinite(rawAmount) || !Number.isInteger(decimals) || decimals! < 0) return null;
+      return rawAmount / 10 ** decimals!;
+    };
+
+    const totals = new Map<string, Map<string, number>>();
+    const addBalances = (entries: TokenBalance[], sign: 1 | -1) => {
+      for (const entry of entries) {
+        if (!entry.mint || !entry.owner) continue;
+        const amount = balance(entry);
+        if (amount === null) continue;
+        const owners = totals.get(entry.mint) ?? new Map<string, number>();
+        owners.set(entry.owner, (owners.get(entry.owner) ?? 0) + amount * sign);
+        totals.set(entry.mint, owners);
+      }
+    };
+    addBalances(pre, -1);
+    addBalances(post, 1);
+
+    const transfers: DecodedBlockchainEvent[] = [];
+    let instructionIndex = 0;
+    for (const [mint, owners] of totals) {
+      const senders = [...owners].filter(([, delta]) => delta < 0).map(([wallet, delta]) => ({ wallet, amount: -delta }));
+      const recipients = [...owners].filter(([, delta]) => delta > 0).map(([wallet, delta]) => ({ wallet, amount: delta }));
+      for (const sender of senders) {
+        for (const recipient of recipients) {
+          if (sender.amount <= 0 || recipient.amount <= 0) continue;
+          const amount = Math.min(sender.amount, recipient.amount);
+          transfers.push({
+            type: EVENT_TYPES.TRANSFER,
+            signature,
+            slot,
+            instructionIndex: instructionIndex++,
+            mint,
+            wallet: sender.wallet,
+            fromWallet: sender.wallet,
+            toWallet: recipient.wallet,
+            tokenAmount: amount,
+            amount,
+            chainTimestamp,
+          });
+          sender.amount -= amount;
+          recipient.amount -= amount;
+        }
+      }
+    }
+    return transfers;
   }
 
   /**
