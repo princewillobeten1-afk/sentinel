@@ -56,14 +56,14 @@ export const viewRouteMap: Record<AppView, string> = {
 
 export const mainNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
+  { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
   { id: 'wallets', label: 'Smart Wallets', icon: Users, hotkey: 'G M' },
-  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
   { id: 'watchlist', label: 'Watchlist', icon: Bookmark, hotkey: 'G W' },
   { id: 'alerts', label: 'Alerts', icon: ShieldAlert, hotkey: 'G A', badgeVariant: 'danger' },
   { id: 'launchpad', label: 'Launchpad', icon: Rocket, hotkey: 'G L' },
-  { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'ai', label: 'AI Co-Pilot', icon: Sparkles, hotkey: 'G AI' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, hotkey: 'G AN' },
 ];

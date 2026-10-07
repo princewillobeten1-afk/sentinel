@@ -37,6 +37,8 @@ import { LiveAlertsTopbarButton } from '@/components/alerts/live-alerts-topbar-b
 
 export const primaryNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
+  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
+  { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },
   { id: 'wallets', label: 'Smart Wallets', icon: Users, hotkey: 'G M' },
   { id: 'portfolio', label: 'Portfolio', icon: PieChart, hotkey: 'G P' },
@@ -45,9 +47,7 @@ export const primaryNavItems: NavItemConfig[] = [
 ];
 
 export const secondaryNavItems: NavItemConfig[] = [
-  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'launchpad', label: 'Launchpad', icon: Rocket, hotkey: 'G L' },
-  { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'ai', label: 'AI Co-Pilot', icon: Sparkles, hotkey: 'G AI' },
   { id: 'analytics', label: 'Analytics', icon: BarChart3, hotkey: 'G AN' },
 ];
@@ -176,7 +176,7 @@ export function TopBar() {
           </Link>
 
           {/* Desktop Horizontal Navigation Bar (Axiom Style) */}
-          <nav aria-label="Main navigation" className="hidden xl:flex items-center gap-1 border-l border-sentinel-800/80 pl-3">
+          <nav aria-label="Main navigation" className="hidden xl:flex items-center gap-0.5 2xl:gap-1 border-l border-sentinel-800/80 pl-2 2xl:pl-2.5 overflow-x-auto no-scrollbar">
             {primaryNavItems.map((item) => {
               const isActive = activeView === item.id;
               const target = viewRouteMap[item.id] || `/${item.id}`;
@@ -194,7 +194,7 @@ export function TopBar() {
                     prefetch={true}
                     aria-current={isActive ? 'page' : undefined}
                     className={clsx(
-                      'flex min-h-9 items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap',
+                      'flex min-h-8 items-center gap-1.5 px-2 2xl:px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0',
                       isActive
                         ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
                         : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] border border-transparent'
@@ -224,7 +224,7 @@ export function TopBar() {
                 <button
                   type="button"
                   className={clsx(
-                    'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 select-none border',
+                    'flex items-center gap-1 px-2 2xl:px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 select-none border shrink-0',
                     isSecondaryActive
                       ? 'bg-sky-500/15 text-sky-300 border-sky-500/30 font-bold'
                       : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] border-transparent'
@@ -272,23 +272,29 @@ export function TopBar() {
           </nav>
         </div>
 
-        {/* Center: Command Palette Trigger Search Box */}
-        <button
-          type="button"
-          aria-label="Search tokens and commands"
-          onClick={() => setCommandPaletteOpen(true)}
-          className="terminal-search group flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-sentinel-700/80 bg-sentinel-900 text-slate-300 transition-colors hover:border-sky-400"
-        >
-          <Search className="h-5 w-5 text-slate-400 transition-colors group-hover:text-sky-400" />
-        </button>
+        {/* Right: Search, Wallet Connection, Quick Trade, Notifications, Alerts, User Profile */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
+          {/* Command Palette Trigger Search Box */}
+          <Tooltip content="Search tokens, pairs, commands (Ctrl + K)">
+            <button
+              type="button"
+              aria-label="Search tokens and commands"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="terminal-search group flex h-8 items-center gap-2 rounded-lg border border-sentinel-700 bg-sentinel-900/90 px-2.5 text-xs text-slate-300 transition-colors hover:border-sky-400 hover:text-white shrink-0"
+            >
+              <Search className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-sky-400 shrink-0" />
+              <span className="hidden 2xl:inline text-slate-400 font-medium">Search</span>
+              <kbd className="hidden 2xl:inline-flex items-center rounded border border-sentinel-700 bg-sentinel-950 px-1 py-0.5 text-3xs font-mono text-slate-500">
+                ⌘K
+              </kbd>
+            </button>
+          </Tooltip>
 
-        {/* Right: Quick Trade, Notifications, Wallet Connection, User Profile */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* Active Wallet Connection Button */}
           {primaryWallet ? (
             <button
               onClick={() => setWalletModalOpen(true)}
-              className="h-8 flex items-center gap-2 rounded-lg border border-sentinel-700 bg-sentinel-900/90 px-2.5 py-1 text-xs text-slate-200 hover:border-sky-400 transition-colors"
+              className="h-8 flex items-center gap-2 rounded-lg border border-sentinel-700 bg-sentinel-900/90 px-2.5 py-1 text-xs text-slate-200 hover:border-sky-400 transition-colors shrink-0"
             >
               <Wallet className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
               <span className="font-mono text-xs text-sky-300 font-semibold">
@@ -304,7 +310,7 @@ export function TopBar() {
               variant="primary"
               size="sm"
               leftIcon={<Wallet className="h-3.5 w-3.5" />}
-              className="h-8 text-xs font-bold"
+              className="h-8 text-xs font-bold shrink-0"
             >
               Connect Wallet
             </Button>
@@ -329,7 +335,7 @@ export function TopBar() {
               variant="outline"
               size="sm"
               leftIcon={<Zap className="h-3.5 w-3.5" />}
-              className="h-8 text-xs hidden xl:inline-flex"
+              className="h-8 text-xs hidden 2xl:inline-flex shrink-0"
             >
               Quick Trade
             </Button>
@@ -339,7 +345,7 @@ export function TopBar() {
             <button
               onClick={() => setNotificationsOpen(true)}
               aria-label={`Notifications${unreadNotifs ? ` (${unreadNotifs} unread)` : ''}`}
-              className="relative h-8 w-8 flex items-center justify-center rounded-lg border border-sentinel-700 bg-sentinel-900/90 text-slate-300 hover:border-sky-400 transition-colors"
+              className="relative h-8 w-8 flex items-center justify-center rounded-lg border border-sentinel-700 bg-sentinel-900/90 text-slate-300 hover:border-sky-400 transition-colors shrink-0"
             >
               <Bell className="h-4 w-4" />
               {unreadNotifs > 0 && (
@@ -351,10 +357,10 @@ export function TopBar() {
           </Tooltip>
 
           {/* Live Trade & Call Alerts Drawer Trigger */}
-          <LiveAlertsTopbarButton variant="button" className="hidden md:flex" />
+          <LiveAlertsTopbarButton variant="button" className="hidden 2xl:flex shrink-0" />
 
           {/* User Profile Popover */}
-          <div className="hidden sm:block"><UserProfilePopover /></div>
+          <div className="hidden sm:block shrink-0"><UserProfilePopover /></div>
         </div>
       </div>
     </header>

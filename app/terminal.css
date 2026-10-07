@@ -434,7 +434,7 @@
 .terminal-header-actions { min-height: 60px; }
 .terminal-header :is(button, a) { border-radius: 6px; }
 .terminal-header nav svg { display: none; }
-.terminal-header-actions > :first-child { flex: 1; }
+.terminal-header-actions > :first-child { flex: 0 1 auto; min-width: 0; }
 .terminal-header [class*='drop-shadow'], .terminal-footer [class*='shadow-'] { filter: none; box-shadow: none; }
 .terminal-shell [data-ui='button'] { transition-property: color, background-color, border-color; }
 .terminal-shell [data-ui='button']:active { transform: none; }
