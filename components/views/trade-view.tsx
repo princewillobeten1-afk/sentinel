@@ -27,6 +27,7 @@ import { AxiomChartTabs } from '@/components/trading/axiom-chart-tabs';
 import { TradingPanel } from '@/components/trading/trading-panel';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { formatTokenPrice, formatCompactUsd, formatAge } from '@/lib/discovery/format';
+import { TokenLoreBadge } from '@/components/lore/token-lore-badge';
 
 // Lazy-load Candlestick Chart for code-splitting and fast initial render
 const DynamicCandlestickChart = dynamic(() => import('@/components/trading/candlestick-chart'), {
@@ -186,8 +187,14 @@ export function TradeView({
   // Direct Sentinel WebSocket listener for sub-second trade / price broadcast
   const wsTopics = useMemo(() => (activeMint ? [`token.price:${activeMint}`, `token.trade:${activeMint}`] : []), [activeMint]);
   useSentinelWS(wsTopics, (data, msg) => {
-    if (msg.topic === `token.price:${activeMint}` && data?.priceUsd !== undefined) {
-      setLivePrice(Number(data.priceUsd));
+    if (
+      (msg.topic === `token.price:${activeMint}` || msg.topic === `token.trade:${activeMint}`) &&
+      data?.priceUsd !== undefined
+    ) {
+      const p = Number(data.priceUsd);
+      if (Number.isFinite(p) && p > 0) {
+        setLivePrice(p);
+      }
     }
   });
 
@@ -253,14 +260,31 @@ export function TradeView({
       (isNativeSol ? marketSummary?.solChange24h : undefined);
     const priceChange24h = rawChange !== undefined && Number.isFinite(Number(rawChange)) ? Number(rawChange) : undefined;
 
-    // Real-time Market Cap
-    const rawMcap =
-      (liveUpdate?.marketCapUsd !== undefined ? Number(liveUpdate.marketCapUsd) : undefined) ??
+    // Base market cap and price from initial snapshot or overview
+    const baseMcap =
       (tokenOverview?.marketCapUsd !== undefined ? Number(tokenOverview.marketCapUsd) : undefined) ??
       (tokenOverview?.marketCap !== undefined ? Number(tokenOverview.marketCap) : undefined) ??
       (selectedToken?.marketCapUsd !== undefined ? Number(selectedToken.marketCapUsd) : undefined) ??
       (isNativeSol ? marketSummary?.totalMarketCapUsd : undefined);
-    const marketCapUsd = typeof rawMcap === 'number' && Number.isFinite(rawMcap) && rawMcap > 0 ? rawMcap : undefined;
+    const basePrice =
+      (tokenOverview?.priceUsd !== undefined ? Number(tokenOverview.priceUsd) : undefined) ??
+      (tokenOverview?.price !== undefined ? Number(tokenOverview.price) : undefined) ??
+      (selectedToken?.priceUsd !== undefined ? Number(selectedToken.priceUsd) : undefined) ??
+      (isNativeSol ? marketSummary?.solPriceUsd : undefined);
+
+    const effectiveSupply =
+      supply ??
+      (baseMcap && basePrice && basePrice > 0 ? baseMcap / basePrice : 1_000_000_000);
+
+    // Real-time Market Cap dynamically scales as market price moves!
+    let marketCapUsd: number | undefined;
+    if (priceUsd !== undefined && Number.isFinite(priceUsd) && priceUsd > 0 && effectiveSupply > 0) {
+      marketCapUsd = priceUsd * effectiveSupply;
+    } else if (liveUpdate?.marketCapUsd !== undefined && Number(liveUpdate.marketCapUsd) > 0) {
+      marketCapUsd = Number(liveUpdate.marketCapUsd);
+    } else {
+      marketCapUsd = typeof baseMcap === 'number' && Number.isFinite(baseMcap) && baseMcap > 0 ? baseMcap : undefined;
+    }
 
     // Real-time Liquidity
     const rawLiq =
@@ -463,6 +487,13 @@ export function TradeView({
                 <span>%</span>
                 <span>{currentToken.devHoldingPct !== undefined ? `${currentToken.devHoldingPct}%` : `${currentToken.poolFeePct || 0.1}%`}</span>
               </span>
+              {/* Token Lore & Narrative */}
+              <TokenLoreBadge
+                mint={activeMint}
+                symbol={currentToken.symbol}
+                name={currentToken.name}
+                marketCapUsd={currentToken.marketCapUsd}
+              />
               {/* Share Button */}
               <button
                 onClick={handleShare}
@@ -637,6 +668,8 @@ export function TradeView({
             symbol={currentToken.mint}
             tokenSymbol={currentToken.symbol}
             supply={currentToken.supply ?? (currentToken.marketCapUsd && currentToken.priceUsd ? currentToken.marketCapUsd / currentToken.priceUsd : undefined)}
+            livePrice={currentToken.priceUsd}
+            liveMarketCap={currentToken.marketCapUsd}
             onTimeframeChange={setTimeframe}
           />
         </div>

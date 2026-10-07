@@ -230,9 +230,20 @@ export function useLiveTokenUpdates(mints: string[], paused = false): {
         // the live field left every card waiting for its first trade before it
         // showed anything.
         const price = Number(data.priceUsd ?? data.lastPriceUsd);
-        if (Number.isFinite(price) && price > 0) entry.priceUsd = price;
+        if (Number.isFinite(price) && price > 0) {
+          if (entry.priceUsd && entry.priceUsd > 0 && entry.marketCapUsd) {
+            const currentMcap = Number(entry.marketCapUsd);
+            if (Number.isFinite(currentMcap) && currentMcap > 0) {
+              entry.marketCapUsd = String(Math.round((currentMcap * (price / entry.priceUsd)) * 100) / 100);
+            }
+          }
+          entry.priceUsd = price;
+        }
         const change = Number(data.change24h);
         if (Number.isFinite(change)) entry.priceChange24h = change;
+        if (data.marketCapUsd !== undefined && data.marketCapUsd !== null && data.marketCapUsd !== '') {
+          entry.marketCapUsd = String(data.marketCapUsd);
+        }
       } else {
         const side = data.side;
         if (side === 'BUY' || side === 'SELL') {
@@ -243,7 +254,18 @@ export function useLiveTokenUpdates(mints: string[], paused = false): {
         if (Number.isFinite(amount) && amount > 0) entry.lastTradeAmountUsd = amount;
         // A trade message carries a price too when the leg could be priced.
         const price = Number(data.priceUsd);
-        if (Number.isFinite(price) && price > 0) entry.priceUsd = price;
+        if (Number.isFinite(price) && price > 0) {
+          if (entry.priceUsd && entry.priceUsd > 0 && entry.marketCapUsd) {
+            const currentMcap = Number(entry.marketCapUsd);
+            if (Number.isFinite(currentMcap) && currentMcap > 0) {
+              entry.marketCapUsd = String(Math.round((currentMcap * (price / entry.priceUsd)) * 100) / 100);
+            }
+          }
+          entry.priceUsd = price;
+        }
+        if (data.marketCapUsd !== undefined && data.marketCapUsd !== null && data.marketCapUsd !== '') {
+          entry.marketCapUsd = String(data.marketCapUsd);
+        }
       }
 
       next.set(parsed.mint, entry);

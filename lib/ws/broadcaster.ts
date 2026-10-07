@@ -81,6 +81,7 @@ class WsBroadcaster {
           amountSol: event.amountSol,
           amountUsd: event.amountUsd,
           priceUsd: event.priceUsd,
+          marketCapUsd: event.marketCapUsd,
           wallet: event.wallet,
           slot: event.slot,
           timestamp: event.timestamp,
@@ -91,6 +92,7 @@ class WsBroadcaster {
           lastTradeSide: event.type,
           lastTradeAmountUsd: event.amountUsd,
           ...(event.priceUsd !== undefined ? { priceUsd: String(event.priceUsd) } : {}),
+          ...(event.marketCapUsd !== undefined ? { marketCapUsd: String(event.marketCapUsd) } : {}),
         }, event.source ?? 'on-chain', 'fresh', new Date(event.timestamp).toISOString());
         // Trades, prices and signals deliberately stay off `feed.discovery:*`.
         //
@@ -109,6 +111,7 @@ class WsBroadcaster {
           type: 'PRICE_UPDATE',
           mint: event.mint,
           priceUsd: event.priceUsd,
+          marketCapUsd: event.marketCapUsd,
           slot: event.slot,
           timestamp: event.timestamp,
           change24h: typeof event.extra?.priceChange24h === 'number' ? event.extra.priceChange24h : undefined,

@@ -60,6 +60,7 @@ export class EventNormalizer {
       price: raw.price,
       priceUsd: raw.price,
       liquidityUsd: raw.liquidityUsd,
+      marketCapUsd: raw.marketCapUsd,
       source,
       commitment,
       latency,

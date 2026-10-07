@@ -10,12 +10,15 @@ import type { OverviewToken } from '@/lib/hooks/use-overview-data';
 import type { TimeWindow } from '@/lib/discovery/types';
 import { formatCompactUsd } from '@/lib/discovery/format';
 
+import type { LiveTokenUpdate } from '@/lib/hooks/use-live-token-updates';
+
 interface AxiomMobileTokenListProps {
   tokens: OverviewToken[];
   marketTab: 'trending' | 'hot' | 'top' | 'watchlist';
   onTabChange: (tab: 'trending' | 'hot' | 'top' | 'watchlist') => void;
   timeWindow?: TimeWindow;
   onTimeWindowChange?: (tw: TimeWindow) => void;
+  liveUpdates?: Map<string, LiveTokenUpdate>;
 }
 
 // Mini Sparkline component with SVG curve matching Photo 1
@@ -80,6 +83,7 @@ export function AxiomMobileTokenList({
   onTabChange,
   timeWindow = '5m',
   onTimeWindowChange,
+  liveUpdates,
 }: AxiomMobileTokenListProps) {
   const router = useRouter();
   const [copiedMint, setCopiedMint] = useState<string | null>(null);
@@ -194,10 +198,20 @@ export function AxiomMobileTokenList({
         ) : (
           tokens.map((token, idx) => {
             const isCopied = copiedMint === token.mint;
-            const priceChange = token.priceChange24h ?? token.priceChange5m ?? 0;
+            const live = liveUpdates?.get(token.mint);
+            const activePrice = live?.priceUsd ?? (token.priceUsd ? Number(token.priceUsd) : undefined);
+            const basePrice = Number(token.priceUsd) || 0;
+            const baseMcap = Number(token.marketCapUsd) || 0;
+            let dynamicMcap = token.marketCapUsd;
+            if (live?.marketCapUsd !== undefined && live.marketCapUsd !== '') {
+              dynamicMcap = live.marketCapUsd;
+            } else if (activePrice && activePrice > 0 && basePrice > 0 && baseMcap > 0) {
+              dynamicMcap = String(Math.round(baseMcap * (activePrice / basePrice)));
+            }
+            const priceChange = live?.priceChange24h ?? token.priceChange24h ?? token.priceChange5m ?? 0;
             const isPositive = priceChange >= 0;
             const formattedChange = `${isPositive ? '+' : ''}${priceChange.toFixed(priceChange >= 10 ? 1 : 2)}%`;
-            const mcapFormatted = `$${formatCompactUsd(token.marketCapUsd)}`;
+            const mcapFormatted = `$${formatCompactUsd(dynamicMcap)}`;
             const rawAge = token.ageFormatted || (token.ageMinutes != null ? `${token.ageMinutes}m` : '—');
             const ageDisplay = rawAge.replace(/\s*ago$/i, '').trim();
 

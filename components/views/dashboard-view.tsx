@@ -156,6 +156,7 @@ export function DashboardView() {
           onTabChange={setMarketTab}
           timeWindow={timeWindow}
           onTimeWindowChange={setTimeWindow}
+          liveUpdates={live.updates}
         />
       </div>
 

@@ -247,4 +247,56 @@ describe('useLiveTokenUpdates', () => {
     expect(result.current.status).toBe('unavailable');
     vi.useRealTimers();
   });
+
+  it('updates and scales marketCapUsd dynamically on incoming trade and price events', async () => {
+    const { result } = renderHook(() => useLiveTokenUpdates(['mintA']));
+    act(() => {
+      socket().emitOpen();
+      socket().emitServer({ type: 'welcome', connectionId: 'c1' });
+      // 1. Initial token.card snapshot
+      socket().emitServer({
+        type: 'event',
+        topic: 'token.card:mintA',
+        data: {
+          changedFields: { priceUsd: '0.01', marketCapUsd: '10000000' },
+          observedAt: new Date().toISOString(),
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.updates.get('mintA')?.priceUsd).toBe(0.01));
+    expect(result.current.updates.get('mintA')?.marketCapUsd).toBe('10000000');
+
+    // 2. Incoming trade on token.trade with +50% price
+    act(() => {
+      socket().emitServer({
+        type: 'event',
+        topic: 'token.trade:mintA',
+        data: {
+          side: 'BUY',
+          priceUsd: 0.015,
+          amountUsd: 500,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.updates.get('mintA')?.priceUsd).toBe(0.015));
+    // Dynamic market cap scaled by (0.015 / 0.01) = 1.5x => 15,000,000
+    expect(result.current.updates.get('mintA')?.marketCapUsd).toBe('15000000');
+
+    // 3. Incoming price tick on token.price with explicit marketCapUsd
+    act(() => {
+      socket().emitServer({
+        type: 'event',
+        topic: 'token.price:mintA',
+        data: {
+          priceUsd: 0.02,
+          marketCapUsd: '20000000',
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.updates.get('mintA')?.priceUsd).toBe(0.02));
+    expect(result.current.updates.get('mintA')?.marketCapUsd).toBe('20000000');
+  });
 });

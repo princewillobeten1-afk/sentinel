@@ -22,6 +22,7 @@ export interface DecodedBlockchainEvent {
   tokenAmount?: number;
   price?: number;
   liquidityUsd?: number;
+  marketCapUsd?: number;
   chainTimestamp?: number;
 }
 

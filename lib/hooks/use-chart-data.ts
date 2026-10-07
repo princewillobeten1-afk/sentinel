@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSentinelWS, type SentinelWSEventHandler } from './use-sentinel-ws';
-import { isSolanaMint, mergeChartCandles, parseChartFrame, parseChartSnapshot,
+import { CHART_SECONDS, isSolanaMint, mergeChartCandles, parseChartFrame, parseChartSnapshot,
   type ChartCandle, type ChartSnapshot, type ChartTimeframe } from '@/lib/market/chart-model';
 import { parsePublicChartFrame, parsePublicChartSnapshot } from '@/lib/market/public-chart';
 
@@ -33,7 +33,12 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
   const receive = useRef<SentinelWSEventHandler>(() => {});
   const refresh = useRef<() => void>(() => {});
   const older = useRef<() => void>(() => {});
-  const { isConnected } = useSentinelWS(valid ? `token.ohlcv:${address}:${timeframe}` : [],
+  const chartTopics = valid ? [
+    `token.ohlcv:${address}:${timeframe}`,
+    `token.price:${address}`,
+    `token.trade:${address}`,
+  ] : [];
+  const { isConnected } = useSentinelWS(chartTopics,
     (data, message) => receive.current(data, message));
   const sequence = useRef(0);
   useEffect(() => { sequence.current = 0; if (isConnected) refresh.current(); }, [isConnected]);
@@ -56,43 +61,117 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
 
     receive.current = (value, message) => {
       const frame = parsePublicChartFrame(value) ?? parseChartFrame(value);
-      if (!active || !frame || frame.address !== address || frame.timeframe !== timeframe
-        || frame.observedAt > Date.now() + 5_000 || frame.candle.time > Date.now() / 1000 + 5
-        || (message.sequence !== undefined && message.sequence <= sequence.current)) return;
-      const frameIdentity = frame.market === 'pool' ? `pool:${frame.poolAddress}` : 'token-aggregate';
-      // Keep a healthy aggregate Birdeye series primary. A QuickNode
-      // pool trade belongs only on a pool-specific fallback series.
-      if (seriesIdentity && seriesIdentity !== frameIdentity) {
-        if (frame.source !== 'birdeye-price-ws' || !seriesIdentity.startsWith('pool:')) return;
-        rows = []; revisions.clear(); more = false; lastPush = 0; lastStream = 0; streamBucket = 0;
-        seriesIdentity = 'token-aggregate';
-        setHasMore(false); setStreamAt(0); setLiveSource(null); setObservedAt(0); setSource(null);
-        queueMicrotask(() => { if (active) refresh.current(); });
+      if (frame) {
+        if (!active || frame.address !== address || frame.timeframe !== timeframe
+          || frame.observedAt > Date.now() + 5_000 || frame.candle.time > Date.now() / 1000 + 5
+          || (message.sequence !== undefined && message.sequence <= sequence.current)) return;
+        const frameIdentity = frame.market === 'pool' ? `pool:${frame.poolAddress}` : 'token-aggregate';
+        // Keep a healthy aggregate Birdeye series primary. A QuickNode
+        // pool trade belongs only on a pool-specific fallback series.
+        if (seriesIdentity && seriesIdentity !== frameIdentity) {
+          if (frame.source !== 'birdeye-price-ws' || !seriesIdentity.startsWith('pool:')) return;
+          rows = []; revisions.clear(); more = false; lastPush = 0; lastStream = 0; streamBucket = 0;
+          seriesIdentity = 'token-aggregate';
+          setHasMore(false); setStreamAt(0); setLiveSource(null); setObservedAt(0); setSource(null);
+          queueMicrotask(() => { if (active) refresh.current(); });
+        }
+        seriesIdentity ??= frameIdentity;
+        if (frame.market === 'pool') { setMarket('pool'); setPoolAddress(frame.poolAddress ?? null); }
+        if (frame.source === 'birdeye-price-ws' || frame.source === 'birdeye-ohlcv-rest') setSource('birdeye-ohlcv-v3');
+        else if (frame.source === 'geckoterminal-pool-rest') setSource('geckoterminal-pool-ohlcv');
+        else if (frame.market === 'pool') setSource('geckoterminal-pool-ohlcv');
+        else if (frame.market === 'token-aggregate') setSource('birdeye-ohlcv-v3');
+        if (message.sequence !== undefined) sequence.current = message.sequence;
+        if (frame.observedAt < (revisions.get(frame.candle.time) ?? 0)) return;
+        revisions.set(frame.candle.time, frame.observedAt);
+        const existing = rows.find(c => c.time === frame.candle.time);
+        const candle = frame.source === 'quicknode-pool-ws' && existing
+          ? { ...frame.candle, open: existing.open, high: Math.max(existing.high, frame.candle.high),
+            low: Math.min(existing.low, frame.candle.low) }
+          : frame.candle;
+        rows = mergeChartCandles(rows, [candle]);
+        lastPush = frame.observedAt;
+        if (frame.source === 'birdeye-price-ws' || frame.source === 'quicknode-pool-ws') {
+          lastStream = frame.observedAt;
+          if (frame.source === 'birdeye-price-ws') lastBirdeyeStream = frame.observedAt;
+          streamBucket = frame.candle.time;
+          setLiveSource(frame.source === 'quicknode-pool-ws' ? 'quicknode' : 'birdeye');
+        }
+        setCandles(rows); setObservedAt(current => Math.max(current, frame.observedAt)); setStreamAt(lastStream);
+        setError(null); setLoading(false);
+        return;
       }
-      seriesIdentity ??= frameIdentity;
-      if (frame.market === 'pool') { setMarket('pool'); setPoolAddress(frame.poolAddress ?? null); }
-      if (frame.source === 'birdeye-price-ws' || frame.source === 'birdeye-ohlcv-rest') setSource('birdeye-ohlcv-v3');
-      else if (frame.source === 'geckoterminal-pool-rest') setSource('geckoterminal-pool-ohlcv');
-      else if (frame.market === 'pool') setSource('geckoterminal-pool-ohlcv');
-      else if (frame.market === 'token-aggregate') setSource('birdeye-ohlcv-v3');
-      if (message.sequence !== undefined) sequence.current = message.sequence;
-      if (frame.observedAt < (revisions.get(frame.candle.time) ?? 0)) return;
-      revisions.set(frame.candle.time, frame.observedAt);
-      const existing = rows.find(c => c.time === frame.candle.time);
-      const candle = frame.source === 'quicknode-pool-ws' && existing
-        ? { ...frame.candle, open: existing.open, high: Math.max(existing.high, frame.candle.high),
-          low: Math.min(existing.low, frame.candle.low) }
-        : frame.candle;
-      rows = mergeChartCandles(rows, [candle]);
-      lastPush = frame.observedAt;
-      if (frame.source === 'birdeye-price-ws' || frame.source === 'quicknode-pool-ws') {
-        lastStream = frame.observedAt;
-        if (frame.source === 'birdeye-price-ws') lastBirdeyeStream = frame.observedAt;
-        streamBucket = frame.candle.time;
-        setLiveSource(frame.source === 'quicknode-pool-ws' ? 'quicknode' : 'birdeye');
+
+      if (!active) return;
+      const rawPrice = value?.priceUsd ?? value?.lastPriceUsd;
+      const livePrice = typeof rawPrice === 'number' && Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : null;
+      if (livePrice === null) return;
+
+      const tradeTimeMs = Number(value?.timestamp) || Date.now();
+      const secondsPerBar = CHART_SECONDS[timeframe] || 60;
+      const barTime = Math.floor(Math.floor(tradeTimeMs / 1000) / secondsPerBar) * secondsPerBar;
+
+      const tradeVol = typeof value?.amount === 'number' && Number.isFinite(value.amount) && value.amount > 0 ? value.amount : null;
+      const tradeVolUsd = typeof value?.amountUsd === 'number' && Number.isFinite(value.amountUsd) && value.amountUsd > 0 ? value.amountUsd : null;
+
+      if (rows.length === 0) {
+        rows = [{
+          time: barTime,
+          open: livePrice,
+          high: livePrice,
+          low: livePrice,
+          close: livePrice,
+          volume: tradeVol,
+          volumeUsd: tradeVolUsd,
+        }];
+      } else {
+        const last = rows[rows.length - 1];
+        if (last.time === barTime) {
+          const updated: ChartCandle = {
+            ...last,
+            high: Math.max(last.high, livePrice),
+            low: Math.min(last.low, livePrice),
+            close: livePrice,
+            volume: tradeVol !== null ? (last.volume ?? 0) + tradeVol : last.volume,
+            volumeUsd: tradeVolUsd !== null ? (last.volumeUsd ?? 0) + tradeVolUsd : last.volumeUsd,
+          };
+          rows = [...rows.slice(0, -1), updated];
+        } else if (barTime > last.time) {
+          const nextBar: ChartCandle = {
+            time: barTime,
+            open: last.close,
+            high: Math.max(last.close, livePrice),
+            low: Math.min(last.close, livePrice),
+            close: livePrice,
+            volume: tradeVol,
+            volumeUsd: tradeVolUsd,
+          };
+          rows = [...rows, nextBar];
+        } else {
+          const idx = rows.findIndex(c => c.time === barTime);
+          if (idx >= 0) {
+            const existing = rows[idx];
+            const revised: ChartCandle = {
+              ...existing,
+              high: Math.max(existing.high, livePrice),
+              low: Math.min(existing.low, livePrice),
+              close: livePrice,
+              volume: tradeVol !== null ? (existing.volume ?? 0) + tradeVol : existing.volume,
+              volumeUsd: tradeVolUsd !== null ? (existing.volumeUsd ?? 0) + tradeVolUsd : existing.volumeUsd,
+            };
+            rows = [...rows.slice(0, idx), revised, ...rows.slice(idx + 1)];
+          }
+        }
       }
-      setCandles(rows); setObservedAt(current => Math.max(current, frame.observedAt)); setStreamAt(lastStream);
-      setError(null); setLoading(false);
+
+      const nowMs = Date.now();
+      lastPush = nowMs;
+      lastStream = nowMs;
+      setCandles(rows);
+      setObservedAt(current => Math.max(current, nowMs));
+      setStreamAt(lastStream);
+      setError(null);
+      setLoading(false);
     };
 
     async function request(before?: number) {

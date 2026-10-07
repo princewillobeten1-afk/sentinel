@@ -424,28 +424,45 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
   const isWatchlisted = checkWatchlisted(token.mint);
   const marketCapUsd = useMemo(() => {
+    const basePrice = Number(token.priceUsd) || 0;
+    const baseMcap = Number(token.marketCapUsd) || 0;
+    const activePrice = Number(activePriceUsd);
+
     if (live?.marketCapUsd !== undefined && live.marketCapUsd !== '') {
-      return live.marketCapUsd;
+      const liveMcap = Number(live.marketCapUsd);
+      if (Number.isFinite(liveMcap) && liveMcap > 0) {
+        if (Number.isFinite(activePrice) && activePrice > 0) {
+          const refPrice = live.priceUsd ? Number(live.priceUsd) : basePrice;
+          if (refPrice > 0 && Math.abs(activePrice - refPrice) > 1e-12) {
+            return String(Math.round((liveMcap * (activePrice / refPrice)) * 100) / 100);
+          }
+        }
+        return live.marketCapUsd;
+      }
     }
     if (liveMarket?.marketCapUsd !== undefined && liveMarket.marketCapUsd !== '') {
-      return liveMarket.marketCapUsd;
+      const lm = Number(liveMarket.marketCapUsd);
+      if (Number.isFinite(lm) && lm > 0) {
+        if (Number.isFinite(activePrice) && activePrice > 0 && liveMarket.priceUsd && liveMarket.priceUsd > 0) {
+          if (Math.abs(activePrice - liveMarket.priceUsd) > 1e-12) {
+            return String(Math.round((lm * (activePrice / liveMarket.priceUsd)) * 100) / 100);
+          }
+        }
+        return liveMarket.marketCapUsd;
+      }
     }
-    const tokenPriceNum = Number(token.priceUsd);
-    const tokenMcapNum = Number(token.marketCapUsd);
-    const activePriceNum = Number(activePriceUsd);
+
     if (
-      Number.isFinite(activePriceNum) &&
-      activePriceNum > 0 &&
-      Number.isFinite(tokenPriceNum) &&
-      tokenPriceNum > 0 &&
-      Number.isFinite(tokenMcapNum) &&
-      tokenMcapNum > 0
+      Number.isFinite(activePrice) &&
+      activePrice > 0 &&
+      basePrice > 0 &&
+      baseMcap > 0
     ) {
-      const updatedMcap = tokenMcapNum * (activePriceNum / tokenPriceNum);
-      return String(Math.round(updatedMcap));
+      const updatedMcap = baseMcap * (activePrice / basePrice);
+      return String(Math.round(updatedMcap * 100) / 100);
     }
     return token.marketCapUsd;
-  }, [live?.marketCapUsd, liveMarket?.marketCapUsd, activePriceUsd, token.priceUsd, token.marketCapUsd]);
+  }, [live?.marketCapUsd, live?.priceUsd, liveMarket?.marketCapUsd, liveMarket?.priceUsd, activePriceUsd, token.priceUsd, token.marketCapUsd]);
 
   const liquidityUsd = live?.liquidityUsd ?? liveMarket?.liquidityUsd ?? token.liquidityUsd;
 

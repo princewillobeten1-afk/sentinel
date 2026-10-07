@@ -7,6 +7,7 @@ import { BarChart3, ChevronDown, RefreshCw, ZoomIn, ZoomOut, RotateCcw } from 'l
 import { useChartData } from '@/lib/hooks/use-chart-data';
 import { CHART_TIMEFRAMES, isChartTimeframe, chartPrecision, type ChartTimeframe } from '@/lib/market/chart-model';
 import { barsAfterLoaded, sameKLineData, toKLineDataList, type PriceDisplayUnit } from '@/lib/market/kline-adapter';
+import { TokenLoreBadge } from '@/components/lore/token-lore-badge';
 
 export interface CandlestickChartProps {
   /** Token mint, retained under the original prop name for compatibility. */
@@ -22,6 +23,8 @@ export interface CandlestickChartProps {
   initialDisplayUnit?: PriceDisplayUnit;
   displayUnit?: PriceDisplayUnit;
   onDisplayUnitChange?: (unit: PriceDisplayUnit) => void;
+  livePrice?: number;
+  liveMarketCap?: number;
 }
 
 const control = 'min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8 rounded-md px-2 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400 disabled:opacity-50';
@@ -198,7 +201,7 @@ export function CandlestickChart(props: CandlestickChartProps) {
 
 function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = false, height, supply,
   displayUnit = 'mcap', setDisplayUnit,
-  selectedTimeframe: timeframe, selectTimeframe }: CandlestickChartProps & {
+  selectedTimeframe: timeframe, selectTimeframe, livePrice, liveMarketCap }: CandlestickChartProps & {
     displayUnit: PriceDisplayUnit; setDisplayUnit: (unit: PriceDisplayUnit) => void;
     selectedTimeframe: ChartTimeframe; selectTimeframe: (tf: ChartTimeframe) => void;
   }) {
@@ -480,6 +483,13 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
             <span className={`h-1.5 w-1.5 rounded-full ${visualStatus === 'Live' ? 'bg-emerald-400' : visualStatus === 'Delayed' || visualStatus === 'Unavailable' ? 'bg-amber-400' : 'bg-sky-400'}`} />
             {visualStatus}
           </span>
+          {symbol && (
+            <TokenLoreBadge
+              mint={symbol}
+              symbol={tokenSymbol}
+              marketCapUsd={liveMarketCap}
+            />
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Price / MCAP Unit Switcher */}
@@ -535,18 +545,29 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
               {hoveredIndex >= 0 ? (displayUnit === 'mcap' ? 'Selected MCAP' : 'Selected close') : (displayUnit === 'mcap' ? 'Market Cap' : 'Last close')}
             </div>
-            <div className="flex items-baseline gap-2.5">
-              <span className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
-                {active ? formatDisplayValue(active.close * (displayUnit === 'mcap' ? tokenSupply : 1), displayUnit) : '—'}
-              </span>
-              {active && (
-                <span className="font-mono text-xs text-slate-400 font-medium">
-                  {displayUnit === 'mcap'
-                    ? `Price: ${formatDisplayValue(active.close, 'price')}`
-                    : `MCAP: ${formatDisplayValue(active.close * tokenSupply, 'mcap')}`}
-                </span>
-              )}
-            </div>
+            {(() => {
+              const headerPrice = (hoveredIndex < 0 && livePrice !== undefined && livePrice > 0)
+                ? livePrice
+                : (active ? active.close : undefined);
+              const headerMcap = (hoveredIndex < 0 && liveMarketCap !== undefined && liveMarketCap > 0)
+                ? liveMarketCap
+                : (headerPrice !== undefined ? headerPrice * tokenSupply : undefined);
+              const headerMainValue = displayUnit === 'mcap' ? headerMcap : headerPrice;
+              return (
+                <div className="flex items-baseline gap-2.5">
+                  <span className="font-numeric text-xl font-semibold tracking-tight text-slate-100 sm:text-2xl">
+                    {headerMainValue !== undefined ? formatDisplayValue(headerMainValue, displayUnit) : '—'}
+                  </span>
+                  {headerPrice !== undefined && (
+                    <span className="font-mono text-xs text-slate-400 font-medium">
+                      {displayUnit === 'mcap'
+                        ? `Price: ${formatDisplayValue(headerPrice, 'price')}`
+                        : `MCAP: ${formatDisplayValue(headerMcap ?? (headerPrice * tokenSupply), 'mcap')}`}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           {change !== null && <span className={`mb-1 rounded px-1.5 py-0.5 font-numeric text-xs font-semibold ${change >= 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}
             title={`Change from the previous ${timeframe} candle`}>{change >= 0 ? '+' : ''}{change.toFixed(2)}%</span>}

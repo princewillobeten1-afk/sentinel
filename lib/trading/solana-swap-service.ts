@@ -7,6 +7,8 @@ import { getSwapQuote, getSwapTransaction, SOL_MINT } from './jupiter-quote';
 import { broadcastSignedTransaction, checkTradingRpc, tradingRpc } from './solana-rpc';
 import { validatePreparedSwap, validateSignedSwap } from './signed-swap';
 import { swapRepository, type PreparedSwap } from './swap-repository';
+import { eventBus } from '@/lib/server/events/event-bus';
+import { EventNormalizer } from '@/lib/server/events/normalizer';
 
 export interface PrepareSwapInput {
   quoteId: string; inputToken: string; outputToken: string; amount: string; slippage: number;
@@ -115,6 +117,33 @@ export async function submitSolanaSwap(userId: string, input: { preparedId: stri
     const sent = await broadcastSignedTransaction(input.signedTransaction, signature);
     swap.reason = sent.reason ?? null;
     await swapRepository.update(userId, swap.id, 'pending', swap.reason);
+
+    // Immediately dispatch trade event to eventBus so live price & market cap reflect across WebSocket
+    try {
+      const isBuy = swap.quote.inputMint === SOL_MINT;
+      const mint = isBuy ? swap.quote.outputMint : swap.quote.inputMint;
+      const tokenAmount = Number(isBuy ? swap.quote.outputAmount : swap.quote.inputAmount);
+      const solAmount = Number(isBuy ? swap.quote.inputAmount : swap.quote.outputAmount);
+      const impliedRate = Number(swap.quote.rate);
+      const priceUsd = Number.isFinite(impliedRate) && impliedRate > 0 ? (isBuy ? impliedRate : (1 / impliedRate)) : undefined;
+
+      eventBus.publish({
+        id: EventNormalizer.createEventId(signature, isBuy ? 'BUY' : 'SELL', mint),
+        sequence: EventNormalizer.getSequence() + 1,
+        type: isBuy ? 'BUY' : 'SELL',
+        timestamp: Date.now(),
+        signature,
+        mint,
+        wallet: swap.wallet,
+        amount: tokenAmount,
+        amountSol: solAmount,
+        priceUsd,
+        tokenAmount,
+        source: 'helius_ws',
+      });
+    } catch {
+      // Background event dispatch should never fail swap return
+    }
   } catch (error) {
     // Only chain status can finalize failure: a concurrent/retried request may already have landed.
     swap.reason = 'Submission outcome is uncertain. Track the saved signature; do not create another trade.';

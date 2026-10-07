@@ -206,3 +206,29 @@ it('successfully parses public sanitized chart snapshots from production gateway
   expect(result.current.poolAddress).toBe('9XMSmioJTLTtVtkHSfVrTMjycKDajhgJhooSVjHJzwAr');
 });
 
+it('immediately updates the active candle on incoming token.price and token.trade ticks', async () => {
+  const fetcher = vi.fn().mockResolvedValue(response(snapshot([candle(time, 3)])));
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useChartData(mint, 'solana', '15m'));
+  await act(async () => {});
+  expect(result.current.candles[0].close).toBe(3);
+
+  // Incoming trade tick on token.trade
+  await act(async () => {
+    ws.handler({ priceUsd: 3.5, amount: 50, amountUsd: 175, timestamp: (time + 10) * 1000 }, { sequence: 1 });
+  });
+
+  expect(result.current.candles[0].close).toBe(3.5);
+  expect(result.current.candles[0].high).toBe(9); // previous high was 9, 3.5 <= 9
+  expect(result.current.candles[0].volume).toBe(150); // 100 + 50
+  expect(result.current.candles[0].volumeUsd).toBe(475); // 300 + 175
+
+  // Incoming higher price tick on token.price
+  await act(async () => {
+    ws.handler({ priceUsd: 12, timestamp: (time + 20) * 1000 }, { sequence: 2 });
+  });
+
+  expect(result.current.candles[0].close).toBe(12);
+  expect(result.current.candles[0].high).toBe(12); // new high
+});
+

@@ -145,4 +145,19 @@ describe('token card ordering', () => {
       expect(getTokenCardPatch('MintA')?.fieldSources?.sniperPercentage).toBe('ownership');
     } finally { read.mockRestore(); }
   });
+
+  it('automatically scales marketCapUsd when priceUsd is updated without marketCapUsd', () => {
+    updateTokenCard('MintDynamic', { priceUsd: '10', marketCapUsd: '1000000' }, 'init', 'fresh', '2026-09-11T10:00:00.000Z');
+    expect(getTokenCardPatch('MintDynamic')?.changedFields.marketCapUsd).toBe('1000000');
+
+    // Price doubles to 20
+    updateTokenCard('MintDynamic', { priceUsd: '20' }, 'trade', 'fresh', '2026-09-11T10:01:00.000Z');
+    expect(getTokenCardPatch('MintDynamic')?.changedFields.priceUsd).toBe('20');
+    expect(getTokenCardPatch('MintDynamic')?.changedFields.marketCapUsd).toBe('2000000');
+
+    // Price drops to 5 (-75% from 20)
+    updateTokenCard('MintDynamic', { priceUsd: '5' }, 'trade', 'fresh', '2026-09-11T10:02:00.000Z');
+    expect(getTokenCardPatch('MintDynamic')?.changedFields.priceUsd).toBe('5');
+    expect(getTokenCardPatch('MintDynamic')?.changedFields.marketCapUsd).toBe('500000');
+  });
 });

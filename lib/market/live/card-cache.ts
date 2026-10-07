@@ -134,9 +134,18 @@ function applyTokenCard(
   restoredFieldSources?: TokenCardPatch['fieldSources'],
 ): TokenCardPatch {
   const previous = state.rows.get(mint);
+  const fields = { ...changedFields };
+  if (fields.priceUsd && !fields.marketCapUsd && previous?.changedFields.priceUsd && previous?.changedFields.marketCapUsd) {
+    const prevPrice = parseFloat(previous.changedFields.priceUsd);
+    const prevMcap = parseFloat(previous.changedFields.marketCapUsd);
+    const newPrice = parseFloat(fields.priceUsd);
+    if (Number.isFinite(prevPrice) && prevPrice > 0 && Number.isFinite(prevMcap) && prevMcap > 0 && Number.isFinite(newPrice) && newPrice > 0) {
+      fields.marketCapUsd = String(Math.round((prevMcap * (newPrice / prevPrice)) * 100) / 100);
+    }
+  }
   const observedMs = Date.parse(observedAt);
   const fieldTimes = state.fieldObservedAt.get(mint) ?? new Map<string, number>();
-  const accepted = Object.entries(changedFields).filter(([field, value]) => {
+  const accepted = Object.entries(fields).filter(([field, value]) => {
     if (value === undefined) return false;
     // A failed or queued REST lookup must not erase a measured live ownership
     // observation. Its expiry turns it stale without inventing an audit gap.
