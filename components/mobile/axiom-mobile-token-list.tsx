@@ -14,8 +14,8 @@ import type { LiveTokenUpdate } from '@/lib/hooks/use-live-token-updates';
 
 interface AxiomMobileTokenListProps {
   tokens: OverviewToken[];
-  marketTab: 'trending' | 'hot' | 'top' | 'watchlist';
-  onTabChange: (tab: 'trending' | 'hot' | 'top' | 'watchlist') => void;
+  marketTab: 'trending' | 'hot' | 'watchlist';
+  onTabChange: (tab: 'trending' | 'hot' | 'watchlist') => void;
   timeWindow?: TimeWindow;
   onTimeWindowChange?: (tw: TimeWindow) => void;
   liveUpdates?: Map<string, LiveTokenUpdate>;
@@ -99,7 +99,6 @@ export function AxiomMobileTokenList({
 
   const navTabs = [
     { id: 'trending', label: 'Trending' },
-    { id: 'top', label: 'Top Tokens' },
     { id: 'hot', label: 'Hot Tokens' },
     { id: 'watchlist', label: 'Watchlist' },
   ] as const;

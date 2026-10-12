@@ -37,6 +37,18 @@
     text-wrap: balance;
   }
 
+  /* Landing page typography: Space Grotesk for headings, Inter for everything else */
+  .landing-page h1,
+  .landing-page h2,
+  .landing-page h3,
+  .landing-page h4,
+  .landing-page h5,
+  .landing-page h6,
+  .font-heading {
+    font-family: var(--font-space-grotesk), var(--font-inter), sans-serif;
+    letter-spacing: -0.02em;
+  }
+
   :focus-visible {
     outline: 2px solid theme('colors.sky.400');
     outline-offset: 2px;

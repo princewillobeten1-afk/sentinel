@@ -18,18 +18,18 @@ export function TrendRadarButton({ variant = 'footer', className }: TrendRadarBu
       <button
         onClick={toggleOpen}
         className={clsx(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded text-2xs font-mono font-bold transition border select-none',
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-2xs font-mono font-bold transition-all border select-none',
           isOpen
-            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
-            : 'bg-sentinel-900/90 text-slate-300 border-sentinel-700 hover:text-white hover:border-slate-500',
+            ? 'bg-warn-500/20 text-warn-300 border-warn-500/50 shadow-glow-amber'
+            : 'bg-neutral-900/90 text-neutral-300 border-neutral-750 hover:text-white hover:border-neutral-600',
           className
         )}
         title="Toggle Meme Trends & Viral Newsfeed"
       >
-        <Flame className="w-3.5 h-3.5 text-amber-400" />
+        <Flame className="w-3.5 h-3.5 text-warn-400" />
         <span>Trends</span>
         {unreadCount > 0 && !isOpen && (
-          <span className="ml-0.5 px-1 py-0.2 rounded-full bg-amber-500 text-black text-[9px] font-bold">
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-warn-500 text-neutral-950 text-3xs font-black">
             {unreadCount}
           </span>
         )}
@@ -42,46 +42,46 @@ export function TrendRadarButton({ variant = 'footer', className }: TrendRadarBu
       <button
         onClick={toggleOpen}
         className={clsx(
-          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition border select-none',
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border select-none',
           isOpen
-            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
-            : 'bg-sentinel-900/80 text-slate-300 border-sentinel-800 hover:text-white hover:border-sentinel-700 hover:bg-sentinel-800/60',
+            ? 'bg-warn-500/20 text-warn-300 border-warn-500/50 shadow-glow-amber'
+            : 'bg-neutral-900/80 text-neutral-300 border-neutral-800 hover:text-white hover:border-neutral-700 hover:bg-neutral-850',
           className
         )}
         title="Toggle Meme Trends & Viral Newsfeed"
       >
-        <Flame className="w-3.5 h-3.5 text-amber-400" />
+        <Flame className="w-3.5 h-3.5 text-warn-400" />
         <span className="font-mono text-2xs font-bold uppercase tracking-wider">Trends</span>
         {unreadCount > 0 && !isOpen && (
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-warn-400 animate-pulse" />
         )}
       </button>
     );
   }
 
-  // Footer status bar style (matching X Social button)
+  // Footer status bar style
   return (
     <button
       onClick={toggleOpen}
       className={clsx(
-        'flex items-center gap-1.5 px-2.5 py-0.5 rounded-md transition border text-2xs font-mono font-bold select-none',
+        'flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all border text-2xs font-mono font-bold select-none',
         isOpen
-          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
-          : 'bg-sentinel-900/90 text-slate-300 border-sentinel-800 hover:text-white hover:border-sentinel-700 hover:bg-white/[0.03]',
+          ? 'bg-warn-500/20 text-warn-300 border-warn-500/50 shadow-glow-amber'
+          : 'bg-neutral-900/90 text-neutral-300 border-neutral-800 hover:text-white hover:border-neutral-700 hover:bg-neutral-850',
         className
       )}
       title="Open Viral Meme Trends & Newsfeed"
     >
-      <Flame className="w-3 h-3 text-amber-400" />
+      <Flame className="w-3 h-3 text-warn-400" />
       <span>Trends</span>
       <span
         className={clsx(
           'w-1.5 h-1.5 rounded-full',
-          isOpen ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+          isOpen ? 'bg-warn-400 animate-pulse' : 'bg-buy-400'
         )}
       />
       {unreadCount > 0 && !isOpen && (
-        <span className="px-1 py-0.2 rounded-full bg-amber-500 text-black text-[9px] font-bold">
+        <span className="px-1.5 py-0.2 rounded-full bg-warn-500 text-neutral-950 text-3xs font-black">
           {unreadCount}
         </span>
       )}

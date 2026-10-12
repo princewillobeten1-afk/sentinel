@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category') || undefined;
     const search = searchParams.get('search') || undefined;
 
-    const result = TrendsService.getTrendingNarratives({
+    const result = await TrendsService.getLiveTrendingNarratives({
       source,
       category,
       search,

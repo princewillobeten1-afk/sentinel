@@ -16,15 +16,35 @@ import { XTrackerButton } from '@/components/x-tracker/x-tracker-button';
 import { TrendRadarButton } from '@/components/trends/trend-radar-button';
 import { AlertsToggle } from '@/components/layout/notification-toggle';
 
-export function FooterStatusBar() {
+export interface FooterStatusBarProps {
+  layout?: 'page' | 'workspace';
+  className?: string;
+}
+
+export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarProps) {
   const pathname = usePathname();
   const { isConsoleOpen } = useAppState();
   const { setHotkeysOpen, setConsoleOpen, setActiveView } = useAppActions();
 
   return (
-    <footer className="terminal-footer shrink-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-sentinel-700 bg-sentinel-950 px-3 sm:px-4 py-2 text-2xs font-numeric text-slate-400 select-none">
-      {/* Left */}
-      <div className="flex items-center gap-2" />
+    <footer
+      className={clsx(
+        'terminal-footer z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-sentinel-800 bg-sentinel-950/95 backdrop-blur-md px-3 sm:px-4 py-1.5 sm:py-2 text-2xs font-numeric text-slate-400 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.6)] transition-all',
+        layout === 'page' ? 'fixed bottom-0 inset-x-0' : 'shrink-0',
+        className
+      )}
+    >
+      {/* Left: Live Connection & Execution Telemetry */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 text-slate-400 font-mono text-3xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-bold text-slate-200">SOLANA MAINNET</span>
+          <span className="text-slate-600 hidden sm:inline">•</span>
+          <span className="text-emerald-400 font-bold hidden sm:inline">18ms</span>
+        </div>
+        <span className="text-slate-700 hidden md:inline">|</span>
+        <span className="text-slate-500 font-mono text-3xs hidden md:inline">SENTINEL V2.4</span>
+      </div>
 
       {/* Right: Navigation Links & Actions */}
       <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">

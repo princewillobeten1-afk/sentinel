@@ -117,7 +117,7 @@ async function capturedTrades(mint: string): Promise<{ trades: TapeTrade[]; from
 
 export async function GET(
   request: Request,
-  { params }: { params: { chain: string; address: string } },
+  { params }: { params: Promise<{ chain: string; address: string }> },
 ) {
   try {
     const url = new URL(request.url);
@@ -130,7 +130,7 @@ export async function GET(
     const pagesRaw = Number(url.searchParams.get('pages') ?? (wallet ? 6 : 2));
     const pages = Number.isFinite(pagesRaw) ? pagesRaw : 2;
 
-    const { address } = params;
+    const { address, chain } = await params;
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }
@@ -154,7 +154,7 @@ export async function GET(
 
     return jsonResponse({
       mint: address,
-      chain: params.chain,
+      chain,
       count: trades.length,
       source: history.source,
       coverage:

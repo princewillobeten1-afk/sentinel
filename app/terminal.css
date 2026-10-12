@@ -43,10 +43,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   gap: 1px;
-  background: theme('colors.slate.800');
-  border: 1px solid theme('colors.slate.800');
-  border-radius: 8px;
-  overflow: hidden;
+  background: #171717;
+  border: 1px solid #171717;
+  border-radius: 12px;
+  overflow: visible;
 }
 .terminal-token-card [class*='shadow-'] { box-shadow: none; }
 .terminal-token-card .font-numeric { font-variant-numeric: tabular-nums; }
@@ -462,14 +462,14 @@
 .discovery-toolbar { padding-bottom: 12px; border-bottom-color: theme('colors.slate.800'); }
 .discovery-column { border-color: theme('colors.slate.800'); border-radius: 8px; }
 
-/* Dense market-board treatment for Overview's Trending, Hot, Top, and Watchlist feeds. */
+/* Dense market-board treatment for Overview's Trending, Hot, and Watchlist feeds. */
 .overview-token-grid .discovery-token-card {
   border: 0;
-  background: #090d16;
+  background: #050505;
   transition: background-color 150ms ease;
 }
 .overview-token-grid .discovery-token-card:hover {
-  background: #0f172a;
+  background: #0f0f0f;
 }
 .discovery-card-footer { align-items: center; }
 

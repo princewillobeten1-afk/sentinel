@@ -11,8 +11,38 @@
 const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 function num(value: unknown): number | null {
-  const n = typeof value === 'string' ? Number(value) : value;
+  const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+export interface LiveTradeFields {
+  side: 'BUY' | 'SELL' | null;
+  amountUsd: number | null;
+  amountSol: number | null;
+  amountTokens: number | null;
+  priceUsd: number | null;
+}
+
+/** Maps the event-bus payload without treating its token `amount` as USD. */
+export function mapLiveTradeFields(data: {
+  side?: unknown;
+  type?: unknown;
+  amountUsd?: unknown;
+  usdVolume?: unknown;
+  volumeUsd?: unknown;
+  amountSol?: unknown;
+  amount?: unknown;
+  tokenAmount?: unknown;
+  priceUsd?: unknown;
+}): LiveTradeFields {
+  const rawSide = String(data.side ?? data.type ?? '').toUpperCase();
+  return {
+    side: rawSide === 'BUY' || rawSide === 'SELL' ? rawSide : null,
+    amountUsd: num(data.amountUsd ?? data.usdVolume ?? data.volumeUsd),
+    amountSol: num(data.amountSol),
+    amountTokens: num(data.tokenAmount ?? data.amount),
+    priceUsd: num(data.priceUsd),
+  };
 }
 
 export interface HistoricalTrade {

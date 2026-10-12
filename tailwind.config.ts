@@ -149,6 +149,9 @@ const config: Config = {
           border: neutral[700],
         },
         accent,
+        buy,
+        sell,
+        warn,
         trading: {
           buy: buy[600],
           'buy-hover': buy[500],
@@ -224,6 +227,9 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         inter: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        heading: ['var(--font-space-grotesk)', 'var(--font-inter)', 'sans-serif'],
+        display: ['var(--font-space-grotesk)', 'sans-serif'],
+        space: ['var(--font-space-grotesk)', 'sans-serif'],
         mono: ['var(--font-jetbrains)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
 

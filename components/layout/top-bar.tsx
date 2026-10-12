@@ -22,6 +22,7 @@ import {
   BarChart3,
   ChevronDown,
   Users,
+  Flame,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -176,46 +177,48 @@ export function TopBar() {
           </Link>
 
           {/* Desktop Horizontal Navigation Bar (Axiom Style) */}
-          <nav aria-label="Main navigation" className="hidden xl:flex items-center gap-0.5 2xl:gap-1 border-l border-sentinel-800/80 pl-2 2xl:pl-2.5 overflow-x-auto no-scrollbar">
-            {primaryNavItems.map((item) => {
-              const isActive = activeView === item.id;
-              const target = viewRouteMap[item.id] || `/${item.id}`;
-              const badge =
-                item.id === 'alerts'
-                  ? threatCount && threatCount > 0
-                    ? String(threatCount)
-                    : undefined
-                  : item.badge;
+          <div className="hidden xl:flex items-center gap-0.5 2xl:gap-1 border-l border-sentinel-800/80 pl-2 2xl:pl-2.5 shrink-0">
+            <nav aria-label="Main navigation" className="flex items-center gap-0.5 2xl:gap-1">
+              {primaryNavItems.map((item) => {
+                const isActive = activeView === item.id;
+                const target = viewRouteMap[item.id] || `/${item.id}`;
+                const badge =
+                  item.id === 'alerts'
+                    ? threatCount && threatCount > 0
+                      ? String(threatCount)
+                      : undefined
+                    : item.badge;
 
-              return (
-                <Tooltip key={item.id} content={`${item.label} (${item.hotkey || ''})`}>
-                  <Link
-                    href={target}
-                    prefetch={true}
-                    aria-current={isActive ? 'page' : undefined}
-                    className={clsx(
-                      'flex min-h-8 items-center gap-1.5 px-2 2xl:px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0',
-                      isActive
-                        ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] border border-transparent'
-                    )}
-                  >
-                    <item.icon
+                return (
+                  <Tooltip key={item.id} content={`${item.label} (${item.hotkey || ''})`}>
+                    <Link
+                      href={target}
+                      prefetch={true}
+                      aria-current={isActive ? 'page' : undefined}
                       className={clsx(
-                        'h-3.5 w-3.5 shrink-0 transition-colors',
-                        isActive ? 'text-sky-400 drop-shadow-[0_0_6px_rgba(0,240,255,0.5)]' : 'text-slate-400 group-hover:text-slate-200'
+                        'flex min-h-8 items-center gap-1.5 px-2 2xl:px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0',
+                        isActive
+                          ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+                          : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] border border-transparent'
                       )}
-                    />
-                    <span>{item.label}</span>
-                    {badge && (
-                      <Badge variant={item.badgeVariant || 'neutral'} size="sm">
-                        {badge}
-                      </Badge>
-                    )}
-                  </Link>
-                </Tooltip>
-              );
-            })}
+                    >
+                      <item.icon
+                        className={clsx(
+                          'h-3.5 w-3.5 shrink-0 transition-colors',
+                          isActive ? 'text-sky-400 drop-shadow-[0_0_6px_rgba(0,240,255,0.5)]' : 'text-slate-400 group-hover:text-slate-200'
+                        )}
+                      />
+                      <span>{item.label}</span>
+                      {badge && (
+                        <Badge variant={item.badgeVariant || 'neutral'} size="sm">
+                          {badge}
+                        </Badge>
+                      )}
+                    </Link>
+                  </Tooltip>
+                );
+              })}
+            </nav>
 
             {/* "More" Secondary Navigation Popover */}
             <Popover
@@ -223,6 +226,7 @@ export function TopBar() {
               trigger={
                 <button
                   type="button"
+                  id="topbar-more-button"
                   className={clsx(
                     'flex items-center gap-1 px-2 2xl:px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150 select-none border shrink-0',
                     isSecondaryActive
@@ -231,13 +235,13 @@ export function TopBar() {
                   )}
                 >
                   <span>More</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform duration-200 [[aria-expanded=true]_&]:rotate-180" />
                 </button>
               }
             >
-              <div className="w-48 py-1 space-y-0.5">
-                <p className="px-2.5 py-1 label-micro whitespace-nowrap text-slate-400">
-                  Terminal & Preferences
+              <div className="w-52 py-1 space-y-0.5">
+                <p className="px-2.5 py-1 text-2xs uppercase tracking-wider font-mono text-slate-400 font-semibold border-b border-sentinel-800/80 mb-1">
+                  Terminal & Tools
                 </p>
                 {secondaryNavItems.map((item) => {
                   const isActive = activeView === item.id;
@@ -269,7 +273,7 @@ export function TopBar() {
                 })}
               </div>
             </Popover>
-          </nav>
+          </div>
         </div>
 
         {/* Right: Search, Wallet Connection, Quick Trade, Notifications, Alerts, User Profile */}

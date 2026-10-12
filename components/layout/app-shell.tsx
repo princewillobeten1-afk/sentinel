@@ -62,14 +62,16 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
         tabIndex={-1}
         className={clsx(
           'terminal-main flex-1 min-w-0 w-full mx-auto',
-          fitted ? 'flex min-h-0 overflow-hidden p-2 md:p-3' : 'p-3 sm:p-4 max-w-[1920px]'
+          fitted
+            ? 'flex min-h-0 overflow-hidden p-2 md:p-3'
+            : 'p-3 sm:p-4 pb-14 sm:pb-16 max-w-[1920px]'
         )}
       >
         {children}
       </main>
 
-      {/* Bottom Terminal Status Bar */}
-      <FooterStatusBar />
+      {/* Bottom Terminal Status Bar - Fixed at bottom on page mode, pinned just like the header */}
+      <FooterStatusBar layout={fitted ? 'workspace' : 'page'} />
 
       {/* Mobile Navigation Drawer for Handheld / Smaller Viewports */}
       <MobileNavDrawer />

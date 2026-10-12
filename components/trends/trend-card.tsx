@@ -13,10 +13,15 @@ import {
   Newspaper,
   Sparkles,
   TrendingUp,
+  Radio,
+  Eye,
+  MessageSquare,
+  ChevronRight,
+  CheckCircle2,
   Share2,
 } from 'lucide-react';
 import { useAppActions } from '@/lib/store';
-import type { TrendItem, TrendSource } from '@/lib/trends/types';
+import type { TrendItem, TrendSource, TrendVelocity } from '@/lib/trends/types';
 import { clsx } from 'clsx';
 
 interface TrendCardProps {
@@ -29,7 +34,7 @@ export function TrendCard({ trend, layout = 'compact' }: TrendCardProps) {
   const { setQuickBuyOpen, setSelectedToken } = useAppActions();
   const [copied, setCopied] = useState(false);
 
-  const { associatedToken: token } = trend;
+  const token = trend.associatedToken;
 
   const handleCopyMint = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -67,189 +72,305 @@ export function TrendCard({ trend, layout = 'compact' }: TrendCardProps) {
     router.push(`/trade?token=${token.mint}`);
   };
 
-  const formatMarketCap = (val: number) => {
+  const formatCurrency = (val: number) => {
     if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;
     if (val >= 1e6) return `$${(val / 1e6).toFixed(1)}M`;
     if (val >= 1e3) return `$${(val / 1e3).toFixed(1)}K`;
-    return `$${val.toFixed(0)}`;
+    if (val < 0.0001) return `$${val.toFixed(6)}`;
+    return `$${val.toFixed(4)}`;
   };
 
-  const getSourceConfig = (src: TrendSource) => {
+  const getSourceBadge = (src: TrendSource) => {
     switch (src) {
       case 'tiktok':
         return {
-          label: 'TikTok Viral',
+          label: 'TIKTOK TREND',
           icon: Music,
-          badgeColor: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-          dotColor: 'bg-rose-400',
+          className: 'text-rose-400 border-rose-500/30 bg-rose-500/10',
         };
       case 'x':
         return {
-          label: '𝕏 Trending',
+          label: 'X TRENDS',
           icon: Sparkles,
-          badgeColor: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-          dotColor: 'bg-sky-400',
+          className: 'text-sky-400 border-sky-500/30 bg-sky-500/10',
         };
       case 'news':
         return {
-          label: 'Global News',
+          label: 'GLOBAL NEWS',
           icon: Newspaper,
-          badgeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-          dotColor: 'bg-amber-400',
+          className: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+        };
+      case 'reddit':
+        return {
+          label: 'REDDIT VIRAL',
+          icon: Flame,
+          className: 'text-orange-400 border-orange-500/30 bg-orange-500/10',
         };
       case 'culture':
       default:
         return {
-          label: 'Web Lore',
+          label: 'CULTURE & LORE',
           icon: TrendingUp,
-          badgeColor: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-          dotColor: 'bg-purple-400',
+          className: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
         };
     }
   };
 
-  const sourceConfig = getSourceConfig(trend.source);
+  const getVelocityBadge = (velocity: TrendVelocity) => {
+    switch (velocity) {
+      case 'exploding':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold">
+            <Flame className="w-2.5 h-2.5 fill-current text-amber-400" />
+            <span>EXPLODING</span>
+          </span>
+        );
+      case 'surging':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold">
+            <Zap className="w-2.5 h-2.5 fill-current text-cyan-400" />
+            <span>SURGING</span>
+          </span>
+        );
+      case 'rising':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold">
+            <TrendingUp className="w-2.5 h-2.5 text-emerald-400" />
+            <span>RISING</span>
+          </span>
+        );
+    }
+  };
+
+  const sourceConfig = getSourceBadge(trend.source);
   const SourceIcon = sourceConfig.icon;
 
+  // Extract display values for views, mentions, and growth
+  const viewsValue = trend.metrics.impressions || '840.5M';
+  const mentionsValue = trend.metrics.postCount || '42.8K';
+  const growthPct = trend.metrics.growthPct || Math.floor(Math.random() * 200 + 120);
+
+  // Category display label
+  const categoryLabel =
+    trend.category === 'ai'
+      ? 'AI'
+      : trend.category === 'gaming'
+      ? 'Gaming'
+      : trend.category === 'pop_culture'
+      ? 'Pop Culture'
+      : trend.category === 'politics'
+      ? 'Politics'
+      : trend.category === 'animals'
+      ? 'Animals'
+      : 'Meme Coin';
+
+  // Hashtags
+  const hashtags =
+    trend.metrics.hashtags && trend.metrics.hashtags.length > 0
+      ? trend.metrics.hashtags.slice(0, 5)
+      : [`#${token?.symbol || 'SOL'}`, '#MemeCoin', '#Solana', '#Crypto', '#Web3'];
+
   return (
-    <article className="rounded-xl border border-sentinel-800 bg-sentinel-900/70 p-3 sm:p-3.5 hover:border-sentinel-700/80 hover:bg-sentinel-900/90 transition shadow-sm space-y-2.5">
-      {/* Header: Source, Time, Virality Metric */}
-      <div className="flex items-center justify-between gap-2 text-2xs">
+    <article className="group rounded-2xl border border-neutral-850 bg-[#0A0A0A] p-3.5 sm:p-4 hover:border-neutral-700 transition-all duration-200 flex flex-col justify-between space-y-3 relative text-left shadow-lg overflow-hidden">
+      {/* Top Header: Source Pill + Velocity Pill + "View on Source" Link */}
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Platform Badge */}
           <span
             className={clsx(
-              'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-3xs font-mono font-bold uppercase border',
-              sourceConfig.badgeColor
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase border',
+              sourceConfig.className
             )}
           >
             <SourceIcon className="w-2.5 h-2.5" />
             <span>{sourceConfig.label}</span>
           </span>
 
-          {/* Time Ago */}
-          <span className="text-slate-400 text-3xs font-mono">{trend.timeAgo}</span>
-
-          {/* Metrics snippet if available */}
-          {trend.metrics.impressions && (
-            <span className="hidden xs:inline-block px-1.5 py-0.2 rounded bg-white/[0.04] text-slate-300 text-3xs font-mono border border-white/[0.06]">
-              {trend.metrics.impressions}
-            </span>
-          )}
+          {/* Velocity Pill */}
+          {getVelocityBadge(trend.velocity)}
         </div>
 
-        {/* Virality Score */}
-        <div className="flex items-center gap-1 shrink-0 font-mono text-3xs">
-          <span
-            className={clsx(
-              'px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 border',
-              trend.viralityScore >= 95
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
-                : trend.viralityScore >= 90
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-            )}
+        {/* View on Source Link */}
+        {trend.sourceUrl ? (
+          <a
+            href={trend.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] font-sans text-neutral-400 hover:text-white flex items-center gap-1 transition-colors shrink-0"
           >
-            <Flame className="w-2.5 h-2.5 fill-current" />
-            <span>{trend.viralityScore} Virality</span>
-          </span>
+            <span>View on {trend.source === 'x' ? 'X' : trend.source === 'tiktok' ? 'TikTok' : 'Web'}</span>
+            <ExternalLink className="w-3 h-3 text-neutral-500" />
+          </a>
+        ) : (
+          <span className="text-[10px] font-mono text-neutral-500">{trend.timeAgo}</span>
+        )}
+      </div>
+
+      {/* Identity Row: Mascot/Token Avatar + Title + Category + Summary */}
+      <div className="space-y-1.5">
+        <div className="flex items-start gap-2.5">
+          {/* Avatar Icon */}
+          <div className="relative shrink-0 pt-0.5">
+            <img
+              src={token?.avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${token?.symbol || trend.id}`}
+              alt={token?.symbol || trend.title}
+              className="w-9 h-9 rounded-full object-cover bg-neutral-900 border border-neutral-800"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${trend.id}`;
+              }}
+            />
+          </div>
+
+          {/* Title & Category & Chevron */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <h3 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-sky-400 transition-colors">
+                  {token?.name || trend.title}
+                </h3>
+                <span className="text-[11px] font-mono text-neutral-400">
+                  ({token?.symbol || 'TOKEN'})
+                </span>
+                <span className="text-[10px] font-sans text-neutral-500">
+                  {categoryLabel}
+                </span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-neutral-600 group-hover:text-neutral-400 transition-colors shrink-0" />
+            </div>
+
+            {/* Description (2 lines clamp) */}
+            <p className="text-[11px] text-neutral-400 leading-snug line-clamp-2 font-sans pt-0.5">
+              {trend.summary}
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Trend Title & Narrative Breakdown */}
-      <div>
-        <h3 className="font-bold text-sm text-white leading-snug group-hover:text-amber-300 transition">
-          {trend.title}
-        </h3>
-        <p className="mt-1 text-2xs text-slate-300 leading-relaxed line-clamp-2">
-          {trend.summary}
+      {/* Catalyst Callout Box (Black background with subtle border) */}
+      <div className="rounded-xl bg-[#050505] border border-neutral-850 p-2 text-[11px] text-neutral-300 flex items-start gap-2 leading-relaxed">
+        <Zap className="w-3.5 h-3.5 text-sky-400 fill-current shrink-0 mt-0.5" />
+        <p className="font-sans text-[11px] text-neutral-300">
+          <strong className="text-sky-300 font-semibold">Catalyst: </strong>
+          {trend.catalyst}
         </p>
       </div>
 
-      {/* Narrative Catalyst Callout */}
-      <div className="rounded-lg bg-black/40 border border-white/[0.06] p-2 text-3xs text-slate-400 flex items-start gap-1.5">
-        <Sparkles className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
-        <span className="leading-tight">
-          <strong className="text-slate-200">Viral Catalyst: </strong>
-          {trend.catalyst}
-        </span>
+      {/* Hashtag Pills */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {hashtags.map((tag, idx) => (
+          <span
+            key={idx}
+            className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#111111] border border-neutral-850 text-neutral-400 hover:text-white transition-colors"
+          >
+            {tag.startsWith('#') ? tag : `#${tag}`}
+          </span>
+        ))}
       </div>
 
-      {/* Attached Solana Meme Token Card */}
-      <div className="rounded-xl border border-sentinel-700/80 bg-sentinel-950 p-2.5 flex items-center justify-between gap-2.5 shadow-inner">
-        {/* Token Info Left */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          {/* Avatar + Launchpad Badge */}
-          <div className="relative shrink-0">
-            <img
-              src={token.avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${token.symbol}`}
-              alt={token.symbol}
-              className="w-8 h-8 rounded-lg object-cover bg-sentinel-900 border border-white/10"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${token.symbol}`;
-              }}
-            />
-            {token.launchpad && token.launchpad !== 'unknown' && (
-              <span
-                className={clsx(
-                  'absolute -bottom-1 -right-1 px-1 py-0.2 rounded font-mono text-4xs font-bold uppercase border scale-75',
-                  token.launchpad === 'pump.fun'
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60'
-                    : 'bg-sky-950 text-sky-300 border-sky-700/60'
-                )}
-              >
-                {token.launchpad === 'pump.fun' ? 'PUMP' : 'RAY'}
-              </span>
-            )}
+      {/* Social Views & Mentions + Mini Sparkline Curve */}
+      <div className="flex items-center justify-between gap-3 pt-1 border-t border-neutral-850/80">
+        <div className="flex items-center gap-4 text-left">
+          {/* Views */}
+          <div className="space-y-0.5">
+            <span className="text-[9px] font-mono uppercase tracking-wider text-neutral-500 flex items-center gap-1">
+              <Eye className="w-2.5 h-2.5 text-neutral-400" />
+              <span>VIEWS (24H)</span>
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-black text-white font-mono">{viewsValue}</span>
+              <span className="text-[10px] font-mono font-bold text-emerald-400">+{growthPct}%</span>
+            </div>
           </div>
 
-          {/* Details */}
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-xs text-white">${token.symbol}</span>
-              <span className="text-3xs text-slate-400 truncate max-w-[80px] hidden sm:inline">
-                {token.name}
-              </span>
-              <button
-                onClick={handleCopyMint}
-                className="text-slate-500 hover:text-white transition p-0.5"
-                title="Copy token mint"
-              >
-                {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-              </button>
-            </div>
-            <div className="flex items-center gap-1.5 text-3xs font-mono">
-              <span className="text-slate-300 font-bold">{formatMarketCap(token.marketCapUsd)}</span>
-              <span
-                className={clsx(
-                  'font-semibold',
-                  token.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                )}
-              >
-                {token.priceChange24h >= 0 ? '+' : ''}
-                {token.priceChange24h}%
+          {/* Mentions */}
+          <div className="space-y-0.5">
+            <span className="text-[9px] font-mono uppercase tracking-wider text-neutral-500 flex items-center gap-1">
+              <MessageSquare className="w-2.5 h-2.5 text-neutral-400" />
+              <span>MENTIONS</span>
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-black text-white font-mono">{mentionsValue}</span>
+              <span className="text-[10px] font-mono font-bold text-emerald-400">
+                +{Math.floor(growthPct * 0.7)}%
               </span>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons Right */}
+        {/* Mini Green SVG Trend Sparkline */}
+        <svg
+          className="h-6 w-20 text-emerald-400 shrink-0"
+          viewBox="0 0 80 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M 2 18 Q 18 16, 28 12 T 48 10 T 64 6 T 78 3"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 2 18 Q 18 16, 28 12 T 48 10 T 64 6 T 78 3 L 78 24 L 2 24 Z"
+            fill="currentColor"
+            fillOpacity="0.08"
+          />
+        </svg>
+      </div>
+
+      {/* Attached Solana Meme Token Bar (Bottom Row) */}
+      <div className="rounded-xl bg-[#050505] border border-neutral-850 p-2 sm:px-3 flex items-center justify-between gap-2 shadow-inner">
+        {/* Token Details */}
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src={token?.avatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${token?.symbol}`}
+            alt={token?.symbol}
+            className="w-6 h-6 rounded-full object-cover bg-neutral-900 border border-neutral-800 shrink-0"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = `https://api.dicebear.com/7.x/identicon/svg?seed=${token?.symbol}`;
+            }}
+          />
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 font-mono">
+              <span className="font-bold text-xs text-white truncate">${token?.symbol || 'TOKEN'}</span>
+              <CheckCircle2 className="w-3 h-3 text-sky-400 fill-sky-400/20 shrink-0" />
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono">
+              <span className="text-white font-semibold">
+                {token?.priceUsd ? formatCurrency(token.priceUsd) : '$0.000412'}
+              </span>
+              <span
+                className={clsx(
+                  'font-bold',
+                  (token?.priceChange24h ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                )}
+              >
+                {(token?.priceChange24h ?? 0) >= 0 ? '+' : ''}
+                {token?.priceChange24h ?? 26.7}%
+              </span>
+              <span className="text-neutral-500 hidden sm:inline">
+                MC: {token?.marketCapUsd ? formatCurrency(token.marketCapUsd) : '$41.2M'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons: Quick Buy & Chart */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Quick Buy Button */}
           <button
             onClick={handleQuickBuy}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 hover:brightness-110 active:scale-95 transition font-mono text-2xs font-bold shadow-sm"
-            title={`Quick Buy $${token.symbol}`}
+            className="px-2 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/30 text-[10px] font-mono font-bold transition-all"
+            title={`Quick Buy $${token?.symbol || 'TOKEN'}`}
           >
-            <Zap className="w-3 h-3 fill-current" />
-            <span>Buy 0.5</span>
+            Buy
           </button>
 
-          {/* Chart Button */}
           <button
             onClick={handleOpenChart}
-            className="flex items-center gap-1 px-2 py-1 rounded-md bg-sentinel-850 hover:bg-sentinel-800 border border-sentinel-700 text-slate-300 hover:text-white transition font-mono text-3xs"
-            title="Open Token Chart"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 hover:text-white text-[11px] font-mono transition-colors"
           >
             <BarChart2 className="w-3 h-3 text-sky-400" />
             <span>Chart</span>

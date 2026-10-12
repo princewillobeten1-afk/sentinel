@@ -15,6 +15,7 @@ export type AppView =
   | 'dashboard'
   | 'trade'
   | 'discover'
+  | 'trends'
   | 'portfolio'
   | 'watchlist'
   | 'alerts'

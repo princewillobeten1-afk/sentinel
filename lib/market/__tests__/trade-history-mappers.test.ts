@@ -1,10 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { mapJupiterTx, mapGeckoTrade } from '../trade-history-mappers';
+import { mapJupiterTx, mapGeckoTrade, mapLiveTradeFields } from '../trade-history-mappers';
 
 const MINT = '836mp67zxnxobaV4gSe1yNeSJHgTJB2AhxJvff5pump';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SIG = '56zmo13cNLt1DobS8oP9KbpkAVSDfuiNYS9TjtXGcwCg9CVzYhc2SmxmEkoj46x4RJCz1Fd884s63c3Vf4knBhnu';
+
+describe('mapLiveTradeFields', () => {
+  it('keeps the event token amount separate from its USD notional', () => {
+    expect(mapLiveTradeFields({
+      type: 'SELL',
+      amount: 105839.8,
+      amountSol: 12.5,
+      amountUsd: 247.36,
+      priceUsd: 0.002338,
+    })).toEqual({
+      side: 'SELL',
+      amountUsd: 247.36,
+      amountSol: 12.5,
+      amountTokens: 105839.8,
+      priceUsd: 0.002338,
+    });
+  });
+
+  it('normalizes buy/sell values and does not invent a direction', () => {
+    expect(mapLiveTradeFields({ side: 'buy' }).side).toBe('BUY');
+    expect(mapLiveTradeFields({ type: 'sell' }).side).toBe('SELL');
+    expect(mapLiveTradeFields({ type: 'swap' }).side).toBeNull();
+  });
+});
 
 describe('mapJupiterTx', () => {
   // Shape taken from a live datapi.jup.ag response.

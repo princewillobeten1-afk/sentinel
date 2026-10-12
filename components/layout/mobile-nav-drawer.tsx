@@ -17,8 +17,9 @@ import {
   Settings,
   HelpCircle,
   Zap,
-  CheckCircle2,
+  Flame,
   Users,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAppState, useAppActions, AppView } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ export const viewRouteMap: Record<AppView, string> = {
   dashboard: '/terminal',
   trade: '/trade',
   discover: '/discover',
+  trends: '/trends',
   portfolio: '/portfolio',
   watchlist: '/watchlist',
   wallets: '/wallets',
@@ -56,6 +58,7 @@ export const viewRouteMap: Record<AppView, string> = {
 
 export const mainNavItems: NavItemConfig[] = [
   { id: 'discover', label: 'Discover', icon: Compass, hotkey: 'G D' },
+  { id: 'trends', label: 'Trends Radar', icon: Flame, hotkey: 'G TR', badge: 'HOT', badgeVariant: 'warning' },
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, hotkey: 'G H' },
   { id: 'intelligence', label: 'Intelligence', icon: BrainCircuit, hotkey: 'G I' },
   { id: 'trade', label: 'Trade', icon: Wallet, hotkey: 'G T' },

@@ -81,7 +81,7 @@ export function PopoverContent({ children, className, align = 'end', ...props }:
     <div
       id={context.id}
       className={clsx(
-        'absolute z-50 mt-2 max-w-[calc(100vw-2rem)] max-h-[70dvh] overflow-y-auto rounded-lg border border-sentinel-700 bg-sentinel-900 p-3 shadow-xl text-xs',
+        'absolute top-full z-50 mt-2 max-w-[calc(100vw-2rem)] max-h-[70dvh] overflow-y-auto rounded-lg border border-sentinel-700 bg-sentinel-900 p-2.5 shadow-2xl backdrop-blur-md text-xs',
         align === 'end' || align === 'right' ? 'right-0' : 'left-0',
         className
       )}

@@ -56,6 +56,7 @@ export const viewRouteMap: Record<AppView, string> = {
   developers: '/developers',
   settings: '/settings',
   help: '/help',
+  trends: '/trends',
 };
 
 export const mainNavItems: NavItemConfig[] = [

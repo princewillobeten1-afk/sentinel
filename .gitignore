@@ -44,3 +44,7 @@ npm-debug.log*
 # Scratch directory
 scratch/
 .edge_tmp/
+
+# Agent local tooling and MCP configs (contains local API keys)
+.agent/
+.agents/

@@ -26,19 +26,29 @@ describe('TrendsService - Meme Trend Radar & Viral Newsfeed', () => {
     xResult.trends.forEach((t) => {
       expect(t.source).toBe('x');
     });
+
+    const newsResult = TrendsService.getTrendingNarratives({ source: 'news' });
+    expect(newsResult.trends.length).toBeGreaterThan(0);
+    newsResult.trends.forEach((t) => {
+      expect(t.source).toBe('news');
+    });
   });
 
-  it('searches trends by keyword or token symbol', () => {
-    const searchResult = TrendsService.getTrendingNarratives({ search: 'Chill Guy' });
-    expect(searchResult.trends.length).toBeGreaterThan(0);
-    expect(searchResult.trends[0].associatedToken.symbol).toBe('CHILLGUY');
+  it('searches trends by recent keyword or token symbol (e.g. SENTS, Winny2k, Labubu)', () => {
+    const sentsResult = TrendsService.getTrendingNarratives({ search: 'Sentients' });
+    expect(sentsResult.trends.length).toBeGreaterThan(0);
+    expect(sentsResult.trends[0].associatedToken.symbol).toBe('SENTS');
 
-    const pnutResult = TrendsService.getTrendingNarratives({ search: 'PNUT' });
-    expect(pnutResult.trends.length).toBeGreaterThan(0);
-    expect(pnutResult.trends[0].title).toContain('Peanut');
+    const winnyResult = TrendsService.getTrendingNarratives({ search: 'WINNY2K' });
+    expect(winnyResult.trends.length).toBeGreaterThan(0);
+    expect(winnyResult.trends[0].title).toContain('Winny2k');
+
+    const labubuResult = TrendsService.getTrendingNarratives({ search: 'LABUBU' });
+    expect(labubuResult.trends.length).toBeGreaterThan(0);
+    expect(labubuResult.trends[0].title).toContain('Labubu');
   });
 
-  it('ensures each trend has a valid associated Solana token with price and mint', () => {
+  it('ensures recent trending tokens have trader-accessible market caps under $5M', () => {
     const { trends } = TrendsService.getTrendingNarratives();
     trends.forEach((t) => {
       expect(t.associatedToken).toBeDefined();
@@ -46,7 +56,16 @@ describe('TrendsService - Meme Trend Radar & Viral Newsfeed', () => {
       expect(t.associatedToken.symbol).toBeDefined();
       expect(t.associatedToken.priceUsd).toBeGreaterThan(0);
       expect(t.associatedToken.marketCapUsd).toBeGreaterThan(0);
+      // Ensure tokens are recent trader plays rather than old multi-hundred-million mega-caps
+      expect(t.associatedToken.marketCapUsd).toBeLessThan(10_000_000);
       expect(t.associatedToken.launchpad).toBeDefined();
     });
+  });
+
+  it('asynchronously fetches live trending narratives via getLiveTrendingNarratives', async () => {
+    const result = await TrendsService.getLiveTrendingNarratives();
+    expect(result.trends.length).toBeGreaterThan(0);
+    expect(result.stats.totalTrends).toBe(result.trends.length);
+    expect(result.stats.topViralityScore).toBeGreaterThanOrEqual(90);
   });
 });

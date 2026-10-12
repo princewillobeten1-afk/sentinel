@@ -49,6 +49,7 @@ import { useTokenAudit } from '@/lib/hooks/use-token-audit';
 import { OpenOrdersDashboard } from '@/components/limit-orders/open-orders-dashboard';
 import { useAppState, useAppActions } from '@/lib/store';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
+import { mapLiveTradeFields } from '@/lib/market/trade-history-mappers';
 
 export type AxiomTabType =
   | 'trades'
@@ -66,6 +67,7 @@ export interface TradeTransaction {
   id: string;
   type: 'buy' | 'sell';
   amountSol: string;
+  amountSolValue?: number;
   tokens: string;
   price: string;
   valueUsd: string;
@@ -158,6 +160,7 @@ export interface AxiomChartTabsProps {
   tokenMint?: string;
   onOpenLimitBuilder?: () => void;
   onQuickTrade?: (type: 'buy' | 'sell', solAmount: number) => void;
+  onPriceUpdate?: (price: number) => void;
 }
 
 /** Seconds, minutes, hours or days since `iso` — the tape's Age column. */
@@ -216,6 +219,26 @@ function tapeSol(n: number): string {
   return n > 0 ? '<0.0001' : '>-0.0001';
 }
 
+function getHolderBadgeStyle(tag: string): string {
+  const t = tag.toLowerCase();
+  if (t.includes('burn') || t.includes('incinerator')) {
+    return 'bg-rose-500/15 text-rose-300 border-rose-500/30';
+  }
+  if (t.includes('binance') || t.includes('bybit') || t.includes('coinbase') || t.includes('okx') || t.includes('kraken') || t.includes('gate') || t.includes('mexc')) {
+    return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
+  }
+  if (t.includes('raydium') || t.includes('pump') || t.includes('meteora') || t.includes('orca') || t.includes('pool')) {
+    return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
+  }
+  if (t.includes('dev')) {
+    return 'bg-purple-500/15 text-purple-300 border-purple-500/30';
+  }
+  if (t.includes('whale')) {
+    return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+  }
+  return 'bg-sentinel-800 text-slate-300 border-sentinel-700';
+}
+
 /**
  * One tape row from a `/live-trades` trade or a `token.trade` push.
  *
@@ -233,13 +256,14 @@ function tapeRow(t: {
   amountTokens?: number | string | null;
   priceUsd?: number | string | null;
   timestamp?: string;
-}): TradeTransaction {
+}): TradeTransaction | null {
   const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
   const sol = num(t.amountSol);
   const usd = num(t.amountUsd);
   const tokens = num(t.amountTokens);
   const price = num(t.priceUsd);
   const side = String(t.side ?? '').toUpperCase();
+  if (side !== 'BUY' && side !== 'SELL') return null;
   // Jupiter omits a price on trades its own price feed will not vouch for,
   // which left most rows showing a dash. USD over tokens is not a guess at the
   // market price — it is what this trade executed at, from two measured legs.
@@ -252,6 +276,7 @@ function tapeRow(t: {
     id: t.eventId ?? `${t.signature}:${side}`,
     type: side === 'SELL' ? 'sell' : 'buy',
     amountSol: sol === null ? '—' : tapeSol(sol),
+    amountSolValue: sol !== null && sol > 0 ? sol : undefined,
     tokens: tokens === null ? '—' : tapeCompact(tokens),
     price: executed === null ? '—' : tapePrice(executed),
     valueUsd: tapeUsd(usd),
@@ -271,6 +296,7 @@ export function AxiomChartTabs({
   tokenMint = 'So11111111111111111111111111111111111111112',
   onOpenLimitBuilder,
   onQuickTrade,
+  onPriceUpdate,
 }: AxiomChartTabsProps) {
   const { connectedWallet, primaryWallet } = useAppState();
   const { addNotification, addExecutionLog, setQuickBuyOpen, setWalletModalOpen } = useAppActions();
@@ -547,30 +573,37 @@ export function AxiomChartTabs({
   // ---------------------------------------------------------------------------
   useSentinelWS(safeMint ? [`token.trade:${safeMint}`, `token.price:${safeMint}`] : [], (data, msg) => {
     if (msg.topic !== `token.trade:${safeMint}` || !data?.signature) return;
-    // On this topic `amount` is the trade's USD value (see the broadcaster's
-    // payload), so tokens are derived from it and the price, not read from it.
-    const usd = data.amount === undefined || data.amount === null ? null : Number(data.amount);
-    const price = data.priceUsd === undefined || data.priceUsd === null ? null : Number(data.priceUsd);
+    // The event bus's `amount` is token quantity; USD notional is a separate
+    // field. Treating tokens as dollars inflated the tape's total values.
+    const trade = mapLiveTradeFields(data);
+    if (!trade.side) return;
+    const price = trade.priceUsd;
+    if (price && Number.isFinite(price) && price > 0) {
+      onPriceUpdate?.(price);
+    }
     const row = tapeRow({
       signature: data.signature,
-      side: data.side ?? data.type,
+      side: trade.side,
       wallet: data.wallet ?? null,
-      amountUsd: usd,
-      amountSol: data.amountSol ?? null,
-      amountTokens: usd !== null && price ? usd / price : null,
+      amountUsd: trade.amountUsd,
+      amountSol: trade.amountSol,
+      amountTokens: trade.amountTokens ?? (
+        trade.amountUsd !== null && price !== null && price > 0
+          ? trade.amountUsd / price
+          : null
+      ),
       priceUsd: price,
       timestamp: new Date(data.timestamp ?? Date.now()).toISOString(),
     });
+    if (!row) return;
     setTrades((prev) => (prev.some((p) => p.id === row.id) ? prev : [row, ...prev].slice(0, 50)));
   });
 
   /**
    * Loads the tape. Shared by the first load, the refresh button and the poll.
    *
-   * The tape used to load once, from this platform's own capture only — empty
-   * on every page load — and never again unless refresh was pressed. It now
-   * reads `/live-trades` (indexer history merged with the live capture) and
-   * polls while the Trades tab is open.
+   * Reads `/live-trades` (indexer history merged with live capture) and
+   * polls at high frequency (1.5s) while the Trades tab is open.
    */
   const loadTrades = useCallback(async () => {
     const request = ++tradesRequestRef.current;
@@ -587,7 +620,14 @@ export function AxiomChartTabs({
         return;
       }
       tradesAppliedRef.current = request;
-      setTrades(rows.map(tapeRow));
+      if (rows.length > 0) {
+        const topTrade = rows[0];
+        const topPrice = Number(topTrade?.price_usd ?? topTrade?.priceUsd);
+        if (Number.isFinite(topPrice) && topPrice > 0) {
+          onPriceUpdate?.(topPrice);
+        }
+      }
+      setTrades(rows.map(tapeRow).filter((row): row is TradeTransaction => row !== null));
       setTradesCoverage(body?.data?.coverage ?? null);
       setTradesState('loaded');
     } catch {
@@ -595,7 +635,7 @@ export function AxiomChartTabs({
     } finally {
       tradesInFlightRef.current = false;
     }
-  }, [safeMint, tradeFilter]);
+  }, [safeMint, tradeFilter, onPriceUpdate]);
 
   const loadTopTraders = useCallback(async () => {
     try {
@@ -625,7 +665,7 @@ export function AxiomChartTabs({
     setDevActivities([]);
   }, [safeMint]);
 
-  // Live while visible: the tape every 5s on the Trades tab, rankings every
+  // Live while visible: the tape every 1.5s on the Trades tab (Axiom parity), rankings every
   // 20s on Top Traders. A hidden tab polls nothing.
   useEffect(() => {
     if (activeTab !== 'trades' && activeTab !== 'top-traders') return;
@@ -635,7 +675,7 @@ export function AxiomChartTabs({
       // Never stack a second request on a feed slower than the interval.
       if (activeTab === 'trades' && tradesInFlightRef.current) return;
       void run();
-    }, activeTab === 'trades' ? 5_000 : 20_000);
+    }, activeTab === 'trades' ? 1_500 : 20_000);
     return () => clearInterval(id);
   }, [activeTab, loadTrades, loadTopTraders]);
 
@@ -651,8 +691,9 @@ export function AxiomChartTabs({
         const rows = body?.data?.trades;
         if (!alive || !Array.isArray(rows)) return;
         setDevActivities(
-          rows.map((t: any): DevActivityEvent => {
+          rows.map((t: any): DevActivityEvent | null => {
             const row = tapeRow(t);
+            if (!row) return null;
             return {
               id: row.id,
               type: row.type,
@@ -666,7 +707,7 @@ export function AxiomChartTabs({
               time: row.time,
               txHash: row.txHash ?? '',
             };
-          }),
+          }).filter((row): row is DevActivityEvent => row !== null),
         );
       })
       .catch(() => {});
@@ -1737,15 +1778,18 @@ export function AxiomChartTabs({
                     </tr>
                   )}
                   {filteredTrades.map((tr) => {
-                    const parsedSol = Math.max(0.01, parseFloat((tr.amountSol || '').replace(/[^0-9.]/g, '')) || 0.1);
+                    const parsedSol = tr.amountSolValue;
                     return (
                     <tr key={tr.id} className="hover:bg-sentinel-800/50 transition-colors group">
                       <td className="py-2 px-2 whitespace-nowrap">
                         <button
                           type="button"
-                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
-                          title={`Click to fill ${tr.type.toUpperCase()} ${tr.amountSol} SOL in Order Form`}
-                          className="cursor-pointer focus:outline-none"
+                          disabled={!parsedSol}
+                          onClick={() => parsedSol && onQuickTrade?.(tr.type, parsedSol)}
+                          title={parsedSol
+                            ? `Click to fill ${tr.type.toUpperCase()} ${tr.amountSol} SOL in Order Form`
+                            : 'SOL amount is unavailable for this trade'}
+                          className="cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <span
                             className={`inline-flex items-center gap-1 font-bold font-mono px-2 py-0.5 rounded text-2xs uppercase transition active:scale-95 ${
@@ -1763,9 +1807,12 @@ export function AxiomChartTabs({
                       <td className="py-2 px-2">
                         <button
                           type="button"
-                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
-                          title={`Click to load ${parsedSol} SOL into Order Form`}
-                          className="flex items-center gap-1 font-bold text-white hover:text-sky-300 transition cursor-pointer"
+                          disabled={!parsedSol}
+                          onClick={() => parsedSol && onQuickTrade?.(tr.type, parsedSol)}
+                          title={parsedSol
+                            ? `Click to load ${parsedSol} SOL into Order Form`
+                            : 'SOL amount is unavailable for this trade'}
+                          className="flex items-center gap-1 font-bold text-white hover:text-sky-300 transition cursor-pointer disabled:cursor-not-allowed"
                         >
                           <span>{tr.amountSol}</span>
                           {tr.isWhale && <span className="text-2xs" title="Whale Order">🐋</span>}
@@ -1790,9 +1837,12 @@ export function AxiomChartTabs({
                       <td className="py-2 px-2 text-center">
                         <button
                           type="button"
-                          onClick={() => onQuickTrade?.(tr.type, parsedSol)}
-                          title={`Quick Trade: Load ${tr.type.toUpperCase()} ${parsedSol} SOL into Order Form`}
-                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition shadow-sm ${
+                          disabled={!parsedSol}
+                          onClick={() => parsedSol && onQuickTrade?.(tr.type, parsedSol)}
+                          title={parsedSol
+                            ? `Quick Trade: Load ${tr.type.toUpperCase()} ${parsedSol} SOL into Order Form`
+                            : 'SOL amount is unavailable for this trade'}
+                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${
                             tr.type === 'buy'
                               ? 'bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
                               : 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30'
@@ -2693,7 +2743,12 @@ export function AxiomChartTabs({
         {activeTab === 'holders' && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-sentinel-800">
-              <span className="font-bold text-white">Top {topHolders.length > 0 ? topHolders.length : ''} Token Holders</span>
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <span>Top {topHolders.length > 0 ? topHolders.length : ''} Token Holders</span>
+                {holdersDisplay && (
+                  <span className="text-slate-400 font-normal font-mono text-2xs">({holdersDisplay} total)</span>
+                )}
+              </span>
               <span className="font-mono text-2xs">
                 {holdersTop10Pct === null
                   ? 'Concentration unavailable'
@@ -2725,13 +2780,31 @@ export function AxiomChartTabs({
                     <tr key={h.rank} className="hover:bg-sentinel-800/40 transition">
                       <td className="py-2 px-2 font-mono text-slate-500 font-bold">{h.rank}</td>
                       <td className="py-2 px-2 font-mono text-slate-300">
-                        <button onClick={() => handleCopy(h.fullAddress ?? h.address)} className="hover:text-sky-400 inline-flex items-center gap-1">
-                          <span>{h.address}</span>
-                          <Copy className="h-2.5 w-2.5 opacity-60" />
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(h.fullAddress ?? h.address)}
+                            className="hover:text-sky-400 inline-flex items-center gap-1 transition"
+                            title="Copy address"
+                          >
+                            <span>{h.address}</span>
+                            <Copy className="h-2.5 w-2.5 opacity-60" />
+                          </button>
+                          {h.fullAddress && (
+                            <a
+                              href={`https://solscan.io/account/${h.fullAddress}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-slate-500 hover:text-sky-400 transition"
+                              title="View on Solscan"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5 opacity-60 hover:opacity-100" />
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-2">
-                        <span className="px-2 py-0.5 rounded text-2xs font-mono font-bold bg-sentinel-800 text-sky-300 border border-sentinel-700">
+                        <span className={`px-2 py-0.5 rounded text-2xs font-mono font-bold border ${getHolderBadgeStyle(h.tag)}`}>
                           {h.tag}
                         </span>
                       </td>

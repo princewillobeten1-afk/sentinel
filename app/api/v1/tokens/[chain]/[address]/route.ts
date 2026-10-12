@@ -3,6 +3,7 @@ import { getTokenByMint } from '@/lib/token/search-service';
 import { realtimeRepository } from '@/lib/server/db/realtime-repository';
 import { getTokenOverview } from '@/lib/api/birdeye/stats';
 import { fetchLiveSolanaTokens } from '@/lib/discovery/live-solana-feed';
+import { fetchOnChainTokenSupply } from '@/lib/tokens/holder-analysis';
 import { ApiError } from '@/lib/server/errors';
 
 export const dynamic = 'force-dynamic';
@@ -52,6 +53,20 @@ export async function GET(
     const { chain, address } = params;
     let token: any = null;
 
+    // Fetch verified on-chain total supply when chain is Solana
+    const rpcUrl =
+      process.env.HELIUS_RPC_URL?.trim() ||
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() ||
+      'https://api.mainnet-beta.solana.com';
+    let onChainSupply: number | null = null;
+    if (chain.toLowerCase() === 'solana' || !chain) {
+      try {
+        onChainSupply = await fetchOnChainTokenSupply(rpcUrl, address);
+      } catch {
+        // Non-fatal, degrades to secondary sources
+      }
+    }
+
     // 1. Check in-memory discovered live tokens
     let trendingRank: number | undefined = undefined;
     let devHoldingPct: number | undefined = undefined;
@@ -85,6 +100,8 @@ export async function GET(
           volume24hUsd: match.volume24hUsd,
           liquidityUsd: match.liquidityUsd,
           marketCapUsd: match.marketCapUsd,
+          totalSupply: onChainSupply ?? undefined,
+          circulatingSupply: onChainSupply ?? undefined,
           logoUrl: match.logoURI,
           logoURI: match.logoURI,
           twitterUrl: match.twitterUrl,
@@ -129,9 +146,9 @@ export async function GET(
             const numPrice = price ? parseFloat(price) : (bestPair.priceNative ? parseFloat(bestPair.priceNative) * 180 : undefined);
             const mcap = bestPair.marketCap ?? bestPair.fdv;
             const liq = bestPair.liquidity?.usd;
-            const totalSupply = (bestPair.fdv && numPrice && numPrice > 0)
+            const totalSupply = onChainSupply ?? ((bestPair.fdv && numPrice && numPrice > 0)
               ? Math.round(bestPair.fdv / numPrice)
-              : (isPump ? 1_000_000_000 : undefined);
+              : undefined);
             const pairCreatedAt = bestPair.pairCreatedAt;
             const ageMinutes = pairCreatedAt ? Math.max(0.05, (Date.now() - pairCreatedAt) / 60_000) : undefined;
 
@@ -310,6 +327,19 @@ export async function GET(
         liquidityUsd: undefined,
         marketCapUsd: undefined,
       };
+    }
+
+    if (token) {
+      if (onChainSupply && (!token.totalSupply || token.totalSupply === 1_000_000_000)) {
+        token.totalSupply = onChainSupply;
+        token.circulatingSupply = onChainSupply;
+      }
+      if (token.priceUsd && token.totalSupply) {
+        const numP = Number(token.priceUsd);
+        if (Number.isFinite(numP) && numP > 0) {
+          token.marketCapUsd = String(numP * Number(token.totalSupply));
+        }
+      }
     }
 
     return jsonResponse({

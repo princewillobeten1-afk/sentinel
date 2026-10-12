@@ -198,7 +198,7 @@ export function TradeView({
     }
   });
 
-  // Fetch token details dynamically via REST
+  // Fetch token details dynamically via REST with resilient background polling
   useEffect(() => {
     let cancelled = false;
     async function loadToken() {
@@ -209,7 +209,10 @@ export function TradeView({
           const json = await res.json();
           const t = json.data?.token || json.token || json;
           if (!cancelled && t) {
-            setTokenOverview(t);
+            setTokenOverview((prev: any) => ({
+              ...prev,
+              ...t,
+            }));
           }
         }
       } catch {
@@ -217,8 +220,13 @@ export function TradeView({
       }
     }
     loadToken();
+    const pollId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void loadToken();
+    }, 3500);
     return () => {
       cancelled = true;
+      clearInterval(pollId);
     };
   }, [activeMint, activeChain]);
 
@@ -274,11 +282,11 @@ export function TradeView({
 
     const effectiveSupply =
       supply ??
-      (baseMcap && basePrice && basePrice > 0 ? baseMcap / basePrice : 1_000_000_000);
+      (baseMcap && basePrice && basePrice > 0 ? baseMcap / basePrice : undefined);
 
     // Real-time Market Cap dynamically scales as market price moves!
     let marketCapUsd: number | undefined;
-    if (priceUsd !== undefined && Number.isFinite(priceUsd) && priceUsd > 0 && effectiveSupply > 0) {
+    if (priceUsd !== undefined && Number.isFinite(priceUsd) && priceUsd > 0 && effectiveSupply && effectiveSupply > 0) {
       marketCapUsd = priceUsd * effectiveSupply;
     } else if (liveUpdate?.marketCapUsd !== undefined && Number(liveUpdate.marketCapUsd) > 0) {
       marketCapUsd = Number(liveUpdate.marketCapUsd);
@@ -680,6 +688,7 @@ export function TradeView({
             tokenSymbol={currentToken.symbol}
             tokenMint={currentToken.mint}
             onOpenLimitBuilder={() => setShowLimitBuilder(true)}
+            onPriceUpdate={(p) => setLivePrice(p)}
             onQuickTrade={(type, amt) => {
               setOrderType(type);
               setSolAmount(amt.toString());
