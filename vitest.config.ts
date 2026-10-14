@@ -6,7 +6,7 @@ export default defineConfig({
   oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
-    include: ['lib/**/__tests__/**/*.test.{ts,js}'],
+    include: ['lib/**/__tests__/**/*.test.{ts,tsx,js}'],
     // Default `forks` pool hangs on worker startup for jsdom-environment
     // test files (`// @vitest-environment jsdom`, added Sprint 31 — Item 10)
     // on this Windows dev machine — `threads` avoids it and runs the full

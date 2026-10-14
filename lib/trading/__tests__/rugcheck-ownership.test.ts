@@ -39,6 +39,28 @@ describe('parseRugcheckOwnership', () => {
     expect(parsed?.source).toBe('rugcheck-report');
   });
 
+  it('ranks unique owners before summing their top-ten concentration', () => {
+    const parsed = parseRugcheckOwnership('test-mint', {
+      mint: 'test-mint',
+      totalHolders: 20,
+      topHolders: [
+        { owner: 'wallet-a', address: 'account-a1', pct: 18 },
+        { owner: 'wallet-a', address: 'account-a2', pct: 17 },
+        { owner: 'wallet-b', address: 'account-b', pct: 15 },
+        { owner: 'wallet-c', address: 'account-c', pct: 12 },
+        { owner: 'wallet-d', address: 'account-d', pct: 10 },
+        { owner: 'wallet-e', address: 'account-e', pct: 8 },
+        { owner: 'wallet-f', address: 'account-f', pct: 6 },
+        { owner: 'wallet-g', address: 'account-g', pct: 5 },
+        { owner: 'wallet-h', address: 'account-h', pct: 4 },
+        { owner: 'wallet-i', address: 'account-i', pct: 3 },
+        { owner: 'wallet-j', address: 'account-j', pct: 2 },
+      ],
+    });
+    // Ten distinct owners account for 100%, despite the first wallet appearing twice.
+    expect(parsed?.top10Pct).toBe(100);
+  });
+
   it('leaves devPct unknown when creator is not in the capped top-holder list', () => {
     const rawReport = {
       mint: 'test-mint',
@@ -55,14 +77,16 @@ describe('parseRugcheckOwnership', () => {
     expect(parsed?.devPct).toBeNull();
   });
 
-  it('derives insiders, bundlers, and snipers when risk and graph analysis is present', () => {
+  it('uses only explicit category percentages and leaves unsupported classifications unknown', () => {
     const rawReport = {
       mint: 'test-mint',
       creator: 'CreatorWalletAddress123',
       totalHolders: 1000,
-      graphInsidersDetected: 0,
+      graphInsidersDetected: 12,
       risks: [
-        { name: 'High holder correlation', value: '(3)', description: '3 top users hold identical amounts' },
+        { name: 'Insider holdings', value: '4.93%' },
+        { name: 'Bundled supply', value: '5.22%' },
+        { name: 'Sniper activity', value: '0.49%' },
       ],
       topHolders: [
         { address: 'Holder1', amount: '5000', pct: 0.5, insider: false },
@@ -74,9 +98,31 @@ describe('parseRugcheckOwnership', () => {
 
     const parsed = parseRugcheckOwnership('test-mint', rawReport);
     expect(parsed).not.toBeNull();
-    expect(parsed?.insidersPct).toBe(0);
-    expect(parsed?.bundlersPct).toBe(1.5);
-    expect(parsed?.snipersPct).toBe(0);
-    expect(parsed?.proTraders).toBe(0);
+    expect(parsed?.insidersPct).toBe(4.93);
+    expect(parsed?.bundlersPct).toBe(5.22);
+    expect(parsed?.snipersPct).toBe(0.49);
+    expect(parsed?.proTraders).toBeNull();
+    expect(parsed?.kols).toBeNull();
+  });
+
+  it('does not turn absent risk categories, graph counts, or matching holder amounts into zero percentages', () => {
+    const parsed = parseRugcheckOwnership('test-mint', {
+      mint: 'test-mint',
+      totalHolders: 1000,
+      graphInsidersDetected: 0,
+      risks: [{ name: 'High holder correlation', value: '(3)', description: '3 top users hold identical amounts' }],
+      topHolders: [
+        { address: 'Holder1', amount: '5000', pct: 0.5 },
+        { address: 'Holder2', amount: '5000', pct: 0.5 },
+        { address: 'Holder3', amount: '5000', pct: 0.5 },
+      ],
+    });
+    expect(parsed).toMatchObject({
+      insidersPct: null,
+      bundlersPct: null,
+      snipersPct: null,
+      proTraders: null,
+      kols: null,
+    });
   });
 });

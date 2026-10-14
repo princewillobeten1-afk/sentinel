@@ -37,16 +37,16 @@ import { formatDisplaySource } from '@/lib/discovery/format';
  */
 
 export interface AuditPillsProps {
-  top10HoldingsPct?: number;
-  devHoldingsPct?: number;
+  top10HoldingsPct?: number | null;
+  devHoldingsPct?: number | null;
   devWalletAge?: string;
-  sniperPercentage?: number;
-  insiderHoldingsPct?: number;
-  bundlerPercentage?: number;
-  sniperCount?: number;
-  bundlerCount?: number;
-  insiderCount?: number;
-  devCount?: number;
+  sniperPercentage?: number | null;
+  insiderHoldingsPct?: number | null;
+  bundlerPercentage?: number | null;
+  sniperCount?: number | null;
+  bundlerCount?: number | null;
+  insiderCount?: number | null;
+  devCount?: number | null;
   /** True while a lookup is queued, so unknown can be told from unmeasured. */
   pending?: boolean;
   evidence?: MetricEvidence;
@@ -61,8 +61,8 @@ interface PillSpec {
   label: string;
   definition: string;
   icon: React.ComponentType<{ className?: string }>;
-  value: number | undefined;
-  holderCount?: number;
+  value: number | null | undefined;
+  holderCount?: number | null;
   /** Above this, the pill is red. */
   danger: number;
   /** Above this (but below danger), amber. */
@@ -155,7 +155,7 @@ export function AuditPills({
     },
   ];
 
-  const anyKnown = pills.some((pill) => pill.value !== undefined);
+  const anyKnown = pills.some((pill) => pill.value != null);
   if (!anyKnown && !pending && !alwaysShow) return null;
 
   return (
@@ -164,8 +164,8 @@ export function AuditPills({
         const resolvedEvidence = currentEvidence(evidenceByMetric?.[pill.key as 'top10' | 'dev'] ?? evidence, now);
         const evidenceAge = ageOf(resolvedEvidence);
         const state = toValueState(pill.value ?? null, {
-          isPending: pill.value === undefined && (pending || resolvedEvidence.status === 'loading'),
-          isStale: resolvedEvidence.status !== 'measured' && pill.value !== undefined,
+          isPending: pill.value == null && (pending || resolvedEvidence.status === 'loading'),
+          isStale: resolvedEvidence.status !== 'measured' && pill.value != null,
         });
         const tone =
           state.kind !== 'value'
@@ -194,7 +194,7 @@ export function AuditPills({
                 <p className="text-[11px] leading-relaxed text-slate-200 font-normal">
                   {pill.definition}
                 </p>
-                {pill.holderCount !== undefined && (
+                {pill.holderCount != null && (
                   <p className="text-[10px] text-slate-300">Classified wallets: {pill.holderCount.toLocaleString()}</p>
                 )}
 

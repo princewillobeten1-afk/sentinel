@@ -11,6 +11,7 @@ const OWNERSHIP_FIELDS = new Set(['holdersCount', 'top10HoldingsPct', 'devHoldin
   'proTradersCount', 'kolsCount', 'ownershipEvidence']);
 const LIFECYCLE_FIELDS = new Set(['lifecycleState', 'bondingCurveProgress', 'migrationSignature',
   'migratedPool', 'migratedDex', 'migratedAt', 'lifecycleEvidence']);
+const LIQUIDITY_FIELDS = new Set(['lpLockedPct', 'isLiquidityLocked', 'liquidityEvidence']);
 
 function marketSourcePriority(source: string | undefined): number {
   if (!source) return 0;
@@ -23,11 +24,20 @@ function marketSourcePriority(source: string | undefined): number {
 export function mergeTokenCardSnapshot(token: DiscoveryToken, patch: TokenCardPatch): DiscoveryToken {
   const accepted = Object.fromEntries(Object.entries(patch.changedFields).filter(([key, value]) => {
     if (value === undefined) return false;
+    // Some market providers report total holders while an ownership audit may
+    // not. An absent audit count must not erase an independently measured total.
+    if (key === 'holdersCount' && value === null
+      && typeof token.holdersCount === 'number' && Number.isFinite(token.holdersCount)) return false;
+    if (key === 'lpLockedPct' && value === null
+      && typeof token.lpLockedPct === 'number' && Number.isFinite(token.lpLockedPct)) return false;
     if (LIFECYCLE_FIELDS.has(key) && token.lifecycleState === 'migrated'
       && patch.changedFields.lifecycleState && patch.changedFields.lifecycleState !== 'migrated') return false;
     const group = MARKET_FIELDS.has(key)
       ? (['volume5mUsd', 'buyVolume5mUsd', 'sellVolume5mUsd', 'priceChange5m', 'txCount5m', 'buysCount5m', 'sellsCount5m', 'activityEvidence'].includes(key) ? 'activityEvidence' : 'marketEvidence')
-      : OWNERSHIP_FIELDS.has(key) ? 'ownershipEvidence' : LIFECYCLE_FIELDS.has(key) ? 'lifecycleEvidence' : null;
+      : OWNERSHIP_FIELDS.has(key) ? 'ownershipEvidence'
+      : LIFECYCLE_FIELDS.has(key) ? 'lifecycleEvidence'
+      : LIQUIDITY_FIELDS.has(key) ? 'liquidityEvidence'
+      : null;
     if (!group) return true;
     // Provider fallback is per field, not per whole card. A later fallback
     // observation must fill unknown REST values, never replace a measured

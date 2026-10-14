@@ -47,10 +47,10 @@ interface DexPairResponse {
 
 export async function GET(
   request: Request,
-  { params }: { params: { chain: string; address: string } }
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> }
 ) {
   try {
-    const { chain, address } = params;
+    const { chain, address } = await Promise.resolve(context.params);
     let token: any = null;
 
     // Fetch verified on-chain total supply when chain is Solana

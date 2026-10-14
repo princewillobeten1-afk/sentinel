@@ -6,13 +6,13 @@ import { Zap, Terminal, Activity, Shield, ArrowUpRight } from 'lucide-react';
 
 export function LandingFooter() {
   return (
-    <footer className="border-t border-neutral-750 bg-neutral-950 px-6 py-12 pb-24 text-xs font-mono text-neutral-400 relative z-20">
+    <footer className="border-t border-white/[0.08] bg-[#050507] px-6 py-12 pb-24 text-xs font-mono text-neutral-400 relative z-20">
       <div className="max-w-7xl mx-auto space-y-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand Info (2 Cols) */}
           <div className="lg:col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/20 text-accent-400 border border-accent-500/30">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 <Zap className="h-4 w-4" />
               </div>
               <span className="font-heading text-base font-black text-white tracking-wider">PROJECT SENTINEL</span>
@@ -23,7 +23,7 @@ export function LandingFooter() {
             </p>
 
             <div className="flex items-center gap-2 pt-2">
-              <span className="h-2 w-2 rounded-full bg-buy-500 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-3xs text-neutral-300 font-bold">ALL SYSTEMS OPERATIONAL</span>
               <span className="text-neutral-600">•</span>
               <span className="text-3xs text-neutral-500">v2.4.1 (Mainnet-Beta)</span>

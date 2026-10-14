@@ -21,6 +21,25 @@ describe('REST/card snapshot reconciliation', () => {
       changedFields: { bondingCurveProgress: 21.9 } });
     expect(merged.bondingCurveProgress).toBe(82);
   });
+
+  it('clears cached ownership values when a newer provider observation marks them unknown', () => {
+    const token = {
+      top10HoldingsPct: 77.3,
+      holdersCount: 1100,
+      proTradersCount: 0,
+      ownershipEvidence: { status: 'measured', observedAt: '2026-09-21T10:00:00Z' },
+    } as DiscoveryToken;
+    const merged = mergeTokenCardSnapshot(token, {
+      mint: 'mint', sequence: 2, source: 'rugcheck-report', freshness: 'fresh',
+      observedAt: '2026-09-21T10:01:00Z',
+      changedFields: { top10HoldingsPct: null, holdersCount: null, proTradersCount: null,
+        ownershipEvidence: { status: 'measured', source: 'rugcheck-report', observedAt: '2026-09-21T10:01:00Z' } },
+    });
+    expect(merged.top10HoldingsPct).toBeNull();
+    expect(merged.holdersCount).toBe(1100);
+    expect(merged.proTradersCount).toBeNull();
+  });
+
   it('does not replace newer REST market values with an old cached price', () => {
     const token = { priceUsd: '2', marketEvidence: { observedAt: '2026-09-12T10:00:00Z' } } as DiscoveryToken;
     const merged = mergeTokenCardSnapshot(token, { mint: 'mint', sequence: 1, source: 'cache', freshness: 'fresh',

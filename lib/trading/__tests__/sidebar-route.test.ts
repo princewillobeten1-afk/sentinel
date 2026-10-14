@@ -20,7 +20,9 @@ describe('trade sidebar snapshot endpoint', () => {
   });
   it('keeps missing data unknown, including paid status and LP lock', async () => {
     providers.tokens.mockResolvedValue([{ id: mints[1], stats5m: { buyVolume: 900 } }]);
-    const body = await (await get(mints[0])).json();
+    const response = await get(mints[0]);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    const body = await response.json();
     expect(body.data.token).toMatchObject({ mint: mints[0], buyVolume5mUsd: null, sellVolume5mUsd: null, lpLockedPct: null });
   });
   it('retains measured zero and combines provider-backed cached ownership', async () => {

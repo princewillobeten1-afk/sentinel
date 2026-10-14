@@ -68,9 +68,9 @@ const STAGES: Stage[] = [
     description:
       'Traces fund origins across top wallets to expose coordinated insider cabals. Reconstructs transaction graphs to isolate self-referencing bot circular volume from authentic independent buyer demand.',
     metrics: [
-      { label: 'Wash Vol Filtered', value: '$48.2M / 24h', color: 'text-warn-400' },
-      { label: 'Cluster Accuracy', value: '98.7%', color: 'text-buy-400' },
-      { label: 'Graph Depth', value: '4 Hops', color: 'text-neutral-200' },
+      { label: 'Detection Mode', value: 'Live Heuristics', color: 'text-warn-400' },
+      { label: 'Decomposition', value: 'Real vs Bot Loop', color: 'text-buy-400' },
+      { label: 'Graph Traversal', value: 'Up to 4 Hops', color: 'text-neutral-200' },
     ],
     codeSample: `// Deconstruct wallet genealogy\nconst cluster = await forensicEngine.mapFundingRoots({\n  mint: tokenAddress,\n  maxHops: 4,\n  detectExchangeSplits: true // Kraken, Binance, FixedFloat\n});`,
     colorScheme: {
@@ -90,9 +90,9 @@ const STAGES: Stage[] = [
     description:
       'Instead of blind 1-100 scores, Sentinel provides the exact proof: top 20 wallets hold 42.1% via single funding tree, creator dumped 3 prior tokens, or simulated 20 SOL exit causes 18% price drop.',
     metrics: [
-      { label: 'Threat Verdict', value: 'CRITICAL (87%)', color: 'text-sell-400' },
+      { label: 'Threat Verdict', value: 'Evidence-Backed', color: 'text-sell-400' },
       { label: 'Auto-Circuit Breaker', value: 'ARMED', color: 'text-buy-400' },
-      { label: 'Exit Depth Simulated', value: '$25K Max Sell', color: 'text-neutral-200' },
+      { label: 'Exit Simulation', value: 'Multi-AMM Slippage', color: 'text-neutral-200' },
     ],
     codeSample: `// Evidence-backed risk verdict\nif (cluster.concentrationRatio > 0.25) {\n  circuitBreaker.trigger({\n    action: 'RESTRICT_MAX_POSITION',\n    reason: 'Coordinated insider funding detected in block #28410'\n  });\n}`,
     colorScheme: {
@@ -106,15 +106,15 @@ const STAGES: Stage[] = [
   {
     id: 4,
     name: 'PRIVATE MEV EXECUTION',
-    badge: '18ms Session Key',
+    badge: 'Session Key Execution',
     icon: Zap,
     headline: 'Zero-Popup Routing with Dynamic Jito Protection',
     description:
       'Execute trades instantly with non-custodial local session keys. Transactions are wrapped in private Jito bundles with adaptive tip bidding, eliminating toxic sandwich bots and slippage leaks.',
     metrics: [
-      { label: 'Execution Speed', value: '18ms', color: 'text-buy-400' },
-      { label: 'MEV Sandwich Loss', value: '0.00%', color: 'text-buy-400' },
-      { label: 'Fills Success Rate', value: '99.8%', color: 'text-accent-300' },
+      { label: 'Execution Mode', value: 'Direct Validator', color: 'text-buy-400' },
+      { label: 'Mempool Exposure', value: 'Zero (Private)', color: 'text-buy-400' },
+      { label: 'Bundle Protocol', value: 'Jito Block Engine', color: 'text-accent-300' },
     ],
     codeSample: `// 1-Click Session Key execution\nconst fill = await sentinelRouter.executePrivateSwap({\n  route: simulatedBestRoute,\n  sessionKey: localRestrictedKey,\n  jitoTipTier: 'dynamic_adaptive'\n});`,
     colorScheme: {

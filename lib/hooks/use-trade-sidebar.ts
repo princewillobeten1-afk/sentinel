@@ -20,7 +20,10 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
       if (busy) return;
       busy = true;
       try {
-        const response = await fetch(`/api/v1/tokens/solana/${encodeURIComponent(mint)}/card`, { signal: controller.signal });
+        const response = await fetch(`/api/v1/tokens/solana/${encodeURIComponent(mint)}/card`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
         const body = await response.json();
         if (!response.ok || body?.data?.token?.mint !== mint) throw new Error('Token information unavailable');
         if (!controller.signal.aborted) setSnapshot({ mint, data: body.data.token });

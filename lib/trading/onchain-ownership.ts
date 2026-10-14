@@ -31,29 +31,17 @@ export async function fetchOnChainOwnership(
       try { devPubkey = new PublicKey(devAddress); } catch { /* Unknown dev share must not hide top-10 data. */ }
     }
     const { value: chain, source } = await quickNodeService.read(endpoint, async conn => {
-      const [supply, largest] = await Promise.all([
-        conn.getTokenSupply(mintPubkey), conn.getTokenLargestAccounts(mintPubkey),
-      ]);
+      const supply = await conn.getTokenSupply(mintPubkey);
       const devAccounts = devPubkey
         ? await conn.getParsedTokenAccountsByOwner(devPubkey, { mint: mintPubkey }, 'confirmed').catch(() => null)
         : null;
-      return { supply, largest, devAccounts };
+      return { supply, devAccounts };
     });
 
     const totalSupply = measuredNumber(chain.supply.value.uiAmountString ?? chain.supply.value.uiAmount);
-    const largestAccounts = chain.largest.value;
-
-    if (!totalSupply || totalSupply <= 0 || !Array.isArray(largestAccounts) || largestAccounts.length === 0) {
-      return null;
-    }
-
-    const top10Amounts = largestAccounts.slice(0, 10).map(account => measuredNumber(account.uiAmountString ?? account.uiAmount));
-    const top10Pct = top10Amounts.every(amount => amount !== null && amount >= 0)
-      ? Number((top10Amounts.reduce<number>((sum, amount) => sum + amount!, 0) / totalSupply * 100).toFixed(2))
-      : null;
 
     let devPct: number | null = null;
-    if (chain.devAccounts) {
+    if (totalSupply && totalSupply > 0 && chain.devAccounts) {
       try {
         const balances = chain.devAccounts.value.map(account => measuredNumber(account.account.data.parsed?.info?.tokenAmount?.uiAmountString));
         if (balances.every(balance => balance !== null && balance >= 0)) {
@@ -66,7 +54,10 @@ export async function fetchOnChainOwnership(
 
     return {
       mint,
-      top10Pct: top10Pct !== null && top10Pct >= 0 && top10Pct <= 100 ? top10Pct : null,
+      // getTokenLargestAccounts returns token accounts, not unique holders, and
+      // cannot identify pool or burn accounts. Do not present that sum as a
+      // holder concentration measurement.
+      top10Pct: null,
       totalHolders: null,
       snipersPct: null,
       insidersPct: null,
@@ -75,9 +66,9 @@ export async function fetchOnChainOwnership(
       proTraders: null,
       kols: null,
       fetchedAt: Date.now(),
-      source: source === 'quicknode' ? 'quicknode-rpc-largest-token-accounts'
-        : (env.HELIUS_RPC_URL || env.HELIUS_API_KEY) ? 'helius-rpc-largest-token-accounts'
-          : 'solana-rpc-largest-token-accounts',
+      source: source === 'quicknode' ? 'quicknode-rpc-supply'
+        : (env.HELIUS_RPC_URL || env.HELIUS_API_KEY) ? 'helius-rpc-supply'
+          : 'solana-rpc-supply',
     };
   } catch {
     return null;

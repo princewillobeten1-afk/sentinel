@@ -76,10 +76,10 @@ type GatewayHandler = (ctx: GatewayContext, request: Request, params: RouteParam
 const API_KEY_PREFIX = /^sk_(live|sandbox)_/;
 
 export function withApiGateway(handler: GatewayHandler, options: GatewayOptions) {
-  return async function gatewayRoute(request: Request, routeContext: { params: RouteParams }): Promise<Response> {
+  return async function gatewayRoute(request: Request, routeContext: { params: RouteParams | Promise<RouteParams> }): Promise<Response> {
     const requestId = generateId('req');
     const startedAt = Date.now();
-    const params = routeContext?.params ?? {};
+    const params = (await Promise.resolve(routeContext?.params)) ?? {};
     const pathname = new URL(request.url).pathname;
 
     let response: Response;

@@ -48,10 +48,10 @@ const HISTORY_PAGES = 5;
 
 export async function GET(
   request: Request,
-  { params }: { params: { chain: string; address: string } },
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> },
 ) {
   try {
-    const { chain, address } = params;
+    const { chain, address } = await Promise.resolve(context.params);
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }

@@ -41,15 +41,15 @@ export interface TokenCardData {
   /**
    * Ownership audit. Absent means not measured — never render a zero for it.
    */
-  top10HoldingsPct?: number;
-  devHoldingsPct?: number;
+  top10HoldingsPct?: number | null;
+  devHoldingsPct?: number | null;
   devWalletAge?: string;
-  sniperPercentage?: number;
-  insiderHoldingsPct?: number;
-  bundlerPercentage?: number;
-  holdersCount?: number;
-  proTradersCount?: number;
-  kolsCount?: number;
+  sniperPercentage?: number | null;
+  insiderHoldingsPct?: number | null;
+  bundlerPercentage?: number | null;
+  holdersCount?: number | null;
+  proTradersCount?: number | null;
+  kolsCount?: number | null;
   /** Deployer's graduated/launched record, rendered as one fraction. */
   devMints?: number;
   devMigrations?: number;

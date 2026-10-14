@@ -4,10 +4,10 @@ import { getTokenTransferList, getTokenTransferTotal } from '@/lib/api/birdeye/b
 
 export async function GET(
   request: Request,
-  { params }: { params: { chain: string; address: string } }
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> }
 ) {
   try {
-    const { chain, address } = params;
+    const { chain, address } = await Promise.resolve(context.params);
     const { searchParams } = new URL(request.url);
 
     const timeFrom = searchParams.get('time_from') ? parseInt(searchParams.get('time_from')!, 10) : undefined;

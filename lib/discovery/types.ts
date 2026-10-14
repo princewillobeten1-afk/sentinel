@@ -138,7 +138,7 @@ export interface DiscoveryToken {
    * in the response array (`Math.floor(65 + rankIdx * 28)`). A required field
    * with no real source guarantees invention; `undefined` renders as `—`.
    */
-  holdersCount?: number;
+  holdersCount?: number | null;
   holderGrowth1hPct?: number;
   /**
    * True while the ownership audit for this token is still being computed.
@@ -199,16 +199,16 @@ export interface DiscoveryToken {
   bondingStatus?: 'bonding' | 'migrating' | 'graduated';
   /** Canonical lifecycle state */
   lifecycleState?: 'new_pairs' | 'final_stretch' | 'migrating' | 'migrated';
-  devHoldingsPct?: number;
-  top10HoldingsPct?: number;
-  insiderHoldingsPct?: number;
-  sniperPercentage?: number;
-  bundlerPercentage?: number;
+  devHoldingsPct?: number | null;
+  top10HoldingsPct?: number | null;
+  insiderHoldingsPct?: number | null;
+  sniperPercentage?: number | null;
+  bundlerPercentage?: number | null;
   /** Wallet counts classified by the live ownership feed, not trade counts. */
-  sniperCount?: number;
-  bundlerCount?: number;
-  insiderCount?: number;
-  devCount?: number;
+  sniperCount?: number | null;
+  bundlerCount?: number | null;
+  insiderCount?: number | null;
+  devCount?: number | null;
   /** The creator's wallet, so the dev's holding can be checked independently. */
   devAddress?: string;
   /**
@@ -241,9 +241,9 @@ export interface DiscoveryToken {
   smartMoneyCount?: number;
   smartMoneyNetFlowUsd?: number;
   /** Pro Traders: count of wallets our system tags as historically profitable/experienced */
-  proTradersCount?: number;
+  proTradersCount?: number | null;
   /** KOLs: count of known influencer wallets currently holding */
-  kolsCount?: number;
+  kolsCount?: number | null;
   twitterUrl?: string;
   twitterHandle?: string;
   twitterFollowers?: number;

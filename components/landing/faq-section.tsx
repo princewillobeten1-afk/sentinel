@@ -52,8 +52,8 @@ export function FaqSection() {
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8 font-mono">
       <div className="text-center space-y-2">
-        <span className="text-3xs uppercase font-bold tracking-widest text-accent-400">
-          FREQUENTLY ASKED QUESTIONS
+        <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400">
+          FREQUENTLY ASKED QUESTIONS // TECHNICAL FAQ
         </span>
         <h3 className="font-heading text-2xl sm:text-3xl font-black text-white tracking-tight">
           Everything You Need to Know
@@ -71,7 +71,9 @@ export function FaqSection() {
             <div
               key={idx}
               className={`rounded-xl border transition-all duration-200 overflow-hidden ${
-                isOpen ? 'border-accent-500/40 bg-neutral-900 shadow-glow' : 'border-neutral-750 bg-neutral-900/60 hover:border-neutral-600'
+                isOpen
+                  ? 'border-emerald-500/40 bg-[#0A0B10] shadow-[0_0_20px_rgba(16,185,129,0.15),inset_0_1px_0_0_rgba(255,255,255,0.06)]'
+                  : 'border-white/[0.08] bg-[#0A0B10]/60 hover:border-white/[0.15]'
               }`}
             >
               <button
@@ -79,12 +81,12 @@ export function FaqSection() {
                 className="w-full py-4 px-6 flex items-center justify-between text-left gap-4 cursor-pointer"
               >
                 <span className="text-sm font-bold text-neutral-100 flex items-center gap-3">
-                  <span className="text-accent-400 font-mono text-xs">0{idx + 1}.</span>
+                  <span className="text-emerald-400 font-mono text-xs">0{idx + 1}.</span>
                   {faq.question}
                 </span>
                 <ChevronDown
                   className={`h-4 w-4 text-neutral-400 transition-transform duration-200 flex-shrink-0 ${
-                    isOpen ? 'rotate-180 text-accent-400' : ''
+                    isOpen ? 'rotate-180 text-emerald-400' : ''
                   }`}
                 />
               </button>
@@ -97,7 +99,7 @@ export function FaqSection() {
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.25 }}
                   >
-                    <div className="px-6 pb-5 pt-1 text-xs text-neutral-300 font-sans leading-relaxed border-t border-neutral-800/80">
+                    <div className="px-6 pb-5 pt-1 text-xs text-neutral-300 font-sans leading-relaxed border-t border-white/[0.06]">
                       {faq.answer}
                     </div>
                   </motion.div>

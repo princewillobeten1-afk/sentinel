@@ -33,12 +33,11 @@ vi.mock('@solana/web3.js', async () => {
 });
 
 describe('fetchOnChainOwnership', () => {
-  it('computes top10 percentage from largest accounts and supply', async () => {
-    // Sum = 150 + 100 + 80 + 50 + 40 + 30 + 20 + 15 + 10 + 5 = 500M out of 1000M = 50%
+  it('does not mislabel largest token-account concentration as unique-holder concentration', async () => {
     const profile = await fetchOnChainOwnership('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
     expect(profile).not.toBeNull();
-    expect(profile?.top10Pct).toBe(50);
-    expect(profile?.source).toMatch(/^(helius|solana)-rpc-largest-token-accounts$/);
+    expect(profile?.top10Pct).toBeNull();
+    expect(profile?.source).toMatch(/^(helius|solana)-rpc-supply$/);
   });
 
   it('returns null for empty mint', async () => {

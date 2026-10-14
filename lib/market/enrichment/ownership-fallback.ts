@@ -50,9 +50,10 @@ export function hasOwnershipFallback(): boolean {
 /**
  * Resolves and joins complementary ownership measurements in priority order:
  * 1. Solana Tracker (if API key is configured)
- * 2. Rugcheck report (public API, provides top-account concentration and
+ * 2. Rugcheck report (public API, provides holder concentration and
  *    creator percentage only when the creator is in the returned list)
- * 3. On-chain Solana RPC (direct getTokenLargestAccounts + getTokenSupply)
+ * 3. On-chain Solana RPC (supply and creator balance only; not enough
+ *    information to identify unique top holders)
  */
 export async function resolveOwnershipFallback(
   mint: string,
@@ -98,4 +99,3 @@ export async function backfillMissingProfileFields(
   const fallback = await resolveOwnershipFallback(profile.mint, devAddress);
   return mergeOwnershipProfiles(profile, fallback) ?? profile;
 }
-

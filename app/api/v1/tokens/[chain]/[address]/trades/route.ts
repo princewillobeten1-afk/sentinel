@@ -20,12 +20,13 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(
   _request: Request,
-  { params }: { params: { chain: string; address: string } },
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> },
 ) {
   try {
+    const { chain, address } = await Promise.resolve(context.params);
     throw new ApiError(
       `This endpoint served placeholder trades and has been retired. Use ` +
-        `/api/v1/tokens/${params.chain}/${params.address}/live-trades instead.`,
+        `/api/v1/tokens/${chain}/${address}/live-trades instead.`,
       410,
     );
   } catch (error) {

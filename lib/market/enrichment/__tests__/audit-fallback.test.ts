@@ -28,7 +28,7 @@ describe('audit provider fallback', () => {
     await vi.waitFor(() => expect(mocks.update).toHaveBeenCalledWith('mint',
       expect.objectContaining({
         top10HoldingsPct: 17, sniperPercentage: 0, insiderHoldingsPct: 2,
-        bundlerPercentage: undefined,
+        bundlerPercentage: null, proTradersCount: null, kolsCount: null,
         ownershipEvidence: expect.objectContaining({ status: 'measured', source: 'solana-tracker-token-risk' }),
       }), 'solana-tracker-token-risk', 'fresh', expect.any(String)), { timeout: 5000 });
     expect(mocks.birdeye).toHaveBeenCalledTimes(1);

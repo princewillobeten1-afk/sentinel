@@ -20,146 +20,103 @@ import {
   Star,
   Activity,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { TrendCard } from '@/components/trends/trend-card';
-import { INITIAL_TREND_ITEMS } from '@/lib/trends/mock-trends-data';
 import type { TrendItem } from '@/lib/trends/types';
+import type { DiscoveryToken } from '@/lib/discovery/types';
+import { formatTokenPrice, formatCompactUsd } from '@/lib/discovery/format';
 import { clsx } from 'clsx';
-
-interface RadarToken {
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;
-  volume24h: string;
-  washFilteredPct: number;
-  clusterRisk: 'LOW' | 'MED' | 'HIGH';
-  clusterScore: number;
-  smartInflow: string;
-  dex: string;
-}
-
-const RADAR_TOKENS: RadarToken[] = [
-  {
-    symbol: 'SOL',
-    name: 'Solana Native',
-    price: 154.2,
-    change24h: 4.82,
-    volume24h: '$3.8B',
-    washFilteredPct: 4.2,
-    clusterRisk: 'LOW',
-    clusterScore: 6,
-    smartInflow: '+$42.5M',
-    dex: 'Raydium/Orca',
-  },
-  {
-    symbol: 'JUP',
-    name: 'Jupiter Exchange',
-    price: 1.12,
-    change24h: 8.41,
-    volume24h: '$412M',
-    washFilteredPct: 8.6,
-    clusterRisk: 'LOW',
-    clusterScore: 12,
-    smartInflow: '+$8.9M',
-    dex: 'Meteora/Jup',
-  },
-  {
-    symbol: 'RAY',
-    name: 'Raydium Protocol',
-    price: 2.38,
-    change24h: -2.15,
-    volume24h: '$84M',
-    washFilteredPct: 14.2,
-    clusterRisk: 'MED',
-    clusterScore: 28,
-    smartInflow: '+$1.4M',
-    dex: 'Raydium CPMM',
-  },
-  {
-    symbol: 'PYTH',
-    name: 'Pyth Network',
-    price: 0.42,
-    change24h: 3.19,
-    volume24h: '$62M',
-    washFilteredPct: 6.8,
-    clusterRisk: 'LOW',
-    clusterScore: 9,
-    smartInflow: '+$3.2M',
-    dex: 'Whirlpools',
-  },
-  {
-    symbol: 'BONK',
-    name: 'Bonk Community',
-    price: 0.000024,
-    change24h: 12.45,
-    volume24h: '$195M',
-    washFilteredPct: 32.4,
-    clusterRisk: 'MED',
-    clusterScore: 42,
-    smartInflow: '+$4.1M',
-    dex: 'Raydium/Orca',
-  },
-  {
-    symbol: 'WIF',
-    name: 'Dogwifhat',
-    price: 2.84,
-    change24h: -5.4,
-    volume24h: '$340M',
-    washFilteredPct: 22.1,
-    clusterRisk: 'MED',
-    clusterScore: 35,
-    smartInflow: '-$2.8M',
-    dex: 'Raydium CLMM',
-  },
-  {
-    symbol: 'NOVA',
-    name: 'Nova AI Agent',
-    price: 0.084,
-    change24h: 84.2,
-    volume24h: '$12.4M',
-    washFilteredPct: 68.5,
-    clusterRisk: 'HIGH',
-    clusterScore: 84,
-    smartInflow: '-$420K (Exiting)',
-    dex: 'Pump.fun',
-  },
-];
 
 export function LiveMarketRadar() {
   const [activeTab, setActiveTab] = useState<'tokens' | 'trends'>('tokens');
   const [filter, setFilter] = useState<'all' | 'safe' | 'wash-high'>('all');
   const [trendSource, setTrendSource] = useState<string>('all');
   const [trendCategory, setTrendCategory] = useState<string>('all');
-  const [liveTrends, setLiveTrends] = useState<TrendItem[]>(INITIAL_TREND_ITEMS);
 
-  // Fetch live enriched trends on mount
-  useEffect(() => {
-    let isMounted = true;
-    async function loadTrends() {
-      try {
-        const res = await fetch('/api/v1/trends');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.data) && json.data.length > 0 && isMounted) {
-            setLiveTrends(json.data);
-          }
+  // Real data states - no mock arrays
+  const [liveTokens, setLiveTokens] = useState<DiscoveryToken[]>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState<boolean>(true);
+  const [tokensError, setTokensError] = useState<string | null>(null);
+
+  const [liveTrends, setLiveTrends] = useState<TrendItem[]>([]);
+  const [isLoadingTrends, setIsLoadingTrends] = useState<boolean>(true);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+
+  // Fetch live verified tokens from Discovery API
+  const fetchLiveTokens = async () => {
+    try {
+      setIsLoadingTokens(true);
+      setTokensError(null);
+      const res = await fetch('/api/v1/discovery/trending?limit=12', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        const list = json.data?.tokens || json.tokens || (Array.isArray(json.data) ? json.data : []);
+        if (Array.isArray(list) && list.length > 0) {
+          setLiveTokens(list);
+          return;
         }
-      } catch (err) {
-        // Fallback silently to initial curated trends
       }
+      // Fallback try discovery root
+      const fallbackRes = await fetch('/api/v1/discovery?chain=solana&limit=12', { cache: 'no-store' });
+      if (fallbackRes.ok) {
+        const fallbackJson = await fallbackRes.json();
+        const list = fallbackJson.data?.tokens || fallbackJson.tokens || (Array.isArray(fallbackJson.data) ? fallbackJson.data : []);
+        if (Array.isArray(list)) {
+          setLiveTokens(list);
+          return;
+        }
+      }
+      setLiveTokens([]);
+    } catch (err: any) {
+      setTokensError(err?.message || 'Failed to load live on-chain pairs');
+      setLiveTokens([]);
+    } finally {
+      setIsLoadingTokens(false);
     }
-    loadTrends();
-    return () => {
-      isMounted = false;
-    };
+  };
+
+  // Fetch live enriched trends
+  const fetchLiveTrends = async () => {
+    try {
+      setIsLoadingTrends(true);
+      setTrendsError(null);
+      const res = await fetch('/api/v1/trends', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setLiveTrends(json.data);
+          return;
+        }
+      }
+      setLiveTrends([]);
+    } catch (err: any) {
+      setTrendsError(err?.message || 'Failed to load trending narratives');
+      setLiveTrends([]);
+    } finally {
+      setIsLoadingTrends(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveTokens();
+    fetchLiveTrends();
   }, []);
 
-  const filteredTokens = RADAR_TOKENS.filter((t) => {
-    if (filter === 'safe') return t.clusterRisk === 'LOW';
-    if (filter === 'wash-high') return t.washFilteredPct > 20;
-    return true;
-  });
+  const filteredTokens = useMemo(() => {
+    return liveTokens.filter((t) => {
+      if (filter === 'safe') {
+        const level = t.riskTier || t.rugRisk?.level;
+        const score = t.riskScore ?? t.rugRisk?.score ?? 0;
+        return level === 'low' || score < 30;
+      }
+      if (filter === 'wash-high') {
+        const washPct = t.organicScore !== undefined ? 100 - t.organicScore : 0;
+        return washPct > 20;
+      }
+      return true;
+    });
+  }, [liveTokens, filter]);
 
   const filteredTrends = useMemo(() => {
     return liveTrends
@@ -187,6 +144,11 @@ export function LiveMarketRadar() {
           >
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
             <span>Verified On-Chain Pairs</span>
+            {liveTokens.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded bg-neutral-900 text-3xs text-neutral-400">
+                {liveTokens.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -204,17 +166,32 @@ export function LiveMarketRadar() {
           </button>
         </div>
 
-        <Link
-          href={activeTab === 'tokens' ? '/discover' : '/trends'}
-          className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-bold group px-3 py-1.5 rounded-lg hover:bg-neutral-900 transition-colors"
-        >
-          <span>
-            {activeTab === 'tokens'
-              ? 'View Full Screener (2,400+ Pairs)'
-              : 'Open Trends Command Center (38+ Feeds)'}
-          </span>
-          <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={activeTab === 'tokens' ? fetchLiveTokens : fetchLiveTrends}
+            title="Refresh Live Data"
+            className="text-neutral-500 hover:text-white p-1.5 rounded-lg hover:bg-neutral-900 transition-colors"
+          >
+            <RefreshCw
+              className={clsx(
+                'h-3.5 w-3.5',
+                (activeTab === 'tokens' ? isLoadingTokens : isLoadingTrends) && 'animate-spin'
+              )}
+            />
+          </button>
+
+          <Link
+            href={activeTab === 'tokens' ? '/discover' : '/trends'}
+            className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-bold group px-3 py-1.5 rounded-lg hover:bg-neutral-900 transition-colors"
+          >
+            <span>
+              {activeTab === 'tokens'
+                ? 'View Full Screener'
+                : 'Open Trends Command Center'}
+            </span>
+            <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+        </div>
       </div>
 
       {/* ===================================================================== */}
@@ -277,119 +254,197 @@ export function LiveMarketRadar() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-850">
-                {filteredTokens.map((token) => {
-                  const isUp = token.change24h >= 0;
-
-                  return (
-                    <tr
-                      key={token.symbol}
-                      className="hover:bg-neutral-900/60 transition-colors group cursor-pointer"
-                    >
-                      {/* Symbol & Name */}
-                      <td className="py-3 px-4">
+                {isLoadingTokens ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 font-black text-white text-xs">
-                            {token.symbol[0]}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-white group-hover:text-sky-400 transition-colors">
-                                {token.symbol}
-                              </span>
-                              <span className="text-[10px] text-neutral-500 font-sans">{token.dex}</span>
-                            </div>
-                            <p className="text-[10px] text-neutral-400 font-sans">{token.name}</p>
+                          <div className="h-7 w-7 rounded-lg bg-neutral-850" />
+                          <div className="space-y-1">
+                            <div className="h-3 w-14 bg-neutral-850 rounded" />
+                            <div className="h-2 w-20 bg-neutral-900 rounded" />
                           </div>
                         </div>
                       </td>
+                      <td className="py-3.5 px-4"><div className="h-3.5 w-14 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4"><div className="h-3.5 w-12 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4"><div className="h-3.5 w-16 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4"><div className="h-2.5 w-20 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4"><div className="h-4 w-20 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4"><div className="h-3 w-14 bg-neutral-850 rounded" /></td>
+                      <td className="py-3.5 px-4 text-right"><div className="h-6 w-16 bg-neutral-850 rounded ml-auto" /></td>
+                    </tr>
+                  ))
+                ) : filteredTokens.length > 0 ? (
+                  filteredTokens.map((token) => {
+                    const isUp = (token.priceChange24h ?? 0) >= 0;
+                    const washPct =
+                      token.organicScore !== undefined && token.organicScore !== null
+                        ? Math.max(0, 100 - token.organicScore)
+                        : null;
+                    const clusterRisk = (token.riskTier || token.rugRisk?.level || 'low').toUpperCase();
+                    const clusterScore =
+                      token.riskScore ??
+                      token.rugRisk?.score ??
+                      (clusterRisk === 'LOW' ? 12 : clusterRisk === 'MEDIUM' ? 38 : 78);
+                    const dexName = token.source || token.launchpad || 'Raydium';
+                    const netInflow =
+                      token.buySellImbalancePct !== undefined && token.buySellImbalancePct !== null
+                        ? `${token.buySellImbalancePct >= 0 ? '+' : ''}${token.buySellImbalancePct.toFixed(1)}% flow`
+                        : token.buysCount !== undefined && token.sellsCount !== undefined
+                        ? `${token.buysCount - token.sellsCount >= 0 ? '+' : ''}${token.buysCount - token.sellsCount} txs`
+                        : null;
 
-                      {/* Price */}
-                      <td className="py-3 px-4 font-bold text-white">
-                        ${token.price < 0.01 ? token.price.toFixed(6) : token.price.toFixed(2)}
-                      </td>
+                    return (
+                      <tr
+                        key={token.id || token.mint}
+                        className="hover:bg-neutral-900/60 transition-colors group cursor-pointer"
+                      >
+                        {/* Symbol & Name */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-900 border border-neutral-800 font-black text-white text-xs shrink-0 overflow-hidden">
+                              {token.symbol ? token.symbol[0] : 'T'}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-white group-hover:text-sky-400 transition-colors truncate">
+                                  {token.symbol}
+                                </span>
+                                <span className="text-[10px] text-neutral-500 font-sans shrink-0">
+                                  {dexName}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-neutral-400 font-sans truncate max-w-[140px]">
+                                {token.name}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* Change */}
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center gap-0.5 font-bold ${
-                            isUp ? 'text-emerald-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                          {isUp ? `+${token.change24h}%` : `${token.change24h}%`}
-                        </span>
-                      </td>
+                        {/* Price */}
+                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                          ${formatTokenPrice(token.priceUsd)}
+                        </td>
 
-                      {/* Volume */}
-                      <td className="py-3 px-4 font-medium text-neutral-300">
-                        {token.volume24h}
-                      </td>
+                        {/* Change */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {token.priceChange24h !== undefined && token.priceChange24h !== null ? (
+                            <span
+                              className={`inline-flex items-center gap-0.5 font-bold ${
+                                isUp ? 'text-emerald-400' : 'text-rose-400'
+                              }`}
+                            >
+                              {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                              {isUp
+                                ? `+${token.priceChange24h.toFixed(2)}%`
+                                : `${token.priceChange24h.toFixed(2)}%`}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-500">—</span>
+                          )}
+                        </td>
 
-                      {/* Wash % Filtered */}
-                      <td className="py-3 px-4">
-                        <div className="space-y-1">
+                        {/* Volume */}
+                        <td className="py-3 px-4 font-medium text-neutral-300 whitespace-nowrap">
+                          {token.volume24hUsd ? `$${formatCompactUsd(token.volume24hUsd)}` : '—'}
+                        </td>
+
+                        {/* Wash % Filtered */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {washPct !== null ? (
+                            <div className="space-y-1">
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  washPct > 30 ? 'text-amber-400' : 'text-neutral-400'
+                                }`}
+                              >
+                                {washPct}% Filtered
+                              </span>
+                              <div className="w-20 h-1 rounded-full bg-neutral-800 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    washPct > 50
+                                      ? 'bg-rose-500'
+                                      : washPct > 20
+                                      ? 'bg-amber-500'
+                                      : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${Math.min(100, washPct)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-neutral-500 font-mono text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        {/* Cluster Threat */}
+                        <td className="py-3 px-4 whitespace-nowrap">
                           <span
-                            className={`text-[11px] font-bold ${
-                              token.washFilteredPct > 30 ? 'text-amber-400' : 'text-neutral-400'
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              clusterRisk === 'LOW'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : clusterRisk === 'MEDIUM' || clusterRisk === 'MED'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                             }`}
                           >
-                            {token.washFilteredPct}% Filtered
+                            {clusterRisk === 'LOW' ? (
+                              <ShieldCheck className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <ShieldAlert className="h-3 w-3 text-rose-400" />
+                            )}
+                            {clusterRisk} ({clusterScore}/100)
                           </span>
-                          <div className="w-20 h-1 rounded-full bg-neutral-800 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                token.washFilteredPct > 50
-                                  ? 'bg-rose-500'
-                                  : token.washFilteredPct > 20
-                                  ? 'bg-amber-500'
-                                  : 'bg-emerald-500'
-                              }`}
-                              style={{ width: `${Math.min(100, token.washFilteredPct)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Cluster Threat */}
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold border ${
-                            token.clusterRisk === 'LOW'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : token.clusterRisk === 'MED'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                          }`}
-                        >
-                          {token.clusterRisk === 'LOW' ? (
-                            <ShieldCheck className="h-3 w-3 text-emerald-400" />
+                        {/* Smart Inflow */}
+                        <td className="py-3 px-4 font-bold text-2xs whitespace-nowrap">
+                          {netInflow ? (
+                            <span
+                              className={
+                                netInflow.startsWith('+') ? 'text-emerald-400' : 'text-rose-400'
+                              }
+                            >
+                              {netInflow}
+                            </span>
                           ) : (
-                            <ShieldAlert className="h-3 w-3 text-rose-400" />
+                            <span className="text-neutral-500">—</span>
                           )}
-                          {token.clusterRisk} ({token.clusterScore}/100)
-                        </span>
-                      </td>
+                        </td>
 
-                      {/* Smart Inflow */}
-                      <td className="py-3 px-4 font-bold text-2xs">
-                        <span className={token.smartInflow.startsWith('+') ? 'text-emerald-400' : 'text-rose-400'}>
-                          {token.smartInflow}
-                        </span>
-                      </td>
-
-                      {/* Quick Action */}
-                      <td className="py-3 px-4 text-right">
+                        {/* Quick Action */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <Link
+                            href={`/trade/solana/${token.mint || token.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white font-bold text-[11px] border border-neutral-800 transition-all shadow-sm"
+                          >
+                            <span>Terminal</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-neutral-400">
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        <Activity className="h-6 w-6 text-neutral-600 animate-pulse" />
+                        <p className="text-xs font-mono">
+                          {tokensError || 'No live tokens currently matching this filter.'}
+                        </p>
                         <Link
-                          href="/trade"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white font-bold text-[11px] border border-neutral-800 transition-all shadow-sm"
+                          href="/discover"
+                          className="text-xs text-sky-400 hover:text-sky-300 font-bold underline"
                         >
-                          <span>Terminal</span>
-                          <ExternalLink className="h-3 w-3" />
+                          Open Discover Screener for full catalog
                         </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -461,11 +516,40 @@ export function LiveMarketRadar() {
           </div>
 
           {/* Grid of Compact Trending Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {filteredTrends.map((trend) => (
-              <TrendCard key={trend.id} trend={trend} />
-            ))}
-          </div>
+          {isLoadingTrends ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-4 rounded-2xl bg-[#0A0A0A] border border-neutral-850 animate-pulse space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="h-3 w-20 bg-neutral-850 rounded" />
+                    <div className="h-3 w-12 bg-neutral-850 rounded" />
+                  </div>
+                  <div className="h-4 w-3/4 bg-neutral-850 rounded" />
+                  <div className="h-8 w-full bg-neutral-900 rounded" />
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="h-3 w-24 bg-neutral-850 rounded" />
+                    <div className="h-6 w-16 bg-neutral-850 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredTrends.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {filteredTrends.map((trend) => (
+                <TrendCard key={trend.id} trend={trend} />
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center rounded-2xl border border-neutral-850 bg-[#0A0A0A] text-neutral-400 space-y-2">
+              <Flame className="h-6 w-6 text-neutral-600 mx-auto" />
+              <p className="text-xs font-mono">
+                {trendsError || 'No live narrative trends found for selected filters.'}
+              </p>
+              <Link href="/trends" className="text-xs text-sky-400 hover:text-sky-300 font-bold underline inline-block">
+                Open Trends Command Center
+              </Link>
+            </div>
+          )}
 
           {/* Bottom Launch Banner (Pure Black) */}
           <div className="p-3.5 sm:p-4 rounded-2xl border border-neutral-850 bg-[#0A0A0A] flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">

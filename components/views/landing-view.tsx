@@ -15,9 +15,8 @@ import {
   Cpu,
   BarChart2,
   TrendingUp,
-  Search,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,7 +60,7 @@ const fadeInUp: Variants = {
 
 export function LandingView() {
   return (
-    <div className="landing-page relative min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-accent-500/30 overflow-x-hidden">
+    <div className="landing-page relative min-h-screen bg-[#070709] text-neutral-100 font-sans selection:bg-emerald-500/30 overflow-x-hidden">
       
       {/* 3D Instanced Candlestick Background Scene */}
       <HeroScene />
@@ -75,7 +74,7 @@ export function LandingView() {
         {/* ========================================================================= */}
         {/* HERO SECTION */}
         {/* ========================================================================= */}
-        <section className="pt-12 sm:pt-20 px-4 sm:px-6 max-w-7xl mx-auto">
+        <section className="pt-10 sm:pt-16 px-4 sm:px-6 max-w-7xl mx-auto">
           <motion.div
             variants={staggerContainer}
             initial="hidden"
@@ -83,90 +82,88 @@ export function LandingView() {
             className="text-center space-y-6 max-w-4xl mx-auto"
           >
             {/* Live Status Pill */}
-            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 rounded-full border border-accent-500/30 bg-accent-500/10 px-3.5 py-1 text-2xs font-mono text-accent-300 backdrop-blur-md">
-              <span className="flex h-2 w-2 rounded-full bg-buy-500 animate-pulse" />
-              <span>SOLANA MAINNET LIVE • ENGINE V2.4</span>
-              <span className="text-neutral-500">|</span>
-              <span className="text-buy-400 font-bold">18ms EXECUTION</span>
+            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-neutral-900/80 px-3.5 py-1 text-2xs font-mono text-neutral-300 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-white font-semibold">SOLANA MAINNET BETA</span>
+              <span className="text-neutral-600">|</span>
+              <span className="text-emerald-400 font-bold">MEV-PROTECTED JITO ROUTING</span>
             </motion.div>
 
             {/* Main Headline */}
-            <motion.h1 variants={fadeInUp} className="font-heading text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.08]">
-              Zero Blind Spots <br className="hidden sm:block" />
-              <span className="bg-gradient-to-r from-accent-400 via-sky-300 to-buy-400 bg-clip-text text-transparent">
-                on Solana.
+            <motion.h1 variants={fadeInUp} className="font-heading text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.05]">
+              The High-Frequency Terminal <br className="hidden sm:block" />
+              <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-400 bg-clip-text text-transparent">
+                Built for Solana Truth.
               </span>
             </motion.h1>
 
             {/* Subtitle */}
             <motion.p variants={fadeInUp} className="max-w-2xl mx-auto text-sm sm:text-base lg:text-lg text-neutral-300 leading-relaxed font-sans drop-shadow-sm">
-              Stop trading blind into fabricated volume and coordinated insider cabals. Sentinel dissects holder funding genealogies, filters wash cycles, maps executable liquidity depth, and routes MEV-protected fills in milliseconds.
+              Stop trading blind into fabricated volume and coordinated insider cabals. Sentinel dissects holder funding genealogies, filters circular wash cycles, and routes private validator fills with zero toxic slippage.
             </motion.p>
 
-            {/* Single CTA Container (Direct to /discover) */}
-            <motion.div variants={fadeInUp} className="pt-3 flex flex-col items-center justify-center gap-3">
+            {/* Single Action CTA: Enter Screener */}
+            <motion.div variants={fadeInUp} className="pt-2 flex items-center justify-center">
               <Link
                 href="/discover"
-                id="hero-enter-discover-btn"
-                className="group relative inline-flex items-center gap-3.5 px-8 py-4 rounded-2xl bg-emerald-400 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 text-neutral-950 font-mono font-bold text-sm sm:text-base shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:shadow-[0_0_40px_rgba(16,185,129,0.65)] transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+                id="hero-enter-screener-btn"
+                className="group inline-flex items-center gap-3 px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-neutral-950 font-mono font-bold text-sm shadow-[0_0_25px_rgba(16,185,129,0.35)] hover:shadow-[0_0_35px_rgba(16,185,129,0.55)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
-                {/* The Discover Pill indicator */}
-                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-950/20 text-neutral-950 border border-neutral-950/20 text-2xs uppercase tracking-wider font-extrabold">
-                  <span className="h-2 w-2 rounded-full bg-neutral-950 animate-pulse" />
-                  <span>DISCOVER</span>
-                </div>
-
-                <span className="tracking-tight text-neutral-950">Enter Discover Screener</span>
-                <ArrowRight className="h-5 w-5 text-neutral-950 group-hover:translate-x-1.5 transition-transform duration-200" />
+                <span>Enter Screener</span>
+                <ArrowRight className="h-4 w-4 text-neutral-950 group-hover:translate-x-1 transition-transform duration-200" />
               </Link>
-
-              {/* Supporting proof & reassurance */}
-              <div className="flex items-center gap-2 text-2xs text-neutral-400 font-mono">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Instant access to 2,400+ verified Solana pairs</span>
-                <span className="text-neutral-600">•</span>
-                <span className="text-neutral-500">100% Non-custodial</span>
-              </div>
             </motion.div>
 
-            {/* Proof Counters Bar */}
+            {/* Core Capability Pillars */}
             <motion.div
               variants={fadeInUp}
-              className="pt-8 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto font-mono text-left"
+              className="pt-6 grid grid-cols-2 md:grid-cols-4 gap-3.5 max-w-4xl mx-auto font-mono text-left"
             >
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-750 backdrop-blur-sm">
-                <p className="text-3xs uppercase text-neutral-400 font-semibold">24H Wash Vol Filtered</p>
-                <p className="text-lg sm:text-xl font-black text-warn-400">$48.2M</p>
-                <p className="text-3xs text-neutral-500 font-sans">Self-trading bot loops isolated</p>
+              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Volume Integrity</p>
+                  <Activity className="h-3.5 w-3.5 text-warn-400" />
+                </div>
+                <p className="text-base sm:text-lg font-black text-warn-400 tracking-tight">Wash Detection</p>
+                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Separates genuine liquidity from circular bot loops</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-750 backdrop-blur-sm">
-                <p className="text-3xs uppercase text-neutral-400 font-semibold">Average Fill Latency</p>
-                <p className="text-lg sm:text-xl font-black text-buy-400">18ms</p>
-                <p className="text-3xs text-neutral-500 font-sans">Restricted local session keys</p>
+              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Execution Speed</p>
+                  <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                </div>
+                <p className="text-base sm:text-lg font-black text-emerald-400 tracking-tight">Sub-Second Fills</p>
+                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Local session keys and direct validator routing</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-750 backdrop-blur-sm">
-                <p className="text-3xs uppercase text-neutral-400 font-semibold">Cabal Clusters Mapped</p>
-                <p className="text-lg sm:text-xl font-black text-accent-300">1,420+</p>
-                <p className="text-3xs text-neutral-500 font-sans">4-hop wallet genealogy graphs</p>
+              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Holder Forensics</p>
+                  <Layers className="h-3.5 w-3.5 text-accent-300" />
+                </div>
+                <p className="text-base sm:text-lg font-black text-accent-300 tracking-tight">Cabal Mapping</p>
+                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Uncovers multi-hop wallet genealogies and insider rings</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-750 backdrop-blur-sm">
-                <p className="text-3xs uppercase text-neutral-400 font-semibold">MEV Sandwich Loss</p>
-                <p className="text-lg sm:text-xl font-black text-buy-400">0.00%</p>
-                <p className="text-3xs text-neutral-500 font-sans">Direct private Jito validator bundles</p>
+              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Mempool Defense</p>
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                </div>
+                <p className="text-base sm:text-lg font-black text-emerald-400 tracking-tight">Zero Sandwiching</p>
+                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Direct private Jito bundles bypass public mempools</p>
               </div>
             </motion.div>
           </motion.div>
 
           {/* ========================================================================= */}
-          {/* CHART FLOW #1: INTERACTIVE LIVE TERMINAL PREVIEW */}
+          {/* TERMINAL CANVAS SHOWCASE */}
           {/* ========================================================================= */}
           <div className="mt-14 max-w-6xl mx-auto">
             <div className="text-center space-y-1 mb-6">
-              <span className="text-3xs uppercase font-mono font-bold tracking-widest text-accent-400">
-                CHART FLOW 01 • REAL-TIME TERMINAL CANVAS
+              <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-emerald-400">
+                LIVE TERMINAL ENGINE // REAL-TIME EXECUTION CANVAS
               </span>
               <h2 className="font-heading text-2xl sm:text-3xl font-black text-white tracking-tight">
                 Inspect Real Price Action Beneath the Noise
@@ -181,18 +178,18 @@ export function LandingView() {
         </section>
 
         {/* ========================================================================= */}
-        {/* CHART FLOW #2: 4-STAGE INTELLIGENCE PIPELINE */}
+        {/* SECTION 2: 4-STAGE INTELLIGENCE PIPELINE */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
           <div className="text-center space-y-2 mb-10">
-            <span className="text-3xs uppercase font-mono font-bold tracking-widest text-accent-400">
-              CHART FLOW 02 • THE ARCHITECTURE
+            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-emerald-400">
+              SYSTEM ARCHITECTURE // ULTRA-LOW LATENCY PIPELINE
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
-              The Sentinel Intelligence Pipeline Flow
+              The Sentinel 4-Stage Intelligence Engine
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              From raw 400ms Solana slot mempool packets to sub-20ms private execution, explore how Sentinel processes on-chain truth in four continuous stages.
+              From raw 400ms Solana slot mempool packets to sub-second private execution, explore how Sentinel processes on-chain truth in four continuous stages.
             </p>
           </div>
 
@@ -200,18 +197,18 @@ export function LandingView() {
         </section>
 
         {/* ========================================================================= */}
-        {/* CHART FLOW #3: FORENSIC CLUSTER RADAR (ATTACK VS MITIGATION) */}
+        {/* SECTION 3: FORENSIC CLUSTER RADAR (ATTACK VS MITIGATION) */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
           <div className="text-center space-y-2 mb-10">
-            <span className="text-3xs uppercase font-mono font-bold tracking-widest text-sell-400">
-              CHART FLOW 03 • CABAL EXPOSURE
+            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-rose-400">
+              SYBIL RADAR // FORENSIC GRAPH ANALYSIS
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
-              Exposing the Sybil Cartel Before the Dump
+              Expose Coordinated Cartels Before The Dump
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              Token creators don&apos;t hold 50% in one public wallet anymore. They splinter it across 20 fresh addresses funded in the same 20-minute window. Toggle below to compare what retail sees versus what Sentinel reveals.
+              Token creators don&apos;t hold 50% in one public wallet anymore. They splinter it across fresh addresses funded in the same 20-minute window. Toggle below to compare standard block explorer views against Sentinel&apos;s 4-hop genealogy graph.
             </p>
           </div>
 
@@ -219,18 +216,18 @@ export function LandingView() {
         </section>
 
         {/* ========================================================================= */}
-        {/* CHART FLOW #4: SIMULATED EXIT DEPTH WATERFALL */}
+        {/* SECTION 4: SIMULATED EXIT DEPTH WATERFALL */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
           <div className="text-center space-y-2 mb-10">
-            <span className="text-3xs uppercase font-mono font-bold tracking-widest text-warn-400">
-              CHART FLOW 04 • LIQUIDITY STRESS TEST
+            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-amber-400">
+              LIQUIDITY SIMULATOR // SLIPPAGE STRESS TEST
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
               Paper Liquidity vs. Simulated Executable Depth
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              Test what happens when a $25K, $50K, or $100K market order hits the pool. See how Sentinel fragments trades across multiple AMM routes to prevent catastrophic slippage.
+              Simulate high-volume market exits before deploying capital. Observe multi-pool fragmentation, price impact curves, and private validator bundle execution.
             </p>
           </div>
 

@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { chain: string; address: string } }
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> }
 ) {
   try {
-    const { address } = params;
+    const { address } = await Promise.resolve(context.params);
     const token = getTokenByMint(address);
 
     if (!token) {

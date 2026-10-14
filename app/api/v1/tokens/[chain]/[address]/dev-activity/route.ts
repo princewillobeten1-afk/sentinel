@@ -56,10 +56,10 @@ interface JupiterSearchToken {
 
 export async function GET(
   _request: Request,
-  { params }: { params: { chain: string; address: string } },
+  context: { params: { chain: string; address: string } | Promise<{ chain: string; address: string }> },
 ) {
   try {
-    const { chain, address } = params;
+    const { chain, address } = await Promise.resolve(context.params);
     if (chain.toLowerCase() !== 'solana') {
       throw new ApiError('Creator evidence is currently available for Solana only', 400);
     }

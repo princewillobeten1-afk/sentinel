@@ -38,8 +38,8 @@ const COMPARISON_ROWS = [
   },
   {
     feature: 'Restricted Session-Key 1-Click Trading',
-    description: 'Instant sub-20ms fills without browser popup wallet confirmations',
-    sentinel: '18ms non-custodial keys',
+    description: 'Instant sub-second fills without browser popup wallet confirmations',
+    sentinel: 'Sub-second non-custodial keys',
     standard: 'Slow wallet extension popups',
     sentinelHas: true,
     standardHas: false,
@@ -66,8 +66,8 @@ export function ComparisonTable() {
   return (
     <div className="w-full space-y-6 font-mono">
       <div className="text-center space-y-2">
-        <span className="text-3xs uppercase font-bold tracking-widest text-accent-400">
-          COMPETITIVE ADVANTAGE
+        <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400">
+          COMPETITIVE ADVANTAGE // INSTITUTIONAL AUDIT
         </span>
         <h3 className="font-heading text-2xl sm:text-3xl font-black text-white tracking-tight">
           Sentinel vs. Standard DEX Aggregators
@@ -77,14 +77,14 @@ export function ComparisonTable() {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-neutral-700 bg-neutral-900/90 shadow-2xl backdrop-blur-xl">
+      <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0A0B10]/90 shadow-[0_12px_40px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-xl">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="border-b border-neutral-750 bg-neutral-850">
+            <tr className="border-b border-white/[0.08] bg-[#060608]/90">
               <th className="py-4 px-6 font-bold text-neutral-300 w-1/2">Capability</th>
-              <th className="py-4 px-6 font-black text-accent-300 bg-accent-500/10 border-x border-accent-500/20 w-1/4">
+              <th className="py-4 px-6 font-black text-emerald-300 bg-emerald-500/10 border-x border-emerald-500/20 w-1/4">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-accent-400" />
+                  <Zap className="h-4 w-4 text-emerald-400" />
                   <span>PROJECT SENTINEL</span>
                 </div>
               </th>

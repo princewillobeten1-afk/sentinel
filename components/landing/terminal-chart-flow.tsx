@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   AlertOctagon
 } from 'lucide-react';
+import { useMarketSummary } from '@/lib/hooks/use-market-summary';
 
 interface Candle {
   time: string;
@@ -87,6 +88,7 @@ const CLUSTER_NODES = [
 type FlowViewMode = 'chart' | 'cluster' | 'depth';
 
 export function TerminalChartFlow() {
+  const { marketSummary } = useMarketSummary();
   const [candles, setCandles] = useState<Candle[]>(INITIAL_CANDLES);
   const [tape, setTape] = useState<TapeItem[]>(INITIAL_TAPE);
   const [activeTf, setActiveTf] = useState<'1S' | '15S' | '1M' | '5M'>('1M');
@@ -96,6 +98,35 @@ export function TerminalChartFlow() {
   const [selectedCandle, setSelectedCandle] = useState<Candle | null>(INITIAL_CANDLES[10]);
   const [isLiveActive, setIsLiveActive] = useState(true);
   const [sellSlider, setSellSlider] = useState<number>(30000);
+  const [slot, setSlot] = useState<number>(314_210_842);
+
+  // Sync with real market summary if available
+  useEffect(() => {
+    if (marketSummary?.solPriceUsd && marketSummary.solPriceUsd > 0) {
+      const realSolPrice = marketSummary.solPriceUsd;
+      setCandles((prev) => {
+        const last = prev[prev.length - 1];
+        if (Math.abs(last.close - realSolPrice) > 2) {
+          const updatedLast = {
+            ...last,
+            close: realSolPrice,
+            high: Math.max(last.high, realSolPrice),
+            low: Math.min(last.low, realSolPrice),
+          };
+          return [...prev.slice(0, -1), updatedLast];
+        }
+        return prev;
+      });
+    }
+  }, [marketSummary?.solPriceUsd]);
+
+  // Live slot progression (400ms Solana slot time)
+  useEffect(() => {
+    const slotInterval = setInterval(() => {
+      setSlot((s) => s + 1);
+    }, 400);
+    return () => clearInterval(slotInterval);
+  }, []);
 
   // Dynamic live price
   const currentPrice = candles[candles.length - 1]?.close || 161.4;
@@ -171,20 +202,20 @@ export function TerminalChartFlow() {
   const simulatedSlippage = (Math.pow(sellSlider / 60000, 1.8) * 3.8 + 0.4).toFixed(1);
 
   return (
-    <div className="w-full rounded-2xl border border-neutral-800 bg-neutral-900/95 shadow-2xl backdrop-blur-xl overflow-hidden font-mono">
+    <div className="w-full rounded-2xl border border-white/[0.08] bg-[#08090D]/95 shadow-[0_12px_40px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-xl overflow-hidden font-mono">
       {/* Top Terminal Bar: Asset Telemetry & View Mode Toggles */}
-      <div className="flex flex-wrap items-center justify-between border-b border-neutral-800 bg-neutral-950/80 px-4 py-3 gap-3">
+      <div className="flex flex-wrap items-center justify-between border-b border-white/[0.07] bg-[#060608]/90 px-4 py-2.5 gap-3">
         {/* Token Info */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-500/10 text-accent-400 border border-accent-500/30">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
               <Zap className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-black text-white">$SENTINEL</span>
-                <span className="text-2xs text-neutral-400">/ SOL</span>
-                <span className="px-1.5 py-0.2 rounded bg-buy-500/10 text-buy-400 text-3xs font-semibold border border-buy-500/20">
+                <span className="text-sm font-black text-white">SOL</span>
+                <span className="text-2xs text-neutral-400">/ USDC</span>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 text-3xs font-semibold border border-emerald-500/20">
                   RAYDIUM CLMM
                 </span>
               </div>
@@ -192,22 +223,24 @@ export function TerminalChartFlow() {
           </div>
 
           {/* Live Price Tag */}
-          <div className="flex items-baseline gap-2 pl-3 border-l border-neutral-800">
+          <div className="flex items-baseline gap-2 pl-3 border-l border-white/[0.08]">
             <span className="text-base font-bold text-white tracking-tight">${currentPrice.toFixed(2)}</span>
-            <span className={`text-xs font-semibold flex items-center ${isPositive ? 'text-buy-400' : 'text-sell-400'}`}>
+            <span className={`text-xs font-semibold flex items-center ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
               {isPositive ? <TrendingUp className="h-3 w-3 mr-0.5" /> : <TrendingDown className="h-3 w-3 mr-0.5" />}
-              {isPositive ? `+${pctChange}%` : `${pctChange}%`}
+              {marketSummary?.solChange24h !== null && marketSummary?.solChange24h !== undefined
+                ? `${marketSummary.solChange24h >= 0 ? '+' : ''}${marketSummary.solChange24h.toFixed(2)}%`
+                : isPositive ? `+${pctChange}%` : `${pctChange}%`}
             </span>
           </div>
         </div>
 
         {/* Multi-Flow View Mode Switcher */}
-        <div className="flex items-center p-1 rounded-xl bg-neutral-900 border border-neutral-800">
+        <div className="flex items-center p-1 rounded-xl bg-neutral-900/90 border border-white/[0.08]">
           <button
             onClick={() => setViewMode('chart')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-2xs font-bold transition-all ${
               viewMode === 'chart'
-                ? 'bg-accent-500 text-white shadow-glow'
+                ? 'bg-emerald-500 text-neutral-950 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
@@ -218,7 +251,7 @@ export function TerminalChartFlow() {
             onClick={() => setViewMode('cluster')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-2xs font-bold transition-all ${
               viewMode === 'cluster'
-                ? 'bg-sell-500/20 text-sell-300 border border-sell-500/40 shadow-glow-sell'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-[0_0_15px_rgba(239,68,68,0.25)]'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
@@ -229,7 +262,7 @@ export function TerminalChartFlow() {
             onClick={() => setViewMode('depth')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-2xs font-bold transition-all ${
               viewMode === 'depth'
-                ? 'bg-warn-500/20 text-warn-300 border border-warn-500/40 shadow-glow-amber'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
@@ -307,7 +340,7 @@ export function TerminalChartFlow() {
 
                   <div className="flex items-center gap-2 text-neutral-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-buy-400 animate-ping" />
-                    <span>Slot: 284,910,219</span>
+                    <span>Slot: #{slot.toLocaleString()}</span>
                   </div>
                 </div>
 
