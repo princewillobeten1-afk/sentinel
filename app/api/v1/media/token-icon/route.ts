@@ -290,7 +290,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Failed to fetch image' }, { status: 502 });
     }
 
-    return new NextResponse(upstream.body, {
+    return new NextResponse(new Uint8Array(upstream.body), {
       status: 200,
       headers: {
         'content-type': finalContentType,

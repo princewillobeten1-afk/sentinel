@@ -24,7 +24,7 @@ export interface QuickBuyTokenData {
   liquidity?: string;
   volume24h?: string;
   priceChange24h?: number;
-  holders?: number;
+  holders?: number | null;
   logoURI?: string;
 }
 

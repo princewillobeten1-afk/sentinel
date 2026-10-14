@@ -234,6 +234,7 @@ export interface DiscoveryToken {
   riskTier?: 'low' | 'medium' | 'high' | 'critical';
   isMintRenounced?: boolean;
   isLiquidityLocked?: boolean;
+  lpLockedPct?: number | null;
   isFreezeDisabled?: boolean;
   aiSignalScore?: number; // 0 - 100
   aiSignalLabel?: 'Bullish' | 'Neutral' | 'Bearish' | 'Breakout';

@@ -69,7 +69,7 @@ export async function GET(
 
     // 1. Check in-memory discovered live tokens
     let trendingRank: number | undefined = undefined;
-    let devHoldingPct: number | undefined = undefined;
+    let devHoldingPct: number | null | undefined = undefined;
     try {
       const liveTokens = await fetchLiveSolanaTokens();
       const rankIdx = liveTokens.findIndex((t) => t.mint.toLowerCase() === address.toLowerCase());
@@ -116,6 +116,7 @@ export async function GET(
           riskScore: match.riskScore,
           riskTier: match.riskTier,
           devHoldingPct,
+          devHoldingsPct: devHoldingPct,
           trendingRank,
         };
       }
@@ -207,6 +208,7 @@ export async function GET(
               pumpfunUrl: isPump ? `https://pump.fun/coin/${address}` : undefined,
               trendingRank,
               devHoldingPct,
+              devHoldingsPct: devHoldingPct,
             };
           }
         }
@@ -216,7 +218,7 @@ export async function GET(
     }
 
     // 3. Quick enrichment with Jupiter search for holderCount, real supply & dev holdings
-    if (token && (!token.holderCount || !token.totalSupply || token.devHoldingPct === undefined)) {
+    if (token && (!token.holderCount || !token.totalSupply || token.devHoldingPct == null)) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 1800);
@@ -231,8 +233,10 @@ export async function GET(
             const jup = jupList[0];
             if (!token.holderCount && jup.holderCount) token.holderCount = jup.holderCount;
             if (!token.totalSupply && jup.totalSupply) token.totalSupply = jup.totalSupply;
-            if (token.devHoldingPct === undefined && jup.audit?.devBalancePercentage !== undefined) {
-              token.devHoldingPct = Number((jup.audit.devBalancePercentage).toFixed(2));
+            if (token.devHoldingPct == null && jup.audit?.devBalancePercentage !== undefined) {
+              const val = Number((jup.audit.devBalancePercentage).toFixed(2));
+              token.devHoldingPct = val;
+              token.devHoldingsPct = val;
             }
           }
         }

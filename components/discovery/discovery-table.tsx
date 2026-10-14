@@ -553,7 +553,7 @@ export function DiscoveryTable({ tokens }: DiscoveryTableProps) {
                   {/* Holders */}
                   {visibleColumns.holders && (
                     <td style={{ width: COLUMN_WIDTHS.holders, flexShrink: 0 }} className="p-3 text-slate-400">
-                      {token.holdersCount === undefined ? '—' : token.holdersCount.toLocaleString()}
+                      {token.holdersCount == null ? '—' : token.holdersCount.toLocaleString()}
                     </td>
                   )}
 
