@@ -181,18 +181,6 @@ export function LandingView() {
         {/* SECTION 2: 4-STAGE INTELLIGENCE PIPELINE */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
-          <div className="text-center space-y-2 mb-10">
-            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-emerald-400">
-              SYSTEM ARCHITECTURE // ULTRA-LOW LATENCY PIPELINE
-            </span>
-            <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
-              The Sentinel 4-Stage Intelligence Engine
-            </h2>
-            <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              From raw 400ms Solana slot mempool packets to sub-second private execution, explore how Sentinel processes on-chain truth in four continuous stages.
-            </p>
-          </div>
-
           <PipelineFlowDiagram />
         </section>
 
