@@ -1,23 +1,22 @@
 # Copilot pilot: activation and verification
 
-The authenticated `/ai` workspace and Discover/Trade Copilot panel use the official Google GenAI SDK on the server. The old preview endpoints return `410`; their template gateway is test-only. No private portfolio or transaction-execution tool is registered.
+The authenticated `/ai` workspace and Discover/Trade Copilot panel use NVIDIA Nemotron (`nvidia/nemotron-3.5-super-vl-120b-a12b`) via its OpenAI-compatible endpoint with thinking reasoning tokens enabled. The old preview endpoints return `410`; their template gateway is test-only. No private portfolio or transaction-execution tool is registered.
 
 ## Activation
 
 1. Apply `npm run db:migrate`. Migration `036_ai_copilot_pilot` adds conversations, observations and actual usage fields. It was applied to the configured development database during this implementation.
-2. Use a dedicated Gemini project without paid billing. An API key alone does **not** prove that calls are free. Sentinel never upgrades billing or selects a fallback model, but cannot inspect the project's billing status: the owner must verify it before enabling.
-3. Configure these server-only variables in `.env` or the deployment secret store:
+2. Configure these server-only variables in `.env` or the deployment secret store:
 
    ```dotenv
-   GEMINI_API_KEY=your-local-secret
-   GEMINI_MODEL=gemini-3.8-flash
+   NVIDIA_API_KEY=your-nvidia-api-key
+   NVIDIA_MODEL=nvidia/nemotron-3.5-super-vl-120b-a12b
+   NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
    AI_PILOT_ENABLED=true
    AI_FREE_TIER_CONFIRMED=true
-   AI_COPILOT_ACCESS=invited
-   AI_PILOT_USER_IDS=exact-owner-user-id,exact-invited-user-id
-   AI_MODEL_RPM=confirmed-project-limit
-   AI_MODEL_TPM=confirmed-project-limit
-   AI_MODEL_RPD=confirmed-project-limit
+   AI_COPILOT_ACCESS=authenticated
+   AI_MODEL_RPM=5
+   AI_MODEL_TPM=250000
+   AI_MODEL_RPD=20
    ```
 
    Replace quota placeholders with positive integers from AI Studio; do not guess. Check that the configured model is available to that project. Keep the pilot disabled until these checks are complete. Never use `NEXT_PUBLIC_` for any of these variables. Restart the server after changing environment values.

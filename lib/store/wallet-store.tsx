@@ -172,6 +172,12 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
 
   const primaryWallet = linkedWallets.find((w) => w.isPrimary) || linkedWallets[0] || null;
 
+  const activePublicKeyRef = React.useRef(activePublicKey);
+  activePublicKeyRef.current = activePublicKey;
+  const primaryWalletRef = React.useRef(primaryWallet);
+  primaryWalletRef.current = primaryWallet;
+  const isRefreshingBalanceRef = React.useRef(false);
+
   // Re-check browser extension installation dynamically
   const checkExtensionAvailability = useCallback(() => {
     setAdapters(getAvailableSolanaAdapters() as unknown as WalletAdapter[]);
@@ -201,9 +207,11 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
   // Real-time on-chain balance query via Solana RPC
   const refreshWalletBalance = useCallback(
     async (targetAddress?: string): Promise<number> => {
-      const address = targetAddress || activePublicKey || primaryWallet?.address;
+      const address = targetAddress || activePublicKeyRef.current || primaryWalletRef.current?.address;
       if (!address) return 0;
+      if (isRefreshingBalanceRef.current) return 0;
 
+      isRefreshingBalanceRef.current = true;
       setIsRefreshingBalance(true);
       try {
         const res = await fetch(`/api/v1/wallet/balance?address=${encodeURIComponent(address)}`, {
@@ -220,9 +228,17 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           const formatted = Number(balance.toFixed(4));
 
           setLinkedWallets((prev) => {
-            const updated = prev.map((w) =>
-              w.address === address ? { ...w, balanceSol: formatted } : w
-            );
+            let changed = false;
+            const updated = prev.map((w) => {
+              if (w.address === address) {
+                if (w.balanceSol !== formatted) {
+                  changed = true;
+                  return { ...w, balanceSol: formatted };
+                }
+              }
+              return w;
+            });
+            if (!changed) return prev;
             localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(updated));
             return updated;
           });
@@ -244,6 +260,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       } catch (err) {
         console.warn('[WalletStore] API balance query failed, trying client fallback:', err);
       } finally {
+        isRefreshingBalanceRef.current = false;
         setIsRefreshingBalance(false);
       }
 
@@ -256,9 +273,17 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         const balance = Number((lamports / 1e9).toFixed(4));
 
         setLinkedWallets((prev) => {
-          const updated = prev.map((w) =>
-            w.address === address ? { ...w, balanceSol: balance } : w
-          );
+          let changed = false;
+          const updated = prev.map((w) => {
+            if (w.address === address) {
+              if (w.balanceSol !== balance) {
+                changed = true;
+                return { ...w, balanceSol: balance };
+              }
+            }
+            return w;
+          });
+          if (!changed) return prev;
           localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(updated));
           return updated;
         });
@@ -268,7 +293,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         return 0;
       }
     },
-    [activePublicKey, primaryWallet]
+    []
   );
 
   // Restore active session on mount & purge any stale mock balances
@@ -332,6 +357,9 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
             setStatus('authenticated');
             refreshWalletBalance(data.primaryWallet.address);
           }
+        } else if (res.status === 401) {
+          localStorage.removeItem(STORAGE_KEY_TOKEN);
+          setSessionToken(null);
         }
       } catch (err) {
         console.warn('[WalletStore] Session recovery skipped or offline.');

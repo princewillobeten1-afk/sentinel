@@ -15,6 +15,6 @@ export function privacyViolation(text: string): boolean {
 }
 
 export function unsafeAnswer(text: string): boolean {
-  return privacyViolation(text) || /\d|https?:|<[^>]*>|\b(?:birdeye|helius|quicknode|rugcheck|gemini|google|openai|anthropic)\b/i.test(text)
+  return privacyViolation(text) || /\d|https?:|<[^>]*>|\b(?:birdeye|helius|quicknode|rugcheck|gemini|google|openai|anthropic|nvidia|nemotron)\b/i.test(text)
     || /guarantee|risk.free|is safe|will (?:pump|rug|rise|fall)|same owner|definitely|certainly|rug pull|honeypot|wash trad|insider (?:sold|bought)/i.test(text);
 }

@@ -1,5 +1,5 @@
 import { logger } from './logger';
-import { isPostgresConfigured } from './db/pool';
+import { isPostgresConfigured, isDbConnectionError, markPostgresUnavailable } from './db/pool';
 import { pgUserRepository } from './db/user-repository';
 import { pgWalletRepository } from './db/wallet-repository';
 import { pgPreferencesRepository } from './db/preferences-repository';
@@ -206,51 +206,90 @@ function warnFallbackOnce() {
  * every real call site was updated to `await` accordingly.
  */
 class ServerStore {
+  private async withFallback<T>(pgFn: () => Promise<T>, fallbackFn: () => T | Promise<T>): Promise<T> {
+    if (!isPostgresConfigured()) {
+      return fallbackFn();
+    }
+    try {
+      return await pgFn();
+    } catch (err: unknown) {
+      if (isDbConnectionError(err)) {
+        markPostgresUnavailable(err);
+        return fallbackFn();
+      }
+      throw err;
+    }
+  }
+
   // Challenge operations
   async saveChallenge(address: string, nonce: string, statement: string, expiresAt: string): Promise<DbAuthChallenge> {
-    if (isPostgresConfigured()) return pgChallengeRepository.saveChallenge(address, nonce, statement, expiresAt);
-    warnFallbackOnce();
-    const id = `ch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const challenge: DbAuthChallenge = { id, address, nonce, statement, expiresAt, createdAt: new Date().toISOString() };
-    mem.challenges.set(nonce, challenge);
-    return challenge;
+    return this.withFallback(
+      () => pgChallengeRepository.saveChallenge(address, nonce, statement, expiresAt),
+      () => {
+        warnFallbackOnce();
+        const id = `ch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const challenge: DbAuthChallenge = { id, address, nonce, statement, expiresAt, createdAt: new Date().toISOString() };
+        mem.challenges.set(nonce, challenge);
+        return challenge;
+      }
+    );
   }
 
   async getChallengeByNonce(nonce: string): Promise<DbAuthChallenge | undefined> {
-    if (isPostgresConfigured()) return pgChallengeRepository.getChallengeByNonce(nonce);
-    warnFallbackOnce();
-    const challenge = mem.challenges.get(nonce);
-    if (!challenge) return undefined;
-    if (new Date(challenge.expiresAt).getTime() < Date.now()) {
-      mem.challenges.delete(nonce);
-      return undefined;
-    }
-    return challenge;
+    return this.withFallback(
+      () => pgChallengeRepository.getChallengeByNonce(nonce),
+      () => {
+        warnFallbackOnce();
+        const challenge = mem.challenges.get(nonce);
+        if (!challenge) return undefined;
+        if (new Date(challenge.expiresAt).getTime() < Date.now()) {
+          mem.challenges.delete(nonce);
+          return undefined;
+        }
+        return challenge;
+      }
+    );
   }
 
   async consumeChallenge(nonce: string): Promise<void> {
-    if (isPostgresConfigured()) return pgChallengeRepository.consumeChallenge(nonce);
-    warnFallbackOnce();
-    mem.challenges.delete(nonce);
+    return this.withFallback(
+      () => pgChallengeRepository.consumeChallenge(nonce),
+      () => {
+        warnFallbackOnce();
+        mem.challenges.delete(nonce);
+      }
+    );
   }
 
   // User & Wallet operations
   async findWalletByAddress(address: string): Promise<DbWallet | undefined> {
-    if (isPostgresConfigured()) return pgWalletRepository.findWalletByAddress(address);
-    warnFallbackOnce();
-    return Array.from(mem.wallets.values()).find((w) => w.address.toLowerCase() === address.toLowerCase());
+    return this.withFallback(
+      () => pgWalletRepository.findWalletByAddress(address),
+      () => {
+        warnFallbackOnce();
+        return Array.from(mem.wallets.values()).find((w) => w.address.toLowerCase() === address.toLowerCase());
+      }
+    );
   }
 
   async findUserById(userId: string): Promise<DbUser | undefined> {
-    if (isPostgresConfigured()) return pgUserRepository.findUserById(userId);
-    warnFallbackOnce();
-    return mem.users.get(userId);
+    return this.withFallback(
+      () => pgUserRepository.findUserById(userId),
+      () => {
+        warnFallbackOnce();
+        return mem.users.get(userId);
+      }
+    );
   }
 
   async getUserWallets(userId: string): Promise<DbWallet[]> {
-    if (isPostgresConfigured()) return pgWalletRepository.getUserWallets(userId);
-    warnFallbackOnce();
-    return Array.from(mem.wallets.values()).filter((w) => w.userId === userId);
+    return this.withFallback(
+      () => pgWalletRepository.getUserWallets(userId),
+      () => {
+        warnFallbackOnce();
+        return Array.from(mem.wallets.values()).filter((w) => w.userId === userId);
+      }
+    );
   }
 
   async createUserWithWallet(address: string, label = 'Solana Wallet'): Promise<{ user: DbUser; wallet: DbWallet }> {

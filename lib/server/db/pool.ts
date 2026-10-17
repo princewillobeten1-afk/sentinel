@@ -51,28 +51,42 @@ class DatabasePool {
     text: string,
     params?: unknown[],
   ): Promise<{ rows: T[] }> {
-    const pool = this.getPool();
-    // `pg`'s own generic requires `T extends QueryResultRow` (an indexed-
-    // signature interface); our Row types are plain, precisely-typed
-    // interfaces instead, so the result is cast at this one boundary rather
-    // than threading pg's constraint through every repository file.
-    const result = await pool.query(text, params);
-    return result as unknown as { rows: T[] };
+    try {
+      const pool = this.getPool();
+      // `pg`'s own generic requires `T extends QueryResultRow` (an indexed-
+      // signature interface); our Row types are plain, precisely-typed
+      // interfaces instead, so the result is cast at this one boundary rather
+      // than threading pg's constraint through every repository file.
+      const result = await pool.query(text, params);
+      return result as unknown as { rows: T[] };
+    } catch (err) {
+      if (isDbConnectionError(err)) {
+        markPostgresUnavailable(err);
+      }
+      throw err;
+    }
   }
 
   async withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-    const pool = this.getPool();
-    const client = await pool.connect();
     try {
-      await client.query('BEGIN');
-      const result = await fn(client);
-      await client.query('COMMIT');
-      return result;
+      const pool = this.getPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (isDbConnectionError(err)) {
+        markPostgresUnavailable(err);
+      }
       throw err;
-    } finally {
-      client.release();
     }
   }
 
@@ -84,11 +98,49 @@ class DatabasePool {
   }
 }
 
-const globalForDb = globalThis as unknown as { dbPool?: DatabasePool };
+const globalForDb = globalThis as unknown as {
+  dbPool?: DatabasePool;
+  postgresUnreachableUntil?: number;
+  lastWarnedAt?: number;
+};
+
 export const dbPool = globalForDb.dbPool ?? new DatabasePool();
 if (process.env.NODE_ENV !== 'production') globalForDb.dbPool = dbPool;
 
-/** True when a real Postgres connection is configured — the facade's on/off switch. */
+export function isDbConnectionError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const anyErr = err as any;
+  const code = anyErr.code;
+  const msg = String(anyErr.message || '');
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ETIMEDOUT' ||
+    code === 'EHOSTUNREACH' ||
+    code === 'ECONNRESET' ||
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('connect ECONNREFUSED') ||
+    msg.includes('Connection terminated') ||
+    msg.includes('timeout') ||
+    msg.includes('ETIMEDOUT')
+  );
+}
+
+export function markPostgresUnavailable(err?: unknown): void {
+  globalForDb.postgresUnreachableUntil = Date.now() + 30_000;
+  if (!globalForDb.lastWarnedAt || Date.now() - globalForDb.lastWarnedAt > 30_000) {
+    globalForDb.lastWarnedAt = Date.now();
+    logger.warn('[db] Postgres unreachable — degrading to in-memory store for 30s', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** True when a real Postgres connection is configured and reachable. */
 export function isPostgresConfigured(): boolean {
-  return Boolean(env.DATABASE_URL);
+  if (!env.DATABASE_URL) return false;
+  if (globalForDb.postgresUnreachableUntil && Date.now() < globalForDb.postgresUnreachableUntil) {
+    return false;
+  }
+  return true;
 }

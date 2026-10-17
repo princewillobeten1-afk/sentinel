@@ -18,7 +18,7 @@
 
 import { generateId } from './id';
 import { logger } from './logger';
-import { isPostgresConfigured } from './db/pool';
+import { isPostgresConfigured, isDbConnectionError, markPostgresUnavailable } from './db/pool';
 import { pgSessionRepository } from './db/session-repository';
 
 export interface ServerSession {
@@ -56,86 +56,129 @@ class SessionStore {
     return isPostgresConfigured();
   }
 
+  private async withFallback<T>(pgFn: () => Promise<T>, fallbackFn: () => T | Promise<T>): Promise<T> {
+    if (!this.usePostgres()) {
+      return fallbackFn();
+    }
+    try {
+      return await pgFn();
+    } catch (err: unknown) {
+      if (isDbConnectionError(err)) {
+        markPostgresUnavailable(err);
+        return fallbackFn();
+      }
+      throw err;
+    }
+  }
+
   async create(userId: string, input: CreateSessionInput): Promise<ServerSession> {
-    if (this.usePostgres()) return pgSessionRepository.create(userId, input);
-    warnFallbackOnce();
-    const now = new Date();
-    const session: ServerSession = {
-      id: generateId('sess'),
-      userId,
-      createdAt: now.toISOString(),
-      lastSeenAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + input.expiresInSeconds * 1000).toISOString(),
-      ip: input.ip,
-      userAgent: input.userAgent,
-      revoked: false,
-      revokedAt: null,
-      revokedReason: null,
-      mfaVerified: input.mfaVerified,
-    };
-    this.sessionsById.set(session.id, session);
-    return session;
+    return this.withFallback(
+      () => pgSessionRepository.create(userId, input),
+      () => {
+        warnFallbackOnce();
+        const now = new Date();
+        const session: ServerSession = {
+          id: generateId('sess'),
+          userId,
+          createdAt: now.toISOString(),
+          lastSeenAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + input.expiresInSeconds * 1000).toISOString(),
+          ip: input.ip,
+          userAgent: input.userAgent,
+          revoked: false,
+          revokedAt: null,
+          revokedReason: null,
+          mfaVerified: input.mfaVerified,
+        };
+        this.sessionsById.set(session.id, session);
+        return session;
+      }
+    );
   }
 
   async get(id: string): Promise<ServerSession | undefined> {
-    if (this.usePostgres()) return pgSessionRepository.get(id);
-    warnFallbackOnce();
-    return this.sessionsById.get(id);
+    return this.withFallback(
+      () => pgSessionRepository.get(id),
+      () => {
+        warnFallbackOnce();
+        return this.sessionsById.get(id);
+      }
+    );
   }
 
   /** True when the session exists, isn't revoked, and hasn't expired — the actual revocation-enforcement check. */
   async isValid(id: string): Promise<boolean> {
-    if (this.usePostgres()) return pgSessionRepository.isValid(id);
-    warnFallbackOnce();
-    const session = this.sessionsById.get(id);
-    if (!session) return false;
-    if (session.revoked) return false;
-    if (Date.parse(session.expiresAt) < Date.now()) return false;
-    return true;
+    return this.withFallback(
+      () => pgSessionRepository.isValid(id),
+      () => {
+        warnFallbackOnce();
+        const session = this.sessionsById.get(id);
+        if (!session) return false;
+        if (session.revoked) return false;
+        if (Date.parse(session.expiresAt) < Date.now()) return false;
+        return true;
+      }
+    );
   }
 
   async touch(id: string): Promise<void> {
-    if (this.usePostgres()) return pgSessionRepository.touch(id);
-    warnFallbackOnce();
-    const session = this.sessionsById.get(id);
-    if (!session) return;
-    session.lastSeenAt = new Date().toISOString();
+    return this.withFallback(
+      () => pgSessionRepository.touch(id),
+      () => {
+        warnFallbackOnce();
+        const session = this.sessionsById.get(id);
+        if (!session) return;
+        session.lastSeenAt = new Date().toISOString();
+      }
+    );
   }
 
   async revoke(id: string, reason?: string): Promise<boolean> {
-    if (this.usePostgres()) return pgSessionRepository.revoke(id, reason);
-    warnFallbackOnce();
-    const session = this.sessionsById.get(id);
-    if (!session || session.revoked) return false;
-    session.revoked = true;
-    session.revokedAt = new Date().toISOString();
-    session.revokedReason = reason ?? null;
-    return true;
+    return this.withFallback(
+      () => pgSessionRepository.revoke(id, reason),
+      () => {
+        warnFallbackOnce();
+        const session = this.sessionsById.get(id);
+        if (!session || session.revoked) return false;
+        session.revoked = true;
+        session.revokedAt = new Date().toISOString();
+        session.revokedReason = reason ?? null;
+        return true;
+      }
+    );
   }
 
   /** Revokes every active session for a user, optionally sparing one (e.g. the caller's own session). Returns the count revoked. */
   async revokeAllForUser(userId: string, opts: { exceptSessionId?: string; reason?: string } = {}): Promise<number> {
-    if (this.usePostgres()) return pgSessionRepository.revokeAllForUser(userId, opts);
-    warnFallbackOnce();
-    let count = 0;
-    for (const session of this.sessionsById.values()) {
-      if (session.userId !== userId) continue;
-      if (session.revoked) continue;
-      if (opts.exceptSessionId && session.id === opts.exceptSessionId) continue;
-      session.revoked = true;
-      session.revokedAt = new Date().toISOString();
-      session.revokedReason = opts.reason ?? null;
-      count += 1;
-    }
-    return count;
+    return this.withFallback(
+      () => pgSessionRepository.revokeAllForUser(userId, opts),
+      () => {
+        warnFallbackOnce();
+        let count = 0;
+        for (const session of this.sessionsById.values()) {
+          if (session.userId !== userId) continue;
+          if (session.revoked) continue;
+          if (opts.exceptSessionId && session.id === opts.exceptSessionId) continue;
+          session.revoked = true;
+          session.revokedAt = new Date().toISOString();
+          session.revokedReason = opts.reason ?? null;
+          count += 1;
+        }
+        return count;
+      }
+    );
   }
 
   async listForUser(userId: string): Promise<ServerSession[]> {
-    if (this.usePostgres()) return pgSessionRepository.listForUser(userId);
-    warnFallbackOnce();
-    return [...this.sessionsById.values()]
-      .filter((session) => session.userId === userId)
-      .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+    return this.withFallback(
+      () => pgSessionRepository.listForUser(userId),
+      () => {
+        warnFallbackOnce();
+        return [...this.sessionsById.values()]
+          .filter((session) => session.userId === userId)
+          .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+      }
+    );
   }
 
   /** Has this user ever had a valid (non-revoked at the time) session from this IP or user agent before `beforeSessionId`? Used for new-device detection. */

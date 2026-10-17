@@ -6,7 +6,7 @@ import { Zap, Terminal, Activity, Shield, ArrowUpRight } from 'lucide-react';
 
 export function LandingFooter() {
   return (
-    <footer className="border-t border-white/[0.08] bg-[#050507] px-6 py-12 pb-24 text-xs font-mono text-neutral-400 relative z-20">
+    <footer className="border-t border-white/[0.08] bg-[#050507] px-6 py-12 pb-12 text-xs font-mono text-neutral-400 relative z-20">
       <div className="max-w-7xl mx-auto space-y-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand Info (2 Cols) */}

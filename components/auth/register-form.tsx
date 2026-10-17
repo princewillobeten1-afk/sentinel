@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './auth-provider';
@@ -14,6 +14,15 @@ export function RegisterForm() {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [returnTo, setReturnTo] = useState('/trade');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const destination = params.get('returnTo');
+    if (destination?.startsWith('/') && !destination.startsWith('//') && !destination.includes('\\')) {
+      setReturnTo(destination);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +42,7 @@ export function RegisterForm() {
 
     try {
       await register(email, password, displayName || undefined);
-      router.push('/trade');
+      router.push(returnTo);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -139,7 +148,7 @@ export function RegisterForm() {
 
       <div className="mt-8 text-center text-xs text-slate-400">
         Already have an account?{' '}
-        <Link href="/login" className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors">
+        <Link href={returnTo !== '/trade' ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login'} className="text-cyan-400 hover:text-cyan-300 font-semibold transition-colors">
           Sign In
         </Link>
       </div>

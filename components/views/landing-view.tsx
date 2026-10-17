@@ -32,7 +32,6 @@ import { LiveMarketRadar } from '@/components/landing/live-market-radar';
 import { ComparisonTable } from '@/components/landing/comparison-table';
 import { FaqSection } from '@/components/landing/faq-section';
 import { LandingFooter } from '@/components/landing/landing-footer';
-import { FooterStatusBar } from '@/components/layout/footer-status-bar';
 import { WalletModal } from '@/components/layout/wallet-modal';
 import { HotkeyModal } from '@/components/layout/hotkey-modal';
 import { ExecutionConsole } from '@/components/layout/execution-console';
@@ -370,9 +369,6 @@ export function LandingView() {
 
       {/* Footer */}
       <LandingFooter />
-
-      {/* Persistent Bottom Status Bar - Fixed at bottom just like header stays at top */}
-      <FooterStatusBar layout="page" />
 
       {/* Global Modals & Drawers */}
       <WalletModal />

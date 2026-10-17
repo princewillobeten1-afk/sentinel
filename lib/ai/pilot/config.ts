@@ -4,14 +4,30 @@ import { requireAuth, getBearerToken, type AuthUser } from '@/lib/server/auth';
 import { ApiError } from '@/lib/server/errors';
 
 const schema = z.object({
-  key: z.string().min(1), model: z.string().regex(/^gemini-[a-z0-9.-]+$/),
-  enabled: z.literal('true'), freeConfirmed: z.literal('true'),
-  rpm: z.coerce.number().int().positive(), tpm: z.coerce.number().int().positive(), rpd: z.coerce.number().int().positive(),
+  key: z.string().min(1),
+  model: z.string().regex(/^[a-zA-Z0-9_./-]+$/),
+  baseURL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
+  enabled: z.literal('true'),
+  freeConfirmed: z.literal('true'),
+  rpm: z.coerce.number().int().positive(),
+  tpm: z.coerce.number().int().positive(),
+  rpd: z.coerce.number().int().positive(),
 });
 export function pilotConfig() {
-  return schema.safeParse({ key: process.env.GEMINI_API_KEY?.trim(), model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-    enabled: process.env.AI_PILOT_ENABLED, freeConfirmed: process.env.AI_FREE_TIER_CONFIRMED,
-    rpm: process.env.AI_MODEL_RPM, tpm: process.env.AI_MODEL_TPM, rpd: process.env.AI_MODEL_RPD });
+  const key = process.env.NVIDIA_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+  const model = process.env.NVIDIA_MODEL?.trim() || (process.env.GEMINI_MODEL ? process.env.GEMINI_MODEL.trim() : 'nvidia/nemotron-3.5-super-vl-120b-a12b');
+  const baseURL = process.env.NVIDIA_BASE_URL?.trim() || 'https://integrate.api.nvidia.com/v1';
+
+  return schema.safeParse({
+    key,
+    model,
+    baseURL,
+    enabled: process.env.AI_PILOT_ENABLED,
+    freeConfirmed: process.env.AI_FREE_TIER_CONFIRMED,
+    rpm: process.env.AI_MODEL_RPM,
+    tpm: process.env.AI_MODEL_TPM,
+    rpd: process.env.AI_MODEL_RPD,
+  });
 }
 export type PilotSetupIssue = 'pilot_disabled' | 'free_tier_unconfirmed' | 'model_access' | 'rate_limits' | 'storage';
 export function pilotSetupIssues(): PilotSetupIssue[] {
