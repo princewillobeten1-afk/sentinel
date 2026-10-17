@@ -1,7 +1,13 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
-import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
+import type {
+  ChatCompletionChunk,
+  ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from 'openai/resources/chat/completions';
+import type { Stream } from 'openai/streaming';
 import { z } from 'zod';
 import { ApiError } from '@/lib/server/errors';
 import { logger } from '@/lib/server/logger';
@@ -88,7 +94,7 @@ export async function runPilot(userId: string, sessionId: string, request: Pilot
       await reserveModelCall(cfg.data.model, size, cfg.data);
       signal.throwIfAborted();
 
-      const stream = await client.chat.completions.create({
+      const stream = (await client.chat.completions.create({
         model: cfg.data.model,
         messages: outboundMessages,
         temperature: 1,
@@ -101,7 +107,7 @@ export async function runPilot(userId: string, sessionId: string, request: Pilot
         ...(finalRound
           ? { response_format: { type: 'json_object' } }
           : { tools: declarations }),
-      } as any, { signal });
+      } as unknown as ChatCompletionCreateParamsStreaming, { signal })) as Stream<ChatCompletionChunk>;
 
       let fullContent = '';
       let fullReasoning = '';
