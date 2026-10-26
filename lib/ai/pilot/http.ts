@@ -40,7 +40,8 @@ export async function copilotPost(req: Request) {
     const stream=new ReadableStream({
       start(streamController) {
         const emit=(event:PilotEvent)=>{if(!closed) streamController.enqueue(encoder.encode('data: '+JSON.stringify(event)+'\n\n'));};
-        const timer=setTimeout(()=>{emit({type:'error',code:'AI_DEADLINE',message:'Analysis timed out. Available evidence is retained.',reference:randomUUID()});controller.abort();},45000);
+        const timeoutMs = process.env.NODE_ENV === 'test' ? 45000 : 60000;
+        const timer=setTimeout(()=>{emit({type:'error',code:'AI_DEADLINE',message:'Analysis timed out. Available evidence is retained.',reference:randomUUID()});controller.abort();},timeoutMs);
         const task=runPilot(user.userId,sessionId,request,controller.signal,emit);
         const interrupted=new Promise<void>(resolve=>{if(controller.signal.aborted) resolve(); else controller.signal.addEventListener('abort',()=>resolve(),{once:true});});
         void Promise.race([task,interrupted]).catch(()=>{

@@ -210,7 +210,7 @@ export function CommandPalette() {
     },
     {
       id: 'cmd_ai',
-      label: 'Go to Sentinel AI Co-Pilot',
+      label: 'Go to Phivex AI Co-Pilot',
       description: 'Ask AI for market analysis, token safety scoring, and trend forecasts',
       icon: Sparkles,
       action: () => handleSelectNav('ai'),
@@ -230,7 +230,7 @@ export function CommandPalette() {
     {
       id: 'cmd_wallet',
       label: 'Connect / Manage Solana Wallet',
-      description: 'Phantom, Solflare, Backpack, or Sentinel Embedded Smart Wallet',
+      description: 'Phantom, Solflare, Backpack, or Phivex Embedded Smart Wallet',
       icon: Wallet,
       action: () => {
         setCommandPaletteOpen(false);
@@ -641,7 +641,7 @@ export function CommandPalette() {
         {/* 4. Empty State */}
         {!hasAnyResults && !isLoadingTokens && query && (
           <EmptyState
-            title="No Sentinel Results Found"
+            title="No Phivex Results Found"
             description={`No tokens, wallets, creators, or commands matched "${query}".`}
           />
         )}
@@ -653,7 +653,7 @@ export function CommandPalette() {
           <span>•</span>
           <span>Enter to select</span>
         </span>
-        <span className="text-slate-400 font-bold">Sentinel Global Search v2</span>
+        <span className="text-slate-400 font-bold">Phivex Global Search v2</span>
       </div>
     </Modal>
   );

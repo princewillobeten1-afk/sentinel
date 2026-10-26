@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { jsonResponse, errorResponse } from '@/lib/server/api';
-import { requireAuth } from '@/lib/server/auth';
+import { requireAuth, getBearerToken } from '@/lib/server/auth';
 import { dbRepository } from '@/lib/db/repository';
 import { serverStore } from '@/lib/server/store';
 import { walletService } from '@/lib/auth/wallet-service';
@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     const linkedWallets = await walletService.getUserWallets(dbUser.id);
     const primaryWallet = linkedWallets.find((w) => w.isPrimary) || linkedWallets[0] || null;
     const preferences = await serverStore.getUserPreferences(dbUser.id);
+    const token = typeof getBearerToken === 'function' ? getBearerToken(request) : null;
 
     return jsonResponse({
       user: {
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
         createdAt: ('created_at' in dbUser ? dbUser.created_at : (dbUser as any).createdAt),
         updatedAt: ('updated_at' in dbUser ? dbUser.updated_at : (dbUser as any).updatedAt),
       },
+      token: token || undefined,
       primaryWallet,
       linkedWallets,
       preferences,

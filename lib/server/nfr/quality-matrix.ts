@@ -1,7 +1,7 @@
 /**
  * Master Platform Quality Matrix & Criticality Classification (Sprint 33 §1-15, §50).
  *
- * Establishes the single, cross-platform engineering quality matrix across all Project Sentinel subsystems.
+ * Establishes the single, cross-platform engineering quality matrix across all Phivex subsystems.
  *
  * Classifications:
  *   - Criticality: P0 (Financially Critical), P1 (Trading Critical), P2 (Intelligence Critical), P3 (Product), P4 (Non-Critical)

@@ -1,10 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Opt-in, isolated compiler cache for the local UI verification harness.
-  ...(process.env.SENTINEL_UI_PREVIEW === 'true' ? {
+  ...(process.env.SENTINEL_UI_PREVIEW === 'true' || process.env.PHIVEX_UI_PREVIEW === 'true' ? {
     distDir: '.next-ui-preview',
     typescript: { tsconfigPath: 'scripts/tsconfig.ui-preview.json' },
-  } : process.env.SENTINEL_DEV_BUILD === 'true' && process.env.NODE_ENV !== 'production' ? {
+  } : (process.env.PHIVEX_DEV_BUILD === 'true' || process.env.SENTINEL_DEV_BUILD === 'true') && process.env.NODE_ENV !== 'production' ? {
     // Keep hot-reload output separate from `npm run build`'s `.next` files.
     distDir: '.next-dev',
   } : {}),
@@ -26,7 +25,7 @@ const nextConfig = {
     // One worker removes the race. The cost is a slower build; the benefit is
     // a build whose result means something.
     workerThreads: false,
-    cpus: 1,
+    ...(process.env.NODE_ENV === 'production' ? { cpus: 1 } : {}),
     // Runs instrumentation.ts's register() once on server boot, so the
     // Birdeye/Helius market data streams start without needing an inbound
     // HTTP request (lib/market/live/stream-manager.ts).

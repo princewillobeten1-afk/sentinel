@@ -64,7 +64,7 @@ const AVAILABLE_NEW_COLUMNS: { type: DiscoverySection; title: string; desc: stri
   { type: 'legacy', title: 'Legacy', desc: 'Established tokens ranked by measured market cap' },
   { type: 'similar', title: 'Similar', desc: 'Tokens comparable to a selected reference mint' },
   { type: 'smart-money', title: 'Smart Money Inflow', desc: 'Tokens accumulated by tracked profitable wallets' },
-  { type: 'ai-picks', title: 'AI Alpha Signals', desc: 'Algorithmic signals scored by Sentinel AI' },
+  { type: 'ai-picks', title: 'AI Alpha Signals', desc: 'Algorithmic signals scored by Phivex AI' },
   { type: 'watchlist', title: 'My Watchlist', desc: 'Your starred and tracked tokens' },
 ];
 

@@ -43,7 +43,7 @@ export function TriggerExplanation({ orderType, token, triggerPrice, actualPrice
         </div>
 
         <p className="text-xs text-muted-foreground italic leading-relaxed">
-          Order was instantly validated against risk parameters and executed via Sentinel&apos;s routing engine.
+          Order was instantly validated against risk parameters and executed via Phivex&apos;s routing engine.
         </p>
       </div>
     </Card>

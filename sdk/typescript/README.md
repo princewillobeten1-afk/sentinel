@@ -1,6 +1,6 @@
 # @sentinel/sdk
 
-Official TypeScript SDK for the Project Sentinel API (Sprint 28). Standalone
+Official TypeScript SDK for the Phivex API (Sprint 28). Standalone
 package, not published to a registry yet — install it from this path within
 the monorepo or copy it out when publishing becomes in scope.
 

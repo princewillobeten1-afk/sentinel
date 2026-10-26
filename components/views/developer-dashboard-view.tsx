@@ -20,7 +20,7 @@ export function DeveloperDashboardView() {
             <Code2 className="h-6 w-6 text-sky-400" /> Developer Platform
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            API keys, webhooks and usage for programmatic access to Sentinel — see{' '}
+            API keys, webhooks and usage for programmatic access to Phivex — see{' '}
             <span className="font-mono text-slate-300">docs/api/</span> and the TypeScript SDK.
           </p>
         </div>

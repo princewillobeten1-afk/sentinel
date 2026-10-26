@@ -126,8 +126,8 @@ class InMemoryFallback {
 
     this.users.set(demoUserId, {
       id: demoUserId,
-      email: 'trader@sentinel.local',
-      displayName: 'Sentinel Alpha Trader',
+      email: 'trader@phivex.local',
+      displayName: 'Phivex Alpha Trader',
       role: 'user',
       status: 'active',
       createdAt: new Date().toISOString(),
@@ -169,8 +169,8 @@ class InMemoryFallback {
 
     if (process.env.NODE_ENV !== 'production') {
       for (const [id, email, displayName] of [
-        ['admin_001', 'admin-a@sentinel.local', 'Sentinel Admin A'],
-        ['admin_002', 'admin-b@sentinel.local', 'Sentinel Admin B'],
+        ['admin_001', 'admin-a@phivex.local', 'Phivex Admin A'],
+        ['admin_002', 'admin-b@phivex.local', 'Phivex Admin B'],
       ] as const) {
         this.users.set(id, {
           id,
@@ -300,7 +300,7 @@ class ServerStore {
     const now = new Date().toISOString();
     const shortAddress = `${address.slice(0, 4)}...${address.slice(-4)}`;
 
-    const user: DbUser = { id: userId, displayName: `Sentinel User (${shortAddress})`, role: 'user', status: 'active', createdAt: now, updatedAt: now };
+    const user: DbUser = { id: userId, displayName: `Phivex User (${shortAddress})`, role: 'user', status: 'active', createdAt: now, updatedAt: now };
     const wallet: DbWallet = {
       id: walletId, userId, address, network: 'solana', label, isPrimary: true, balanceSol: 0.0,
       status: 'active', firstSeenAt: now, lastSeenAt: now, createdAt: now, updatedAt: now,
@@ -325,7 +325,7 @@ class ServerStore {
     const existing = await this.findWalletByAddress(address);
     if (existing) {
       if (existing.userId !== userId) {
-        throw new Error('Wallet address is already linked to another Sentinel account.');
+        throw new Error('Wallet address is already linked to another Phivex account.');
       }
       return existing;
     }

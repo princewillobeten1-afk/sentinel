@@ -1,7 +1,7 @@
 {
   "name": "@sentinel/sdk",
   "version": "0.1.0",
-  "description": "Official TypeScript SDK for the Project Sentinel API (Sprint 28 — not published to a registry yet).",
+  "description": "Official TypeScript SDK for the Phivex API (Sprint 28 — not published to a registry yet).",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -16,7 +16,9 @@ export interface SentinelWSMessage {
   topics?: string[];
 }
 
+export type PhivexWSMessage = SentinelWSMessage;
 export type SentinelWSEventHandler = (data: any, fullMessage: SentinelWSMessage) => void;
+export type PhivexWSEventHandler = SentinelWSEventHandler;
 
 class SentinelWSClient {
   private socket: WebSocket | null = null;
@@ -323,3 +325,7 @@ export function useSentinelWS(topics?: string | string[], onEvent?: SentinelWSEv
     unsubscribe,
   };
 }
+
+export const usePhivexWS = useSentinelWS;
+export const getPhivexWSClient = getSentinelWSClient;
+

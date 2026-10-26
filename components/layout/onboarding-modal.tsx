@@ -33,7 +33,7 @@ export function OnboardingModal() {
       onClose={() => setIsOpen(false)}
       title={
         <span className="flex items-center gap-2 text-sky-400">
-          <Zap className="h-5 w-5 fill-current" /> Welcome to Project Sentinel
+          <Zap className="h-5 w-5 fill-current" /> Welcome to Phivex
         </span>
       }
       subtitle="Fast-track Web3 onboarding & setup"
@@ -46,7 +46,7 @@ export function OnboardingModal() {
               <ShieldCheck className="h-4 w-4 text-sky-400" /> Web3 Market-Integrity Operating System
             </h4>
             <p className="leading-relaxed text-slate-400">
-              Sentinel empowers traders with real-time token discovery, holder cluster analysis, insider risk alerts, and execution protection.
+              Phivex empowers traders with real-time token discovery, holder cluster analysis, insider risk alerts, and execution protection.
             </p>
           </div>
 
@@ -129,7 +129,7 @@ export function OnboardingModal() {
               Back
             </Button>
             <Button variant="buy" size="md" onClick={handleCompleteOnboarding} rightIcon={<ArrowRight className="h-4 w-4" />}>
-              Enter Sentinel Dashboard
+              Enter Phivex Dashboard
             </Button>
           </div>
         </div>

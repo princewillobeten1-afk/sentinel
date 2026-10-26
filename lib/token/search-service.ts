@@ -14,7 +14,7 @@ export interface NormalizedSearchResult {
 export const TOKEN_DATABASE: NormalizedSearchResult[] = [
   {
     id: 't_sentinel',
-    name: 'Solana Sentinel Token',
+    name: 'Solana Phivex Token',
     symbol: 'SENT',
     mint: '7xK99zK8mP2xQ5wN3a19',
     chain: 'solana',

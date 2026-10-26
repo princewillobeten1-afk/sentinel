@@ -109,7 +109,7 @@ export class RealtimeEventProcessor {
 
     const MOCK_MINTS = [
       { mint: 'PumpTest1111111111111111111111111111111111', symbol: 'PEPE2', name: 'Pepe 2.0 Solana', dex: 'pump.fun' },
-      { mint: 'PumpTest2222222222222222222222222222222222', symbol: 'SENTINEL', name: 'Sentinel AI Pulse', dex: 'raydium' },
+      { mint: 'PumpTest2222222222222222222222222222222222', symbol: 'PHIVEX', name: 'Phivex AI Pulse', dex: 'raydium' },
       { mint: 'PumpTest3333333333333333333333333333333333', symbol: 'HYPER', name: 'Hyper Velocity', dex: 'meteora' },
     ];
 

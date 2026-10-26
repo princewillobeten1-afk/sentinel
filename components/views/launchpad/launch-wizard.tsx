@@ -89,7 +89,7 @@ export function LaunchWizard() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Name</label>
-              <Input placeholder="e.g. Sentinel" />
+              <Input placeholder="e.g. Phivex" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Symbol</label>

@@ -70,7 +70,7 @@ const SORT_OPTIONS: { id: ColumnSortOption; label: string }[] = [
   { id: 'tx-count', label: 'Transaction Velocity' },
   { id: 'buy-pressure', label: 'Buy Pressure Ratio' },
   { id: 'migration-progress', label: 'Bonding %' },
-  { id: 'score', label: 'Sentinel Score' },
+  { id: 'score', label: 'Phivex Score' },
 ];
 
 export function TerminalColumn({

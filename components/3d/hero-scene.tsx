@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useState, Component, type ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -8,6 +8,48 @@ const NUM_CANDLES = 300;
 const SPACING = 0.3;
 const CANDLE_WIDTH = 0.18;
 const WICK_WIDTH = 0.04;
+
+function isWebGLAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(
+      window.WebGLRenderingContext &&
+        (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+class HeroErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.warn('3D HeroScene Canvas rendering error:', error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback ?? (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-[#070709] to-[#070709]"
+          />
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function CandlestickChart() {
   const bodyMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -128,14 +170,35 @@ function CandlestickChart() {
 }
 
 export function HeroScene() {
+  const [mounted, setMounted] = useState(false);
+  const [webglSupported, setWebglSupported] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setWebglSupported(isWebGLAvailable());
+  }, []);
+
+  if (!mounted || !webglSupported) {
+    return (
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 w-full h-full pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-[#070709] to-[#070709]"
+      />
+    );
+  }
+
   return (
-    <div className="absolute inset-0 w-full h-full pointer-events-none opacity-50">
-      <Canvas camera={{ position: [0, 0, 12], fov: 45 }}>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[5, 10, 5]} intensity={1.5} color="#ffffff" />
-        <directionalLight position={[-5, 5, -5]} intensity={1} color="#ffffff" />
-        <CandlestickChart />
-      </Canvas>
-    </div>
+    <HeroErrorBoundary>
+      <div className="absolute inset-0 w-full h-full pointer-events-none opacity-50">
+        <Canvas camera={{ position: [0, 0, 12], fov: 45 }} gl={{ powerPreference: 'low-power', antialias: false }}>
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[5, 10, 5]} intensity={1.5} color="#ffffff" />
+          <directionalLight position={[-5, 5, -5]} intensity={1} color="#ffffff" />
+          <CandlestickChart />
+        </Canvas>
+      </div>
+    </HeroErrorBoundary>
   );
 }
+
+export default HeroScene;

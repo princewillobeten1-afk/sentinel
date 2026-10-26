@@ -150,7 +150,7 @@ export function AnalyticsLabView({ onBack }: AnalyticsLabViewProps) {
       {
         tokenAddress: 'So11111111111111111111111111111111111111112',
         symbol: 'SENT',
-        name: 'Sentinel Protocol',
+        name: 'Phivex Protocol',
         priceUsd: 1.48,
         marketCapUsd: 148_000_000,
         volume24hUsd: 48_250_000,

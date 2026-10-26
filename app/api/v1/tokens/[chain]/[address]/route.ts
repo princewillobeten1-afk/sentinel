@@ -350,7 +350,7 @@ export async function GET(
       token: {
         ...token,
         chain: chain.toLowerCase(),
-        description: 'Sentinel verified live token record.',
+        description: 'Phivex verified live token record.',
         explorerUrl: `https://solscan.io/token/${address}`,
       },
     });

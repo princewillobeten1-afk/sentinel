@@ -39,10 +39,39 @@ import { XTrackerDrawer } from '@/components/x-tracker/x-tracker-drawer';
 import { TrendRadarDrawer } from '@/components/trends/trend-radar-drawer';
 import { LiveAlertsDrawer } from '@/components/alerts/live-alerts-drawer';
 
-// Dynamically import the 3D canvas scene to avoid SSR issues
-const HeroScene = dynamic(() => import('@/components/3d/hero-scene').then((mod) => mod.HeroScene), {
-  ssr: false,
-});
+// Dynamically import the 3D canvas scene with resilience against dev chunk timeouts
+const HeroScene = dynamic(
+  () =>
+    import('@/components/3d/hero-scene')
+      .then((mod) => mod.HeroScene)
+      .catch(async (firstErr) => {
+        console.warn('HeroScene 3D background initial load delayed or failed, retrying...', firstErr);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          const retryMod = await import('@/components/3d/hero-scene');
+          return retryMod.HeroScene;
+        } catch (retryErr) {
+          console.warn('HeroScene 3D background chunk unavailable, falling back to ambient gradient:', retryErr);
+          return function HeroFallback() {
+            return (
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-[#070709] to-[#070709]"
+              />
+            );
+          };
+        }
+      }),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 w-full h-full pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-[#070709] to-[#070709]"
+      />
+    ),
+  }
+);
 
 const staggerContainer: Variants = {
   hidden: { opacity: 0 },
@@ -98,7 +127,7 @@ export function LandingView() {
 
             {/* Subtitle */}
             <motion.p variants={fadeInUp} className="max-w-2xl mx-auto text-sm sm:text-base lg:text-lg text-neutral-300 leading-relaxed font-sans drop-shadow-sm">
-              Stop trading blind into fabricated volume and coordinated insider cabals. Sentinel dissects holder funding genealogies, filters circular wash cycles, and routes private validator fills with zero toxic slippage.
+              Stop trading blind into fabricated volume and coordinated insider cabals. Phivex dissects holder funding genealogies, filters circular wash cycles, and routes private validator fills with zero toxic slippage.
             </motion.p>
 
             {/* Single Action CTA: Enter Screener */}
@@ -195,7 +224,7 @@ export function LandingView() {
               Expose Coordinated Cartels Before The Dump
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              Token creators don&apos;t hold 50% in one public wallet anymore. They splinter it across fresh addresses funded in the same 20-minute window. Toggle below to compare standard block explorer views against Sentinel&apos;s 4-hop genealogy graph.
+              Token creators don&apos;t hold 50% in one public wallet anymore. They splinter it across fresh addresses funded in the same 20-minute window. Toggle below to compare standard block explorer views against Phivex&apos;s 4-hop genealogy graph.
             </p>
           </div>
 
@@ -259,7 +288,7 @@ export function LandingView() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
               <div className="lg:col-span-7 space-y-4 font-mono">
                 <span className="px-3 py-1 rounded-full text-3xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                  SENTINEL AI CO-PILOT & AUDIT AGENT
+                  PHIVEX AI CO-PILOT & AUDIT AGENT
                 </span>
                 <h3 className="font-heading text-2xl sm:text-4xl font-black text-white tracking-tight">
                   Natural Language Forensics. Ask Anything About Any Mint.
@@ -275,7 +304,7 @@ export function LandingView() {
                     size="md"
                     rightIcon={<Sparkles className="h-4 w-4 ml-1" />}
                   >
-                    Open Sentinel AI Copilot
+                    Open Phivex AI Copilot
                   </Button>
                   <Button
                     href="/help"
@@ -292,7 +321,7 @@ export function LandingView() {
                 <div className="p-5 rounded-2xl bg-neutral-950/90 border border-neutral-750 shadow-2xl space-y-3 font-mono text-2xs">
                   <div className="flex items-center gap-2 pb-2 border-b border-neutral-800 text-neutral-400">
                     <Sparkles className="h-3.5 w-3.5 text-accent-400" />
-                    <span className="text-white font-bold">Sentinel AI Query</span>
+                    <span className="text-white font-bold">Phivex AI Query</span>
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300">

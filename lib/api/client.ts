@@ -1,5 +1,5 @@
 /**
- * Sentinel API Client Abstraction Layer
+ * Phivex API Client Abstraction Layer
  * Provides strongly-typed HTTP methods (GET, POST, PATCH, DELETE),
  * AbortSignal request cancellation, auth bearer token hooks, and error normalization.
  *

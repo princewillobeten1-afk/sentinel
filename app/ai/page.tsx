@@ -6,7 +6,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 
 export default function AiPage() {
   return (
-    <AppShell initialView="ai">
+    <AppShell initialView="ai" layout="workspace">
       <DashboardShell />
     </AppShell>
   );

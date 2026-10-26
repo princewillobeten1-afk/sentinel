@@ -1,7 +1,7 @@
 /**
  * API Standards, Deprecation & RFC Error Formatting (Sprint 32 §18-21).
  *
- * Implements API conventions across Sentinel:
+ * Implements API conventions across Phivex:
  *   - Explicit API Versioning (/v1, /v2)
  *   - RFC 8594 Deprecation & Sunset Response Headers
  *   - RFC 7807 Problem Details for HTTP APIs with Actionable Recovery Guidance
@@ -56,7 +56,7 @@ export function getDeprecationHeaders(policy?: DeprecationPolicy): Record<string
 }
 
 /**
- * Resolves appropriate recovery action for standard Sentinel error codes.
+ * Resolves appropriate recovery action for standard Phivex error codes.
  */
 export function resolveRecoveryAction(code: string): ProblemDetails['recoveryAction'] {
   switch (code) {

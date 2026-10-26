@@ -15,7 +15,7 @@ export function TrustBadge({ badgeType, description }: { badgeType: string, desc
       <PopoverContent className="w-64 text-sm">
         <div className="font-bold mb-1">Badge: {badgeType}</div>
         <div className="text-muted-foreground">{description || 'Automated trust evaluation based on historical on-chain evidence.'}</div>
-        <div className="mt-2 text-xs opacity-50">Sentinel Trust Graph v1.0.0</div>
+        <div className="mt-2 text-xs opacity-50">Phivex Trust Graph v1.0.0</div>
       </PopoverContent>
     </Popover>
   );

@@ -152,7 +152,7 @@ export function ExitabilityDepthFlow() {
               </div>
 
               <div className="p-4 rounded-xl bg-neutral-850 border border-sell-500/40 space-y-1 shadow-glow-sell">
-                <span className="text-3xs uppercase text-sell-400 font-bold">Sentinel Real Slippage</span>
+                <span className="text-3xs uppercase text-sell-400 font-bold">Phivex Real Slippage</span>
                 <p className="text-xl font-black text-sell-400">
                   -{realSlippage}%
                 </p>
@@ -180,11 +180,11 @@ export function ExitabilityDepthFlow() {
             </div>
           </div>
 
-          {/* Sentinel Recommendation */}
+          {/* Phivex Recommendation */}
           <div className="p-3.5 rounded-xl bg-neutral-850 border border-neutral-750 text-2xs text-neutral-300 flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-buy-400 flex-shrink-0" />
             <p className="font-sans leading-relaxed">
-              Sentinel automatically fragments large sell orders across multiple DEX pools (Raydium + Meteora + Whirlpools) to preserve up to <strong>14.2% more capital</strong> than a naive single swap.
+              Phivex automatically fragments large sell orders across multiple DEX pools (Raydium + Meteora + Whirlpools) to preserve up to <strong>14.2% more capital</strong> than a naive single swap.
             </p>
           </div>
         </div>

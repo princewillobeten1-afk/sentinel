@@ -40,7 +40,7 @@ export class AdminHealthService {
       { name: 'Multi-Chain RPC Pool', category: 'RPC', status: 'HEALTHY', latencyMs: 82, uptimePct: 99.95, lastCheckedAt: now },
       { name: 'Trading Execution Engine', category: 'TRADING_ENGINE', status: 'HEALTHY', latencyMs: 14, uptimePct: 99.99, lastCheckedAt: now },
       { name: 'PostgreSQL Production Cluster', category: 'DATABASE', status: 'HEALTHY', latencyMs: 6, uptimePct: 100.0, lastCheckedAt: now },
-      { name: 'Sentinel AI Intelligence Gateway', category: 'AI', status: 'HEALTHY', latencyMs: 142, uptimePct: 99.91, lastCheckedAt: now },
+      { name: 'Phivex AI Intelligence Gateway', category: 'AI', status: 'HEALTHY', latencyMs: 142, uptimePct: 99.91, lastCheckedAt: now },
       { name: 'WebSocket & Push Notification Bus', category: 'NOTIFICATIONS', status: 'HEALTHY', latencyMs: 12, uptimePct: 99.97, lastCheckedAt: now },
     ];
   }

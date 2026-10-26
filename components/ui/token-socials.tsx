@@ -21,10 +21,10 @@ export interface TokenSocialsProps {
 
 const KNOWN_PROJECT_SOCIALS: Record<string, TokenSocialLinks> = {
   SENT: {
-    twitter: 'https://x.com/Sentinel_SOL',
-    telegram: 'https://t.me/SentinelSolana',
-    website: 'https://sentinel.trade',
-    discord: 'https://discord.gg/sentinel',
+    twitter: 'https://x.com/Phivex_SOL',
+    telegram: 'https://t.me/PhivexSolana',
+    website: 'https://phivex.trade',
+    discord: 'https://discord.gg/phivex',
   },
   SOL: {
     twitter: 'https://x.com/solana',

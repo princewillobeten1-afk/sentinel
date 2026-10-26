@@ -1,5 +1,5 @@
 /**
- * Centralized Sentinel AI Gateway & Policy Orchestration Engine (Sprint 37 §3, §53-59).
+ * Centralized Phivex AI Gateway & Policy Orchestration Engine (Sprint 37 §3, §53-59).
  *
  * Implements the canonical 8-step AI pipeline:
  *   1. Authentication & Permission Verification

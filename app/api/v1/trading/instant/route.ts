@@ -32,7 +32,7 @@ export const dynamic = 'force-dynamic';
  *
  * ## Why it cannot execute
  *
- * Sentinel is self-custodial: no private key is ever held server-side, under
+ * Phivex is self-custodial: no private key is ever held server-side, under
  * any code path. A swap therefore has to be signed in the user's wallet. The
  * honest server-side contribution is a real quote plus an explicit
  * `requiresSignature`, which the client turns into a wallet prompt.

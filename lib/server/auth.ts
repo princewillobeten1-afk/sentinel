@@ -62,21 +62,29 @@ function getJwtSecret(): string {
  */
 export function isCookieCredential(request: Request): boolean {
   const authorization = request.headers.get('authorization')?.trim() ?? '';
-  return !authorization.startsWith(AUTH_HEADER_PREFIX);
+  if (!authorization.startsWith(AUTH_HEADER_PREFIX)) return true;
+  const token = authorization.slice(AUTH_HEADER_PREFIX.length).trim();
+  return !token || token === 'undefined' || token === 'null';
 }
 
 export function getBearerToken(request: Request): string | null {
   const authorization = request.headers.get('authorization')?.trim() ?? '';
 
   if (authorization.startsWith(AUTH_HEADER_PREFIX)) {
-    return authorization.slice(AUTH_HEADER_PREFIX.length).trim();
+    const token = authorization.slice(AUTH_HEADER_PREFIX.length).trim();
+    if (token && token !== 'undefined' && token !== 'null') {
+      return token;
+    }
   }
 
   // Fallback check for session cookie
   const cookieHeader = request.headers.get('cookie') ?? '';
   const match = cookieHeader.match(/sentinel_session=([^;]+)/);
   if (match) {
-    return decodeURIComponent(match[1]);
+    const cookieToken = decodeURIComponent(match[1]).trim();
+    if (cookieToken && cookieToken !== 'undefined' && cookieToken !== 'null') {
+      return cookieToken;
+    }
   }
 
   return null;
@@ -151,15 +159,15 @@ export function getClientIp(request: Request): string | null {
 const DEV_ONLY_TOKENS: Record<string, AuthUser> = {
   'demo-token': {
     userId: 'user_001',
-    email: 'trader@sentinel.local',
+    email: 'trader@phivex.local',
     role: 'user',
     primaryWalletAddress: '7xK99zK8mP2xQ5wN3a19',
-    displayName: 'Sentinel Alpha Trader',
+    displayName: 'Phivex Alpha Trader',
   },
   // Two distinct admins so dual-control approval flows can be exercised without a real
   // admin-onboarding process — see the matching seed in lib/server/store.ts.
-  'demo-admin-a-token': { userId: 'admin_001', email: 'admin-a@sentinel.local', role: 'admin', displayName: 'Sentinel Admin A' },
-  'demo-admin-b-token': { userId: 'admin_002', email: 'admin-b@sentinel.local', role: 'admin', displayName: 'Sentinel Admin B' },
+  'demo-admin-a-token': { userId: 'admin_001', email: 'admin-a@phivex.local', role: 'admin', displayName: 'Phivex Admin A' },
+  'demo-admin-b-token': { userId: 'admin_002', email: 'admin-b@phivex.local', role: 'admin', displayName: 'Phivex Admin B' },
 };
 
 export async function verifyAuthToken(token: string): Promise<AuthUser | null> {

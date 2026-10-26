@@ -1,10 +1,10 @@
 {
-  "name": "project-sentinel",
+  "name": "phivex",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env SENTINEL_DEV_BUILD=true node server.js",
-    "dev:next-only": "cross-env SENTINEL_DEV_BUILD=true next dev",
+    "dev": "cross-env PHIVEX_DEV_BUILD=true SENTINEL_DEV_BUILD=true node server.js",
+    "dev:next-only": "cross-env PHIVEX_DEV_BUILD=true SENTINEL_DEV_BUILD=true next dev",
     "build": "next build",
     "start": "cross-env NODE_ENV=production node server.js",
     "lint": "next lint",
@@ -36,7 +36,7 @@
     "lucide-react": "0.469.0",
     "next": "14.2.5",
     "openai": "^7.37.0",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "postcss": "8.4.40",
     "qrcode.react": "^3.2.0",
     "react": "18.3.1",

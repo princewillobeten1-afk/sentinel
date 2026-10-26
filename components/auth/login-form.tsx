@@ -53,7 +53,7 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-wide">Sentinel Access</h1>
+        <h1 className="text-2xl font-bold text-white tracking-wide">Phivex Access</h1>
         <p className="text-sm text-cyan-200/60 mt-1">Authenticate to access institutional market intelligence</p>
       </div>
 
@@ -76,7 +76,7 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="trader@sentinel.market"
+            placeholder="trader@phivex.market"
             className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all text-sm"
           />
         </div>

@@ -140,7 +140,7 @@ export function XTrackerCard({ call }: XTrackerCardProps) {
                 href={tradeRoute}
                 onClick={(e) => e.stopPropagation()}
                 className="text-slate-500 hover:text-sky-400 transition-colors"
-                title={`Trade ${token.symbol} on Sentinel`}
+                title={`Trade ${token.symbol} on Phivex`}
               >
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>

@@ -23,7 +23,7 @@ export const mockMarketSummary: MarketSummary = {
 export const mockTokenMarketData: Record<string, TokenMarketData> = {
   SENT: {
     symbol: '$SENT',
-    name: 'Solana Sentinel',
+    name: 'Solana Phivex',
     mint: '7xK99zK8mP2xQ5wN3a19',
     network: 'solana',
     priceUsd: 0.0425,
@@ -67,7 +67,7 @@ export const mockTokenMarketData: Record<string, TokenMarketData> = {
       chain: 'solana',
       address: '7xK99zK8mP2xQ5wN3a19',
       symbol: '$SENT',
-      name: 'Solana Sentinel',
+      name: 'Solana Phivex',
       decimals: 9,
       logoUri: 'https://assets.sentinel.example/logo.png',
       verified: true,

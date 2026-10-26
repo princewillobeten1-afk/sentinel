@@ -18,19 +18,20 @@ class DatabasePool {
   private getPool(): Pool {
     if (this.pool) return this.pool;
 
-    if (!env.DATABASE_URL) {
+    const databaseUrl = env.DATABASE_URL || process.env.DATABASE_URL;
+    if (!databaseUrl) {
       throw new Error('DATABASE_URL is not configured — cannot open a Postgres connection.');
     }
 
     const isCloudPostgres =
-      env.DATABASE_URL.includes('supabase.co') ||
-      env.DATABASE_URL.includes('pooler.supabase.com') ||
-      env.DATABASE_URL.includes('sslmode=require') ||
-      env.DATABASE_URL.includes('neon.tech') ||
-      env.DATABASE_URL.includes('amazonaws.com');
+      databaseUrl.includes('supabase.co') ||
+      databaseUrl.includes('pooler.supabase.com') ||
+      databaseUrl.includes('sslmode=require') ||
+      databaseUrl.includes('neon.tech') ||
+      databaseUrl.includes('amazonaws.com');
 
     this.pool = new Pool({
-      connectionString: env.DATABASE_URL,
+      connectionString: databaseUrl,
       ssl: isCloudPostgres ? { rejectUnauthorized: false } : undefined,
       // Without these, an unreachable or paused host leaves every awaiting
       // request hanging indefinitely: the route never responds, the browser

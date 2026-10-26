@@ -1,4 +1,4 @@
-// Read-only end-to-end chart check against a running Sentinel server.
+// Read-only end-to-end chart check against a running Phivex server.
 const { chromium } = require('playwright');
 const mint = process.env.CHART_SMOKE_MINT || 'So11111111111111111111111111111111111111112';
 const base = process.env.CHART_SMOKE_BASE_URL || 'http://localhost:3002';

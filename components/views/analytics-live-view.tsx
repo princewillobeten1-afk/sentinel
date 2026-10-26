@@ -218,7 +218,7 @@ export function AnalyticsLiveView({ onOpenLab }: { onOpenLab: () => void }) {
 
         <Panel title="How to read this snapshot" padding="md">
           <div className="grid gap-3 text-xs text-slate-400 md:grid-cols-3">
-            <p><span className="block font-semibold text-slate-200">Scope</span>This covers {count(tokenCount)} priced tokens in Sentinel’s store, not every Solana token. Organic flow is reported for {count(data.coverage.organicCoverageTokens)} of them.</p>
+            <p><span className="block font-semibold text-slate-200">Scope</span>This covers {count(tokenCount)} priced tokens in Phivex’s store, not every Solana token. Organic flow is reported for {count(data.coverage.organicCoverageTokens)} of them.</p>
             <p><span className="block font-semibold text-slate-200">Mover selection</span>Bars include tokens with at least {money(data.coverage.moverThresholds.minimumLiquidityUsd)} liquidity and {money(data.coverage.moverThresholds.minimumVolume24hUsd)} 24h volume.</p>
             <p><span className="block font-semibold text-slate-200">Freshness</span>The latest aggregate observation was {observed(lastAt)}. Individual mover timestamps may differ; hover a bar for its observation.</p>
           </div>

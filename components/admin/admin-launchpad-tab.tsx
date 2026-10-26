@@ -25,7 +25,7 @@ interface AdminLaunchpadTabProps {
 const mockLaunches = [
   {
     id: 'launch_01',
-    name: 'Sentinel Protocol ($SENT)',
+    name: 'Phivex Protocol ($SENT)',
     creator: 'Alpha Dev Team (9pQ1...4c00)',
     progressPct: 100,
     status: 'GRADUATED',

@@ -1,7 +1,7 @@
 /**
  * Custom Next.js server entrypoint (Sprint 28 §12-13).
  *
- * Exists solely so Sentinel can run a real WebSocket server for the
+ * Exists solely so Phivex can run a real WebSocket server for the
  * developer streaming API alongside Next.js on a single port. Next's own
  * `next dev` / `next start` can't host a WS server, so this replaces them
  * (see package.json scripts).
@@ -88,7 +88,7 @@ app.prepare().then(() => {
   });
 
   server.listen(port, hostname, () => {
-    console.log(`> Sentinel ready on http://${hostname}:${port}`);
+    console.log(`> Phivex ready on http://${hostname}:${port}`);
     console.log(`> WebSocket streaming on ws://${hostname}:${port}/ws`);
 
     // Attaches the WS server's real handlers + starts the webhook dispatcher.

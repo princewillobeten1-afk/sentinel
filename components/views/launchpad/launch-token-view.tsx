@@ -83,7 +83,7 @@ export function LaunchTokenView({ launchId = 'mock-id' }: { launchId?: string })
             <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center font-bold text-xl text-primary">SNT</div>
             <div>
               <h1 className="text-3xl font-bold flex items-center gap-2">
-                Sentinel <Badge variant="secondary">SNT</Badge>
+                Phivex <Badge variant="secondary">PHX</Badge>
               </h1>
               <p className="text-sm text-muted-foreground mt-1">Smart Token Infrastructure</p>
             </div>
@@ -200,7 +200,7 @@ export function LaunchTokenView({ launchId = 'mock-id' }: { launchId?: string })
             <CardContent className="p-12 flex flex-col items-center justify-center text-center">
               <Activity className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
               <h3 className="text-xl font-bold mb-2">Trading Terminal</h3>
-              <p className="text-muted-foreground max-w-md">The standard Sentinel trading terminal is embedded here, utilizing the Bonding Curve or DEX Liquidity depending on the token&apos;s launch phase.</p>
+              <p className="text-muted-foreground max-w-md">The standard Phivex trading terminal is embedded here, utilizing the Bonding Curve or DEX Liquidity depending on the token&apos;s launch phase.</p>
             </CardContent>
           </Card>
         </div>

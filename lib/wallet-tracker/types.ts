@@ -122,7 +122,7 @@ export const INITIAL_LIVE_TRADES: TrackedWalletTrade[] = [
     action: 'BUY',
     tokenMint: '77wvPgk8otNJNsXbCs7nERU8fxh4sgGeouzEVP5Zpump',
     tokenSymbol: 'SENT',
-    tokenName: 'Project Sentinel',
+    tokenName: 'Project Phivex',
     tokenLogo: '/icons/sentinel.png',
     amountSol: 45.0,
     valueUsd: 6840,

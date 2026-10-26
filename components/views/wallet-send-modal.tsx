@@ -245,7 +245,7 @@ export function WalletSendModal({ wallet, isOpen, onClose }: WalletSendModalProp
           <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-left">
             <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-2xs text-amber-200 leading-relaxed">
-              Connect this wallet in your browser extension to send from it — Sentinel can only sign a transfer through the wallet that's actively connected, never on your behalf.
+              Connect this wallet in your browser extension to send from it — Phivex can only sign a transfer through the wallet that's actively connected, never on your behalf.
             </p>
           </div>
 

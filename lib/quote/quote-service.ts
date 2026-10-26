@@ -122,7 +122,7 @@ export class QuoteService {
       networkFeeSol: networkFeeNative,
       providerFeeUsd: totalFeeUsd.toString(),
       expiresAt,
-      provider: 'Sentinel Smart Order Router',
+      provider: 'Phivex Smart Order Router',
       isValid: true,
     };
 

@@ -106,7 +106,7 @@ export function WebhookCreateDialog({ isOpen, onClose, onCreated }: WebhookCreat
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://your-service.com/webhooks/sentinel"
+            placeholder="https://your-service.com/webhooks/phivex"
             isMonospace
           />
           <p className="text-2xs text-slate-500 mt-1">https required (http allowed only for localhost testing).</p>

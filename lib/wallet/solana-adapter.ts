@@ -282,12 +282,12 @@ export class SolanaWalletAdapterImpl implements WalletProvider {
 }
 
 /**
- * Sentinel Non-Custodial Smart Web Wallet
+ * Phivex Non-Custodial Smart Web Wallet
  * Generates an Ed25519 Solana Keypair in browser storage with 1-click connection.
  */
-export class SentinelSmartWalletAdapterImpl implements WalletProvider {
+export class PhivexSmartWalletAdapterImpl implements WalletProvider {
   id: WalletProviderId = 'embedded';
-  name = 'Sentinel Smart Wallet (1-Click Web Keypair)';
+  name = 'Phivex Smart Wallet (1-Click Web Keypair)';
   icon = '⚡';
   type: WalletType = 'embedded';
   publicKey: string | null = null;
@@ -452,9 +452,11 @@ export class ManualWalletAdapterImpl implements WalletProvider {
   }
 }
 
+export const SentinelSmartWalletAdapterImpl = PhivexSmartWalletAdapterImpl;
+
 export function getAvailableSolanaAdapters(): WalletProvider[] {
   return [
-    new SentinelSmartWalletAdapterImpl(),
+    new PhivexSmartWalletAdapterImpl(),
     new SolanaWalletAdapterImpl('phantom', 'Phantom Wallet', '👻', 'extension'),
     new SolanaWalletAdapterImpl('solflare', 'Solflare Wallet', '🔥', 'extension'),
     new SolanaWalletAdapterImpl('backpack', 'Backpack Wallet', '🎒', 'extension'),

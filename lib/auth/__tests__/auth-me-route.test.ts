@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/server/auth', () => ({ requireAuth: vi.fn().mockResolvedValue({ userId: 'user-1' }) }));
+vi.mock('@/lib/server/auth', () => ({
+  requireAuth: vi.fn().mockResolvedValue({ userId: 'user-1' }),
+  getBearerToken: vi.fn().mockReturnValue('mock-token'),
+}));
 vi.mock('@/lib/db/repository', () => ({ dbRepository: { getUser: vi.fn().mockReturnValue({
   id: 'user-1', display_name: 'Trader', email: 'trader@example.com', role: 'user', status: 'active',
   created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-02T00:00:00.000Z',

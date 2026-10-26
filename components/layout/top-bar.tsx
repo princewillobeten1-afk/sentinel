@@ -161,18 +161,18 @@ export function TopBar() {
             <Menu className="h-4 w-4" />
           </button>
 
-          {/* Sentinel Brand Logo */}
+          {/* Phivex Brand Logo */}
           <Link
             href="/discover"
             prefetch={true}
-            aria-label="Sentinel home"
+            aria-label="Phivex home"
             className="flex items-center gap-2.5 group shrink-0"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/25 shrink-0">
               <Zap className="h-4 w-4 fill-current text-sky-400" />
             </div>
             <div className="hidden sm:flex items-center">
-              <span className="font-semibold text-lg tracking-tight text-white">Sentinel</span>
+              <span className="font-semibold text-lg tracking-tight text-white">Phivex</span>
             </div>
           </Link>
 

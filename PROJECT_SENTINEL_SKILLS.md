@@ -1,4 +1,4 @@
-# Project Sentinel Skills Requirements
+# Phivex Skills Requirements
 
 ## Solana Launchpad, DEX Trading Terminal, Token Intelligence Platform, and Market-Integrity Network
 

@@ -46,7 +46,7 @@ export function LaunchWizard() {
           <CardContent className="space-y-4">
             <input 
               className="w-full bg-background border p-2 rounded" 
-              placeholder="Name (e.g. Sentinel Token)" 
+              placeholder="Name (e.g. Phivex Token)" 
               value={config.name} 
               onChange={e => setConfig({...config, name: e.target.value})} 
             />
@@ -111,7 +111,7 @@ export function LaunchWizard() {
               </div>
             </div>
             <div className="text-sm">
-              <p>By deploying, this token will be instantly indexed and evaluated by Sentinel's intelligence engines.</p>
+              <p>By deploying, this token will be instantly indexed and evaluated by Phivex's intelligence engines.</p>
             </div>
           </CardContent>
           <CardFooter className="justify-between">

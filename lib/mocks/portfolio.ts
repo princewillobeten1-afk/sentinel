@@ -15,7 +15,7 @@ export const mockPositions: Position[] = [
   {
     id: 'p1',
     symbol: '$SENT',
-    name: 'Solana Sentinel',
+    name: 'Solana Phivex',
     amount: '142,500.00',
     avgEntry: '$0.0310',
     currentPrice: '$0.0425',

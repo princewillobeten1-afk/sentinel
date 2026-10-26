@@ -40,12 +40,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
-    default: 'Project Sentinel · Solana Intelligence & Trading Terminal',
-    template: '%s · Project Sentinel',
+    default: 'Phivex · Solana Intelligence & Trading Terminal',
+    template: '%s · Phivex',
   },
   description:
     'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, deep liquidity telemetry, and execution terminal.',
-  applicationName: 'Project Sentinel',
+  applicationName: 'Phivex',
   keywords: [
     'Solana',
     'Trading Terminal',
@@ -57,7 +57,7 @@ export const metadata: Metadata = {
     'Jupiter Swap',
     'Crypto Security',
   ],
-  authors: [{ name: 'Project Sentinel Team' }],
+  authors: [{ name: 'Phivex Team' }],
   icons: {
     icon: '/icon.svg',
     shortcut: '/icon.svg',
@@ -67,14 +67,14 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: appUrl,
-    siteName: 'Project Sentinel',
-    title: 'Project Sentinel · Solana Intelligence & Trading Terminal',
+    siteName: 'Phivex',
+    title: 'Phivex · Solana Intelligence & Trading Terminal',
     description:
       'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Project Sentinel · Solana Intelligence & Trading Terminal',
+    title: 'Phivex · Solana Intelligence & Trading Terminal',
     description:
       'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
   },

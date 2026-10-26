@@ -48,7 +48,7 @@ export class TokenDiscoveryPipeline {
       tokenId: sentMint,
       chainId: 'solana',
       symbol: 'SOL',
-      name: 'Wrapped SOL / Sentinel Native',
+      name: 'Wrapped SOL / Phivex Native',
       decimals: 9,
       status: 'ACTIVE',
       logoUrl: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',

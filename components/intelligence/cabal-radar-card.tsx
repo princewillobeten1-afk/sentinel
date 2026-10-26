@@ -53,7 +53,7 @@ export function CabalRadarCard({
     sentinel,
   } = cabalRadar;
 
-  // Local state for Sentinel automation
+  // Local state for Phivex automation
   const [isArmed, setIsArmed] = useState<boolean>(sentinel.isArmed ?? true);
   const [dumpThreshold, setDumpThreshold] = useState(sentinel.thresholdDumpPct || 2.5);
   const [expandedCluster, setExpandedCluster] = useState<string | null>(clusters[0]?.id ?? null);
@@ -107,7 +107,7 @@ export function CabalRadarCard({
 
   const runSimulation = () => {
     setSimulationActive(true);
-    setSimulationLogs(['[SENTINEL CORE] Initializing front-run trigger test...']);
+    setSimulationLogs(['[PHIVEX CORE] Initializing front-run trigger test...']);
     setTimeout(() => {
       setSimulationLogs(prev => [...prev, `[TELEMETRY] Tracking ${clusters.length} sybil clusters across Solana RPC block stream...`]);
     }, 600);
@@ -153,7 +153,7 @@ export function CabalRadarCard({
               </span>
             </div>
             <h2 className="text-xl font-black text-white sm:text-2xl flex items-center gap-2 mt-0.5">
-              Cabal Radar™ & Front-Run Sentinel
+              Cabal Radar™ & Front-Run Phivex
             </h2>
           </div>
         </div>
@@ -403,7 +403,7 @@ export function CabalRadarCard({
         </div>
       </div>
 
-      {/* Autonomous "Front-Run the Dump" Sentinel Console */}
+      {/* Autonomous "Front-Run the Dump" Phivex Console */}
       <div className="rounded-xl border border-sky-500/30 bg-gradient-to-br from-sky-950/30 via-sentinel-950 to-sentinel-900 p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -413,7 +413,7 @@ export function CabalRadarCard({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-mono text-sm font-bold uppercase tracking-wider text-white">
-                  Front-Run Sentinel™ Autonomous Defense
+                  Front-Run Phivex™ Autonomous Defense
                 </h3>
                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-mono border ${
                   isArmed 
@@ -438,11 +438,11 @@ export function CabalRadarCard({
                 : 'bg-sentinel-800 text-slate-300 border-sentinel-700 hover:bg-sentinel-700'
             }`}
           >
-            {isArmed ? 'SENTINEL ACTIVE' : 'ARM SENTINEL'}
+            {isArmed ? 'PHIVEX ACTIVE' : 'ARM PHIVEX'}
           </button>
         </div>
 
-        {/* Sentinel Parameter Controls */}
+        {/* Phivex Parameter Controls */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-sentinel-800">
           <div className="rounded-lg bg-sentinel-900/80 p-3 border border-sentinel-800">
             <span className="block text-2xs uppercase text-slate-400 font-mono">Dump Threshold</span>
@@ -508,7 +508,7 @@ export function CabalRadarCard({
         {simulationLogs.length > 0 && (
           <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 font-mono text-2xs text-slate-300 space-y-1">
             <div className="flex items-center justify-between text-slate-400 border-b border-sentinel-800 pb-1 mb-1">
-              <span>Sentinel Live Execution Console</span>
+              <span>Phivex Live Execution Console</span>
               <span className="text-sky-400">Simulation Mode</span>
             </div>
             {simulationLogs.map((log, i) => (

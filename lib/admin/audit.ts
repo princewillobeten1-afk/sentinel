@@ -100,7 +100,7 @@ export class AdminAuditService {
       reason: input.reason,
       ipAddress: input.ipAddress || '127.0.0.1',
       geoLocation: input.geoLocation || 'Localhost/Internal',
-      userAgent: input.userAgent || 'Sentinel-Admin-Client/1.0',
+      userAgent: input.userAgent || 'Phivex-Admin-Client/1.0',
       sessionId: input.sessionId,
       changesBefore: input.changesBefore,
       changesAfter: input.changesAfter,

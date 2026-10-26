@@ -20,7 +20,7 @@ export function HelpView() {
       <div className="grid gap-4 md:grid-cols-2">
         <Panel title="Risk Model Principles" subtitle="Explainable evidence vs arbitrary scores">
           <p className="text-xs text-slate-300 leading-relaxed font-sans">
-            Sentinel provides supporting on-chain evidence, confidence intervals, and financial impact assessments for every flagged token rather than unexplained safety scores.
+            Phivex provides supporting on-chain evidence, confidence intervals, and financial impact assessments for every flagged token rather than unexplained safety scores.
           </p>
         </Panel>
 

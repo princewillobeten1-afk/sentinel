@@ -194,7 +194,7 @@ export function Sidebar() {
             {!isSidebarCollapsed && (
               <div>
                 <p className="text-2xs uppercase font-bold tracking-[0.14em] text-slate-400 whitespace-nowrap">PROJECT</p>
-                <h1 className="text-sm font-extrabold text-white tracking-wider">SENTINEL</h1>
+                <h1 className="text-sm font-extrabold text-white tracking-wider">PHIVEX</h1>
               </div>
             )}
           </Link>
@@ -261,7 +261,7 @@ export function Sidebar() {
         position="left"
         title={
           <span className="flex items-center gap-2 text-sky-400 font-bold text-sm">
-            <Zap className="h-4 w-4 fill-current" /> SENTINEL MOBILE NAV
+            <Zap className="h-4 w-4 fill-current" /> PHIVEX MOBILE NAV
           </span>
         }
       >

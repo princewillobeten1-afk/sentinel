@@ -119,7 +119,7 @@ export class AdminFeatureFlagService {
       },
       {
         key: 'ai_analyst',
-        name: 'Sentinel AI Co-Pilot & Trade Journal',
+        name: 'Phivex AI Co-Pilot & Trade Journal',
         description: 'Activates generative AI chat and automated trade journal reviews',
         enabled: true,
         rolloutPct: 100,

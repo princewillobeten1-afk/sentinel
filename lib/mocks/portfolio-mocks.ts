@@ -115,10 +115,10 @@ export const MOCK_PORTFOLIO_TOKENS: Record<string, TokenMetaInput> = {
   dt_sentinel: {
     tokenId: 'dt_sentinel',
     symbol: 'SENT',
-    name: 'Solana Sentinel Token',
+    name: 'Solana Phivex Token',
     chain: 'solana',
     creatorId: 'creator_sentinel_labs',
-    creatorLabel: 'Sentinel Labs',
+    creatorLabel: 'Phivex Labs',
     intelligenceScore: 82,
     organicScore: 78,
     ownershipConcentration: 24,

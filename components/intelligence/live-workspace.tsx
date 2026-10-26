@@ -201,7 +201,7 @@ function Loading() {
       className={`${panel} flex min-h-48 items-center justify-center gap-3 p-6 text-sm text-slate-400 font-mono`}
     >
       <RefreshCw className="h-5 w-5 motion-safe:animate-spin text-sky-400" />
-      <span>Loading Sentinel intelligence matrix…</span>
+      <span>Loading Phivex intelligence matrix…</span>
     </div>
   );
 }
@@ -279,7 +279,7 @@ export function IntelligenceWorkspace() {
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Intelligence Command Center</h1>
           <p className="mt-2 max-w-3xl leading-relaxed text-slate-400">
-            Automated contract audits, insider clustering, genesis bundler tracking, and simulated exitability. Sentinel does all the investigative legwork before you place a trade.
+            Automated contract audits, insider clustering, genesis bundler tracking, and simulated exitability. Phivex does all the investigative legwork before you place a trade.
           </p>
         </div>
 
@@ -852,7 +852,7 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
     { id: 'overview', label: 'Overview & Risk Matrix', icon: ShieldCheck },
     { 
       id: 'cabal_radar', 
-      label: 'Cabal Radar™ & Sentinel', 
+      label: 'Cabal Radar™ & Phivex', 
       icon: Radar, 
       badge: cabalRadarData?.cabalStage === 'STEALTH_DISTRIBUTION' 
         ? 'DUMP ALERT' 
@@ -1207,7 +1207,7 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
             </div>
           )}
 
-          {/* TAB 2: CABAL RADAR™ & AUTONOMOUS FRONT-RUN SENTINEL */}
+          {/* TAB 2: CABAL RADAR™ & AUTONOMOUS FRONT-RUN DETECTION */}
           {activeTab === 'cabal_radar' && (
             <div className="space-y-6">
               {cabalRadarData ? (

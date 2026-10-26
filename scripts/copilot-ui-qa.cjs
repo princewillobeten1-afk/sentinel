@@ -71,7 +71,7 @@ async function main() {
     await page.getByRole('heading',{name:'Evidence, before opinions.'}).waitFor();assert.equal(deleted,true);
     await page.goto(base+'/discover',{waitUntil:'domcontentloaded'});
     const launch=page.getByRole('button',{name:'Copilot',exact:true});await launch.waitFor();await launch.focus();await page.keyboard.press('Enter');
-    const dialog=page.getByRole('dialog',{name:'Sentinel Copilot'});await dialog.waitFor();
+    const dialog=page.getByRole('dialog',{name:/^(Sentinel|Phivex) Copilot$/});await dialog.waitFor();
     for(let i=0;i<12;i++){await page.keyboard.press('Tab');assert.ok(await dialog.evaluate(el=>el.contains(document.activeElement)));}
     await page.screenshot({path:path.join(output,'discover-sheet-390.png')});
     await page.keyboard.press('Escape');assert.equal(await dialog.count(),0);
@@ -79,7 +79,7 @@ async function main() {
     await page.setViewportSize({width:1440,height:900});
     await page.goto(base+'/trade/solana/'+mint,{waitUntil:'domcontentloaded'});
     await page.getByRole('button',{name:'Copilot',exact:true}).click();
-    const tradeDialog=page.getByRole('dialog',{name:'Sentinel Copilot'});await tradeDialog.waitFor();
+    const tradeDialog=page.getByRole('dialog',{name:/^(Sentinel|Phivex) Copilot$/});await tradeDialog.waitFor();
     await tradeDialog.getByText('So111111...111112',{exact:true}).waitFor();
     await page.screenshot({path:path.join(output,'trade-panel-1440.png')});
     await page.keyboard.press('Escape');

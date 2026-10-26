@@ -545,7 +545,7 @@ export function AxiomChartTabs({
    * Deployer's launch history.
    *
    * Was a hardcoded object: creator `7xK9...3a19`, "98/100 (Tier 1 Verified)",
-   * and four invented launches led by `$SENT "Solana Sentinel"` — rendered on
+   * and four invented launches led by `$SENT "Solana Phivex"` — rendered on
    * every token page including Wrapped SOL.
    *
    * `/dev-activity` returns the real creator plus `devMints` and
@@ -569,7 +569,7 @@ export function AxiomChartTabs({
   };
 
   // ---------------------------------------------------------------------------
-  // LIVE WEBSOCKET DATA: Stream Incoming Trades via internal Sentinel WS
+  // LIVE WEBSOCKET DATA: Stream Incoming Trades via internal Phivex WS
   // ---------------------------------------------------------------------------
   useSentinelWS(safeMint ? [`token.trade:${safeMint}`, `token.price:${safeMint}`] : [], (data, msg) => {
     if (msg.topic !== `token.trade:${safeMint}` || !data?.signature) return;
@@ -898,7 +898,7 @@ export function AxiomChartTabs({
    * even been attempted. The server route was fabricating the confirmation and
    * the client was fabricating one again on failure.
    *
-   * Sentinel holds no keys, so a swap can only exist once the user signs it in
+   * Phivex holds no keys, so a swap can only exist once the user signs it in
    * their wallet. What can honestly be shown here is a real quote.
    */
   const handleExecuteInstantBuy = async () => {

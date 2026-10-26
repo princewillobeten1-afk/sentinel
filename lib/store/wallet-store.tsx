@@ -328,34 +328,42 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
 
       // 2. Check token against backend
       const storedToken = localStorage.getItem(STORAGE_KEY_TOKEN);
-      if (!storedToken) return;
+      if (!storedToken || storedToken === 'undefined' || storedToken === 'null') {
+        localStorage.removeItem(STORAGE_KEY_TOKEN);
+        return;
+      }
 
       try {
         const res = await fetch('/api/v1/auth/me', {
           headers: { Authorization: `Bearer ${storedToken}` },
+          credentials: 'include',
         });
         if (res.ok) {
-          const data = await res.json();
+          const rawData = await res.json();
+          const data = rawData.data || rawData;
           setSessionToken(storedToken);
           if (data.linkedWallets && data.linkedWallets.length > 0) {
             setLinkedWallets(data.linkedWallets);
             localStorage.setItem(STORAGE_KEY_LINKED_WALLETS, JSON.stringify(data.linkedWallets));
           }
-          if (data.user && data.primaryWallet) {
+          if (data.user) {
+            const primary = data.primaryWallet || data.linkedWallets?.[0];
             setAuthenticatedIdentity({
-              userId: data.user.userId,
-              displayName: data.user.displayName || 'Sentinel Trader',
+              userId: data.user.id || data.user.userId,
+              displayName: data.user.displayName || 'Phivex Trader',
               email: data.user.email,
               role: data.user.role || 'user',
-              primaryWallet: data.primaryWallet,
+              primaryWallet: primary,
               linkedWallets: data.linkedWallets || [],
               preferences: data.preferences,
               authenticatedAt: new Date().toISOString(),
             });
-            setActivePublicKey(data.primaryWallet.address);
-            localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(data.primaryWallet));
-            setStatus('authenticated');
-            refreshWalletBalance(data.primaryWallet.address);
+            if (primary) {
+              setActivePublicKey(primary.address);
+              localStorage.setItem(STORAGE_KEY_ACTIVE_WALLET, JSON.stringify(primary));
+              setStatus('authenticated');
+              refreshWalletBalance(primary.address);
+            }
           }
         } else if (res.status === 401) {
           localStorage.removeItem(STORAGE_KEY_TOKEN);
@@ -405,7 +413,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
     return null;
   }, [adapters]);
 
-  // Fast 1-click connect to Sentinel Smart Wallet
+  // Fast 1-click connect to Phivex Smart Wallet
   const fastConnectSmartWallet = useCallback(async () => {
     setAuthError(null);
     setStatus('connecting');
@@ -426,7 +434,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         id: `w_smart_${publicKey.slice(0, 8)}`,
         address: publicKey,
         network: 'solana',
-        label: 'Sentinel Smart Wallet',
+        label: 'Phivex Smart Wallet',
         isPrimary: true,
         balanceSol: 0.0,
         status: 'active',
@@ -468,13 +476,17 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
                 signature: signatureBase58,
                 nonce: challenge.nonce,
                 message: challenge.formattedMessage,
-                label: 'Sentinel Smart Wallet',
+                label: 'Phivex Smart Wallet',
               }),
             });
             if (verifyRes.ok) {
-              const verifyData = await verifyRes.json();
-              setSessionToken(verifyData.token);
-              localStorage.setItem(STORAGE_KEY_TOKEN, verifyData.token);
+              const rawVerify = await verifyRes.json();
+              const verifyData = rawVerify.data || rawVerify;
+              const token = verifyData.token;
+              if (token && typeof token === 'string' && token !== 'undefined') {
+                setSessionToken(token);
+                localStorage.setItem(STORAGE_KEY_TOKEN, token);
+              }
             }
           }
         }
@@ -627,9 +639,13 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         throw new Error(errJson.error?.message || 'Signature verification failed.');
       }
 
-      const data = await res.json();
-      setSessionToken(data.token);
-      localStorage.setItem(STORAGE_KEY_TOKEN, data.token);
+      const rawData = await res.json();
+      const data = rawData.data || rawData;
+      const token = data.token;
+      if (token && typeof token === 'string' && token !== 'undefined') {
+        setSessionToken(token);
+        localStorage.setItem(STORAGE_KEY_TOKEN, token);
+      }
 
       const wallets: LinkedWallet[] = data.linkedWallets || [
         {
@@ -652,8 +668,8 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
 
       if (data.user) {
         setAuthenticatedIdentity({
-          userId: data.user.userId,
-          displayName: data.user.displayName || 'Sentinel Trader',
+          userId: data.user.id || data.user.userId,
+          displayName: data.user.displayName || 'Phivex Trader',
           email: data.user.email,
           role: data.user.role || 'user',
           primaryWallet: data.primaryWallet || wallets[0],

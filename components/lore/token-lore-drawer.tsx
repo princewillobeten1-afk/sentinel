@@ -387,7 +387,7 @@ export function TokenLoreDrawer({ isOpen, onClose, lore, isLoading }: TokenLoreD
                     How Runner Detection Works
                   </h4>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    When a meme blows up, dozens of contracts launch with identical tickers. Sentinel tracks the on-chain creation timestamp of every pair to identify the true First Runner (OG) vs secondary launches and derivatives.
+                    When a meme blows up, dozens of contracts launch with identical tickers. Phivex tracks the on-chain creation timestamp of every pair to identify the true First Runner (OG) vs secondary launches and derivatives.
                   </p>
                 </div>
 

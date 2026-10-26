@@ -82,7 +82,7 @@ export function AdminTreasuryTab({
           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
             <span className="text-2xs text-slate-500 font-mono uppercase">AI Subscriptions (8.7%)</span>
             <p className="text-base font-bold text-white font-mono">$12,500 USD</p>
-            <p className="text-2xs text-slate-400 font-mono">255 new Sentinel AI Pro seats</p>
+            <p className="text-2xs text-slate-400 font-mono">255 new Phivex AI Pro seats</p>
           </div>
 
           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">

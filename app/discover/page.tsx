@@ -5,11 +5,11 @@ import { AppShell } from '@/components/layout/app-shell';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 
 /**
- * Discovery, in the Sentinel shell.
+ * Discovery, in the Phivex shell.
  *
  * This page previously rendered its own chrome — `TradingHeader` plus
  * `TokenDiscoveryPage` — which gave the app two visual identities: a minimal
- * "SCALE TRADER / TERMINAL v2" top nav here, and the full "PROJECT SENTINEL"
+ * "SCALE TRADER / TERMINAL v2" top nav here, and the full "PHIVEX"
  * sidebar terminal (nav, status bar, live block height, wallet) on every other
  * route. Navigating between them read as leaving one product for another.
  *

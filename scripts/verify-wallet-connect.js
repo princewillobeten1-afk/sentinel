@@ -75,7 +75,7 @@ async function testWalletFlow() {
       signature: signatureBase58,
       nonce: challenge.nonce,
       message: challenge.formattedMessage,
-      label: 'Sentinel Smart Wallet',
+      label: 'Phivex Smart Wallet',
     }),
   });
 
@@ -90,7 +90,7 @@ async function testWalletFlow() {
       headers: { Authorization: `Bearer ${token}` },
     });
     const meData = await meRes.json();
-    console.log('5. Authenticated User Profile:', meData.user?.displayName || 'Sentinel User');
+    console.log('5. Authenticated User Profile:', meData.user?.displayName || 'Phivex User');
     console.log('   Primary Wallet Address:', meData.primaryWallet?.address || publicKey);
   }
 

@@ -29,7 +29,7 @@ const mockTokensList = [
   {
     address: 'So11111111111111111111111111111111111111112',
     symbol: '$SENT',
-    name: 'Solana Sentinel',
+    name: 'Solana Phivex',
     chain: 'solana',
     creator: 'Alpha Dev Team (9pQ1...4c00)',
     liquidityUsd: 1_850_000,

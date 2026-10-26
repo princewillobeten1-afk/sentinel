@@ -1,6 +1,6 @@
 # PRODUCT REQUIREMENTS AND DEVELOPMENT SPECIFICATION
 
-## Working title: Project Sentinel
+## Title: Phivex
 
 ### An Intelligent Token Launchpad, Discovery Platform, DEX Trading Terminal, and Market-Integrity Network
 **Document status:** Initial comprehensive product specification
@@ -11,7 +11,7 @@
 ---
 
 # 1. Executive summary
-Project Sentinel will be an all-in-one platform through which users can:
+Phivex is an all-in-one platform through which users can:
 
 - Discover newly created and existing tokens.
 - Launch tokens under transparent, configurable conditions.

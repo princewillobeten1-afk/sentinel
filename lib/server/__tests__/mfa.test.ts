@@ -66,10 +66,10 @@ describe('verifyTotp', () => {
 describe('buildOtpauthUri', () => {
   it('produces a well-formed otpauth URI carrying the secret', () => {
     const secret = generateTotpSecret();
-    const uri = buildOtpauthUri(secret, 'trader@sentinel.local');
+    const uri = buildOtpauthUri(secret, 'trader@phivex.local');
     expect(uri).toMatch(/^otpauth:\/\/totp\//);
     expect(uri).toContain(`secret=${secret}`);
-    expect(uri).toContain('issuer=Sentinel');
+    expect(uri).toContain('issuer=Phivex');
   });
 });
 

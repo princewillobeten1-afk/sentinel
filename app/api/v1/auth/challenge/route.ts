@@ -20,10 +20,10 @@ export async function POST(request: Request) {
     checkRateLimit(`challenge_${data.publicKey}`, 10, 60000);
 
     const nonce = generateAuthNonce(16);
-    const domain = request.headers.get('host') || 'sentinel.app';
+    const domain = request.headers.get('host') || 'phivex.app';
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 mins
-    const statement = 'Sign in to Sentinel Trading & Intelligence Platform to verify wallet ownership.';
+    const statement = 'Sign in to Phivex Trading & Intelligence Platform to verify wallet ownership.';
 
     const challenge = await serverStore.saveChallenge(data.publicKey, nonce, statement, expiresAt);
 

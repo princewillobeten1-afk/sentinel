@@ -141,6 +141,7 @@ const config: Config = {
         border: neutral[700],
         input: neutral[700],
         ring: accent[400],
+        phivex: { ...neutral, 500: accent[500], 400: accent[300], 300: accent[200] },
         sentinel: { ...neutral, 500: accent[500], 400: accent[300], 300: accent[200] },
         surface: {
           DEFAULT: neutral[800],

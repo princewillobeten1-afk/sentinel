@@ -13,7 +13,7 @@ async function run() {
     timeout: 30000,
   });
 
-  await page.waitForSelector('text=AI Sentinel Verdict', { timeout: 25000 });
+  await page.waitForSelector('text=/AI (Sentinel|Phivex) Verdict/', { timeout: 25000 });
   await page.waitForTimeout(1000);
 
   // 1. Supply & Ownership

@@ -29,7 +29,7 @@ export const MOCK_TOKENS: Record<string, TokenIdentity> = {
   SENT: {
     id: 'dt_sentinel',
     symbol: 'SENT',
-    name: 'Solana Sentinel Token',
+    name: 'Solana Phivex Token',
     address: '7xK99zK8mP2xQ5wN3a19',
     chain: 'solana',
     logoUri: 'https://assets.sentinel.example/logo.png',
@@ -189,7 +189,7 @@ const SENT_INPUT: ReportInput = {
   contract: {
     tokenId: 'dt_sentinel',
     chain: 'solana',
-    name: 'Solana Sentinel Token',
+    name: 'Solana Phivex Token',
     symbol: 'SENT',
     mintAuthorityStatus: 'REVOKED',
     freezeAuthorityStatus: 'REVOKED',

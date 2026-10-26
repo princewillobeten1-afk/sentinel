@@ -15,7 +15,7 @@ export const GET = withApiGateway(async (_ctx, request) => {
     const tokens = await getLiveDiscoveryTokens(filter);
 
     return jsonResponse({
-      engine: 'Sentinel Live Token Discovery Engine v2',
+      engine: 'Phivex Live Token Discovery Engine v2',
       availableEndpoints: [
         '/api/v1/discovery/trending',
         '/api/v1/discovery/new',

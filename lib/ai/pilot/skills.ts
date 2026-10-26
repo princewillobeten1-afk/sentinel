@@ -18,7 +18,7 @@ export const skills = {
   what_changed: { version: '1', description: 'Compare a current observation with a genuinely stored earlier observation. Report insufficient history when absent; do not manufacture a prior snapshot.',
     schema: z.object({ mint: mintSchema, minutes: z.union([z.literal(15), z.literal(60), z.literal(1440)]) }).strict() },
   creator_analysis: { version: '1', description: 'Read recorded creator launch and migration counts for an exact token. Counts are not proof of common wallet ownership or rug pulls.', schema: token },
-  platform_guide: { version: '1', description: 'Read curated Sentinel help, including how to prepare a trade locally. Cannot execute actions or access accounts.',
+  platform_guide: { version: '1', description: 'Read curated Phivex help, including how to prepare a trade locally. Cannot execute actions or access accounts.',
     schema: z.object({ topic: z.enum(['discovery', 'chart', 'audit', 'trade', 'privacy']) }).strict() },
 } as const;
 export type SkillName = keyof typeof skills;

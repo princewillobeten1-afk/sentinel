@@ -183,3 +183,28 @@ it('keeps old private history outside model context and retains public context',
 
 it('honors Retry-After headers', () => expect(retryDelay({ response: { headers: new Headers({ 'retry-after': '600' }) } })).toBe(600));
 it('uses a bounded pause if no retry guidance exists', () => expect(retryDelay({})).toBe(3600));
+
+it('returns grounded analyst prose written by the model', async () => {
+  const narrative = JSON.stringify({ sections: [
+    { title: 'Verdict', text: 'Price is measured at $1; more evidence is needed for a full read.', evidenceIds: [measured.id] },
+  ] });
+  mocks.create.mockImplementationOnce(async () => call()).mockImplementationOnce(async () => answer(narrative));
+  const events: PilotEvent[] = [];
+  await runPilot('u', 's', request, new AbortController().signal, e => events.push(e));
+  const final = events.find(e => e.type === 'answer');
+  expect(final?.type === 'answer' && final.answer.validated && final.answer.sections[0].title).toBe('Verdict');
+});
+
+it('gives the model one repair round when its prose invents numbers, then accepts the fix', async () => {
+  const invented = JSON.stringify({ sections: [{ title: 'Verdict', text: 'Price is $42.', evidenceIds: [measured.id] }] });
+  const fixed = JSON.stringify({ sections: [{ title: 'Verdict', text: 'Price is measured at $1.', evidenceIds: [measured.id] }] });
+  mocks.create
+    .mockImplementationOnce(async () => call())
+    .mockImplementationOnce(async () => answer(invented))
+    .mockImplementationOnce(async () => answer(fixed));
+  const events: PilotEvent[] = [];
+  await runPilot('u', 's', request, new AbortController().signal, e => events.push(e));
+  expect(mocks.create).toHaveBeenCalledTimes(3);
+  expect(JSON.stringify(mocks.create.mock.calls[2][0].messages)).toContain('numbers not found');
+  expect(events.some(e => e.type === 'answer' && e.answer.validated && e.answer.sections[0].text.includes('$1'))).toBe(true);
+});

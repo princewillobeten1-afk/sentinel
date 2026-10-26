@@ -21,7 +21,7 @@ interface TokenSeed {
 
 const TOKEN_SEEDS: TokenSeed[] = [
   {
-    name: 'Solana Sentinel AI',
+    name: 'Solana Phivex AI',
     symbol: 'SENT',
     mintPrefix: '7xK99zK8mP2xQ5wN3a19',
     source: 'Raydium',

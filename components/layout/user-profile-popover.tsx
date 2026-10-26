@@ -49,7 +49,7 @@ export function UserProfilePopover({ align = 'right' }: { align?: 'left' | 'righ
     setShowConfirmDelete(false);
     addNotification({
       title: 'Account Closed',
-      message: 'Sentinel user account deactivated.',
+      message: 'Phivex user account deactivated.',
       type: 'system',
     });
   };

@@ -30,7 +30,7 @@ export async function DELETE(request: Request) {
 
     const response = jsonResponse({
       success: true,
-      message: 'Sentinel user account deactivated and closed. Historical blockchain records preserved for compliance.',
+      message: 'Phivex user account deactivated and closed. Historical blockchain records preserved for compliance.',
     });
 
     // Clear session cookie

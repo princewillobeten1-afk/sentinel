@@ -465,7 +465,7 @@ export function WalletModal() {
 
               {/* Context-Aware Security Section */}
               {isSmartWallet ? (
-                /* Sentinel Non-Custodial Smart Web Wallet Export Key */
+                /* Phivex Non-Custodial Smart Web Wallet Export Key */
                 <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
@@ -513,7 +513,7 @@ export function WalletModal() {
                   <div className="space-y-0.5 text-xs">
                     <p className="font-bold text-slate-200">Extension-Managed Custody</p>
                     <p className="text-2xs text-slate-400 leading-relaxed">
-                      Your private keys are securely encrypted inside your browser extension. Sentinel is 100% self-custodial and never has access to your private key or seed phrases.
+                      Your private keys are securely encrypted inside your browser extension. Phivex is 100% self-custodial and never has access to your private key or seed phrases.
                     </p>
                   </div>
                 </div>
@@ -648,7 +648,7 @@ export function WalletModal() {
                 {installTargetWallet.name} Not Detected
               </h3>
               <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
-                The {installTargetWallet.name} browser extension was not found in this browser. To trade on Sentinel using this wallet, install the official extension.
+                The {installTargetWallet.name} browser extension was not found in this browser. To trade on Phivex using this wallet, install the official extension.
               </p>
             </div>
 
@@ -663,7 +663,7 @@ export function WalletModal() {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                <span>Instant trading & low-latency execution on Sentinel</span>
+                <span>Instant trading & low-latency execution on Phivex</span>
               </div>
             </div>
 
@@ -710,7 +710,7 @@ export function WalletModal() {
       ) : (
         /* VIEW 5: Unauthenticated Connect Options */
         <div className="space-y-4">
-          {/* Quick Connect Hero Option: Sentinel Smart Wallet */}
+          {/* Quick Connect Hero Option: Phivex Smart Wallet */}
           <div className="rounded-2xl border border-sky-500/40 bg-gradient-to-br from-sky-950/40 via-sentinel-900/90 to-indigo-950/40 p-4 space-y-3 shadow-[0_0_20px_rgba(56,189,248,0.15)] relative overflow-hidden">
             <div className="flex items-start justify-between">
               <div className="space-y-1">
@@ -718,7 +718,7 @@ export function WalletModal() {
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-sky-500/20 text-sky-300 font-bold text-xs border border-sky-500/30">
                     ⚡
                   </span>
-                  <span className="text-sm font-bold text-white tracking-wide">Sentinel Smart Wallet</span>
+                  <span className="text-sm font-bold text-white tracking-wide">Phivex Smart Wallet</span>
                   <Badge variant="info" size="sm">Recommended</Badge>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
@@ -807,7 +807,7 @@ export function WalletModal() {
 
           <div className="rounded-xl border border-sentinel-800 bg-sentinel-950 p-3 flex items-center gap-2.5 text-2xs text-slate-400">
             <KeyRound className="h-4 w-4 text-sky-400 shrink-0" />
-            <span>Sentinel is 100% self-custodial. We never hold your private keys or seed phrases.</span>
+            <span>Phivex is 100% self-custodial. We never hold your private keys or seed phrases.</span>
           </div>
         </div>
       )}

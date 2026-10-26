@@ -44,7 +44,7 @@ const SENT_CREATOR: CreatorEntity = {
     mkLaunch('prev_sent_1', 'BETA', 'Beta Protocol', oneYearAgo, 50000, 120000, 45000, 800000, 365, 'ACTIVE', 0.92, 70, 10),
     mkLaunch('prev_sent_2', 'GAMMA', 'Gamma Finance', sixMonthsAgo, 30000, 85000, 35000, 500000, 180, 'ACTIVE', 0.88, 65, 15),
     mkLaunch('prev_sent_3', 'DELTA', 'Delta Network', threeMonthsAgo, 20000, 60000, 55000, 350000, 90, 'ACTIVE', 0.85, 80, 5),
-    mkLaunch('dt_sentinel', 'SENT', 'Solana Sentinel Token', oneMonthAgo, 40000, 150000, 140000, 1200000, 30, 'ACTIVE', 0.90, 85, 5),
+    mkLaunch('dt_sentinel', 'SENT', 'Solana Phivex Token', oneMonthAgo, 40000, 150000, 140000, 120000, 30, 'ACTIVE', 0.90, 85, 5),
   ],
   associatedWallets: [],
   behaviorProfile: {

@@ -33,7 +33,7 @@ export function LandingHeader() {
               <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-accent-500/10 text-accent-300 border border-accent-500/20 font-semibold">SOLANA</span>
             </div>
             <h1 className="font-heading text-xs sm:text-sm font-black tracking-wider text-white group-hover:text-emerald-400 transition-colors">
-              SENTINEL <span className="text-[10px] text-neutral-500 font-mono font-normal">{'//'} TERMINAL</span>
+              PHIVEX <span className="text-[10px] text-neutral-500 font-mono font-normal">{'//'} TERMINAL</span>
             </h1>
           </div>
         </Link>

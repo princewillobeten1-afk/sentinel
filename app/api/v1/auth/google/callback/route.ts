@@ -12,9 +12,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   let response: Response;
   try {
-    const config = googleOAuthConfig();
+    let config = googleOAuthConfig();
     if (url.origin !== new URL(config.redirectUri).origin) {
-      throw new ApiError('Google sign-in origin mismatch.', 400, 'GOOGLE_ORIGIN_MISMATCH');
+      if (process.env.NODE_ENV !== 'production' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
+        config = { ...config, redirectUri: `${url.origin}/api/v1/auth/google/callback` };
+      } else {
+        throw new ApiError('Google sign-in origin mismatch.', 400, 'GOOGLE_ORIGIN_MISMATCH');
+      }
     }
     const cookie = request.headers.get('cookie')?.match(/(?:^|;\s*)sentinel_google_oauth=([^;]+)/)?.[1];
     const flow = readGoogleFlow(cookie ? decodeURIComponent(cookie) : undefined, url.searchParams.get('state'), config.signingSecret);

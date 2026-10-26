@@ -90,7 +90,7 @@ export function MobileNavDrawer() {
       position="left"
       title={
         <span className="flex items-center gap-2 text-sky-400 font-bold text-sm font-mono">
-          <Zap className="h-4 w-4 fill-current" /> SENTINEL NAV
+          <Zap className="h-4 w-4 fill-current" /> PHIVEX NAV
         </span>
       }
     >

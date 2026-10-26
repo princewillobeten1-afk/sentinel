@@ -29,8 +29,8 @@ export interface EvidenceFact {
 export interface ToolResult { facts: EvidenceFact[]; notes: string[]; candidates?: string[] }
 export const answerSchema = z.object({
   sections: z.array(z.object({
-    title: z.enum(['Overview', 'Evidence', 'Caution', 'Limitations', 'Next step']),
-    text: z.string().min(1).max(700), evidenceIds: z.array(z.string()).max(12),
+    title: z.enum(['Overview', 'Evidence', 'Caution', 'Limitations', 'Next step', 'Verdict', 'Key findings', 'Risks', 'What to watch']),
+    text: z.string().min(1).max(1400), evidenceIds: z.array(z.string()).max(12),
   }).strict()).min(1).max(5),
 }).strict();
 export type PilotAnswer = z.infer<typeof answerSchema> & { validated: boolean };

@@ -63,7 +63,7 @@ export class AdminSessionManager {
       deviceFingerprint: opts.deviceFingerprint,
       ipAddress: opts.ipAddress,
       geoLocation: opts.geoLocation || 'US-East (Virginia)',
-      userAgent: opts.userAgent || 'Mozilla/5.0 Sentinel Admin Client',
+      userAgent: opts.userAgent || 'Mozilla/5.0 Phivex Admin Client',
       mfaVerified: opts.mfaVerified ?? true,
       createdAt: now.toISOString(),
       lastActiveAt: now.toISOString(),

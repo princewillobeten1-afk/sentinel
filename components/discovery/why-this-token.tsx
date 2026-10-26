@@ -21,7 +21,7 @@ export function WhyThisToken({ score, symbol, className = '' }: WhyThisTokenProp
         className="flex items-center gap-1 text-2xs text-sky-400 hover:text-sky-300 font-bold transition"
       >
         <HelpCircle className="h-3.5 w-3.5" />
-        <span>Why Sentinel Surfaced This</span>
+        <span>Why Phivex Surfaced This</span>
         {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </button>
 

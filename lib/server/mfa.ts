@@ -52,7 +52,7 @@ export function generateTotpSecret(): string {
 }
 
 /** `otpauth://` URI an authenticator app can turn into a QR code. */
-export function buildOtpauthUri(secretBase32: string, accountLabel: string, issuer = 'Sentinel'): string {
+export function buildOtpauthUri(secretBase32: string, accountLabel: string, issuer = 'Phivex'): string {
   const label = encodeURIComponent(`${issuer}:${accountLabel}`);
   const params = new URLSearchParams({
     secret: secretBase32,

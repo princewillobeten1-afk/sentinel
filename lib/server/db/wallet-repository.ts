@@ -74,7 +74,7 @@ export class PgWalletRepository {
       const existing = existingRows[0];
       if (existing) {
         if (existing.user_id !== userId) {
-          throw new Error('Wallet address is already linked to another Sentinel account.');
+          throw new Error('Wallet address is already linked to another Phivex account.');
         }
         return rowToWallet(existing);
       }

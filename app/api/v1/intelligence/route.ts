@@ -2,7 +2,7 @@ import { jsonResponse } from '@/lib/server/api';
 export const dynamic = 'force-dynamic';
 export async function GET() {
   return jsonResponse({
-    schemaVersion: '2', engine: 'Sentinel Intelligence', methodologyVersion: 'observed-evidence-v1',
+    schemaVersion: '2', engine: 'Phivex Intelligence', methodologyVersion: 'observed-evidence-v1',
     supportedChains: ['solana'], identifier: 'Exact case-sensitive mint address',
     availableEndpoints: ['GET /api/v1/intelligence/candidates', 'GET /api/v1/intelligence/:chain/:mint',
       'GET /api/v1/intelligence/:chain/:mint/history', 'GET /api/v1/intelligence/:chain/:mint/signals'],

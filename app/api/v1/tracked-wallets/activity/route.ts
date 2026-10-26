@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     // Add recent simulated ticks if requested
     const sampleTokens = [
       { symbol: 'BONK', name: 'Bonk', mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', price: 0.0000248, logo: 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cDc7I' },
-      { symbol: 'SENT', name: 'Project Sentinel', mint: '77wvPgk8otNJNsXbCs7nERU8fxh4sgGeouzEVP5Zpump', price: 0.042, logo: '/icons/sentinel.png' },
+      { symbol: 'SENT', name: 'Project Phivex', mint: '77wvPgk8otNJNsXbCs7nERU8fxh4sgGeouzEVP5Zpump', price: 0.042, logo: '/icons/sentinel.png' },
       { symbol: 'WIF', name: 'dogwifhat', mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', price: 2.14, logo: 'https://bafkreibk3covs5ltyqxa272uodhculbx6uh3h52cwopx6rh2i33rq55iaa.ipfs.nftstorage.link' },
       { symbol: 'POPCAT', name: 'Popcat', mint: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', price: 1.28, logo: 'https://bafkreidvkvuzw64e262j6u45e6m32h24i4sqquu65t4v4kexnfdx5u2p47m53m.ipfs.nftstorage.link' },
     ];

@@ -3,7 +3,7 @@
  *
  * Every delivered event carries `timestamp`, `eventId`, and a
  * HMAC-SHA256 `signature` computed over `timestamp.eventId.body`, so a
- * receiver can (a) verify the payload actually came from Sentinel using
+ * receiver can (a) verify the payload actually came from Phivex using
  * their webhook secret, and (b) reject replays of an event they've already
  * processed by tracking seen `eventId`s.
  *
@@ -16,6 +16,9 @@ export interface SignedHeaders {
   'X-Sentinel-Timestamp': string;
   'X-Sentinel-Event-Id': string;
   'X-Sentinel-Signature': string;
+  'X-Phivex-Timestamp'?: string;
+  'X-Phivex-Event-Id'?: string;
+  'X-Phivex-Signature'?: string;
 }
 
 /** The exact string that gets HMAC'd — receivers reconstruct this identically to verify. */
@@ -29,10 +32,14 @@ export function signPayload(secret: string, timestamp: string, eventId: string, 
 }
 
 export function buildSignedHeaders(secret: string, eventId: string, body: string, timestamp = new Date().toISOString()): SignedHeaders {
+  const sig = signPayload(secret, timestamp, eventId, body);
   return {
     'X-Sentinel-Timestamp': timestamp,
     'X-Sentinel-Event-Id': eventId,
-    'X-Sentinel-Signature': signPayload(secret, timestamp, eventId, body),
+    'X-Sentinel-Signature': sig,
+    'X-Phivex-Timestamp': timestamp,
+    'X-Phivex-Event-Id': eventId,
+    'X-Phivex-Signature': sig,
   };
 }
 

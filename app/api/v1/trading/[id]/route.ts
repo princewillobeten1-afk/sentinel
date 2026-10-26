@@ -15,7 +15,7 @@ export async function GET(
       id: params.id,
       txHash: '8kL9z2mP1xQ5wN3a19TestSignature001',
       user: user.userId,
-      tokenName: 'Solana Sentinel',
+      tokenName: 'Solana Phivex',
       tokenSymbol: 'SENT',
       tokenMint: '7xK99zK8mP2xQ5wN3a19',
       side: 'buy',

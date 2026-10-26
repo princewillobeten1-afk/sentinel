@@ -179,7 +179,7 @@ export function PipelineFlowDiagram() {
           INTELLIGENCE PIPELINE
         </span>
         <h2 className="font-heading text-3xl sm:text-5xl font-black tracking-tight leading-[1.1]">
-          <span className="text-white block">The Sentinel</span>
+          <span className="text-white block">The Phivex</span>
           <span className="text-[#86EFAC] block">Intelligence Pipeline</span>
         </h2>
         <p className="text-sm sm:text-base text-neutral-400 max-w-2xl font-sans leading-relaxed pt-1">

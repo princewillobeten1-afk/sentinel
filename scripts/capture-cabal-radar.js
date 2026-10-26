@@ -39,7 +39,7 @@ async function run() {
   await reportPromise;
   await page.waitForTimeout(3000);
 
-  console.log('3. Clicking Cabal Radar & Sentinel Tab...');
+  console.log('3. Clicking Cabal Radar & Phivex Tab...');
   await page.evaluate(() => window.scrollTo(0, 350));
   const cabalTab = page.locator('button[data-tab-id="cabal_radar"]');
   if (await cabalTab.count() > 0) {
@@ -54,8 +54,8 @@ async function run() {
   await page.screenshot({ path: screenTab, fullPage: false });
   console.log('Saved:', screenTab);
 
-  // Trigger Sentinel Simulation Test
-  console.log('4. Testing Sentinel Simulation Test Button...');
+  // Trigger Phivex Simulation Test
+  console.log('4. Testing Phivex Simulation Test Button...');
   const simBtn = page.locator('button:has-text("Test Front-Run Eject Simulation")');
   if (await simBtn.count() > 0) {
     await simBtn.click();

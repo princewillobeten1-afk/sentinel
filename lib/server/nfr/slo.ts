@@ -2,7 +2,7 @@
  * Service-Level Objectives (SLO) & Service-Level Indicators (SLI) Engine (Sprint 32 §1-2).
  *
  * Defines explicit availability targets, latency thresholds, and error budget calculations
- * across all Sentinel platform services.
+ * across all Phivex platform services.
  *
  * Service Availability Targets:
  *   - Authentication: 99.99% (0.01% error budget)

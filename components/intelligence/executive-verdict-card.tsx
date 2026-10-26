@@ -117,7 +117,7 @@ export function ExecutiveVerdictCard({
                 <StatusIcon className="h-3.5 w-3.5" />
                 {theme.label}
               </span>
-              <span className="font-mono text-[11px] text-slate-400">AI Sentinel Verdict</span>
+              <span className="font-mono text-[11px] text-slate-400">AI Phivex Verdict</span>
             </div>
             <h2 className="text-lg font-bold text-white tracking-tight sm:text-xl">{headline}</h2>
             <p className="text-xs leading-relaxed text-slate-300 max-w-xl">{aiSummary}</p>

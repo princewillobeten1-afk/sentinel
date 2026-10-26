@@ -8,9 +8,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const url = new URL(request.url);
   try {
-    const config = googleOAuthConfig();
+    let config = googleOAuthConfig();
     if (url.origin !== new URL(config.redirectUri).origin) {
-      throw new ApiError('Google sign-in origin does not match the configured redirect.', 400, 'GOOGLE_ORIGIN_MISMATCH');
+      if (process.env.NODE_ENV !== 'production' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')) {
+        config = { ...config, redirectUri: `${url.origin}/api/v1/auth/google/callback` };
+      } else {
+        throw new ApiError('Google sign-in origin does not match the configured redirect.', 400, 'GOOGLE_ORIGIN_MISMATCH');
+      }
     }
     const linkUserId = url.searchParams.get('mode') === 'link' ? (await requireAuth(request)).userId : undefined;
     const flow = newGoogleFlow(url.searchParams.get('returnTo') || '/ai', linkUserId);

@@ -74,7 +74,7 @@ export function DashboardShell() {
   const { activeView } = useAppState();
 
   return (
-    <div data-active-view={activeView} className={activeView === 'discover' || activeView === 'social' || activeView === 'wallets' ? 'flex flex-col w-full flex-1 min-w-0 min-h-0 h-full' : 'w-full min-w-0 flex-1'}>
+    <div data-active-view={activeView} className={activeView === 'discover' || activeView === 'social' || activeView === 'wallets' || activeView === 'ai' ? 'flex flex-col w-full flex-1 min-w-0 min-h-0 h-full' : 'w-full min-w-0 flex-1'}>
       {activeView === 'dashboard' && <DashboardView />}
       {activeView === 'trade' && <TradeView />}
       {activeView === 'discover' && <DiscoverView />}

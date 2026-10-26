@@ -49,7 +49,7 @@ export interface TradeHistoryResult {
 const JUPITER_TXS = 'https://datapi.jup.ag/v1/txs';
 const GECKO_BASE = 'https://api.geckoterminal.com/api/v2/networks/solana';
 const REQUEST_TIMEOUT_MS = 8_000;
-const HEADERS = { accept: 'application/json', 'user-agent': 'Mozilla/5.0 (compatible; SentinelTerminal/1.0)' };
+const HEADERS = { accept: 'application/json', 'user-agent': 'Mozilla/5.0 (compatible; PhivexTerminal/1.0)' };
 
 /** Short: the tape is the thing on screen that must feel live. */
 const FRESH_MS = 6_000;

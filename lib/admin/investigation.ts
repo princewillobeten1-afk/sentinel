@@ -106,7 +106,7 @@ export class AdminInvestigationService {
     return {
       entityType: 'TOKEN',
       entityId: mintAddress,
-      title: isSuspicious ? 'Solana Meme ($SOLM)' : 'Solana Sentinel ($SENT)',
+      title: isSuspicious ? 'Solana Meme ($SOLM)' : 'Solana Phivex ($SENT)',
       riskScore: isSuspicious ? 88 : 12,
       riskLevel: isSuspicious ? 'CRITICAL' : 'LOW',
       status: isSuspicious ? 'RESTRICTED' : 'ACTIVE',
@@ -212,7 +212,7 @@ export class AdminInvestigationService {
     return {
       entityType: 'USER',
       entityId: userId,
-      title: `Sentinel User Profile (${userId})`,
+      title: `Phivex User Profile (${userId})`,
       riskScore: 10,
       riskLevel: 'LOW',
       status: 'ACTIVE',

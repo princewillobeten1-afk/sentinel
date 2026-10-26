@@ -20,7 +20,12 @@ async function assess(mint: string, signal: AbortSignal): Promise<ToolResult> {
   await hydrateTokenCards([mint]);
   const existing = getTokenCardPatch(mint);
   queueSecurityTarget(mint);
-  await ensureAudit(mint, existing?.changedFields.devAddress);
+  try {
+    await Promise.race([
+      ensureAudit(mint, existing?.changedFields.devAddress),
+      new Promise<void>((resolve) => setTimeout(resolve, 3500)),
+    ]);
+  } catch { /* Preserve missing evidence. */ }
   signal.throwIfAborted();
   const patch = getTokenCardPatch(mint);
   const fields = patch?.changedFields;
@@ -36,7 +41,13 @@ async function assess(mint: string, signal: AbortSignal): Promise<ToolResult> {
   const cachedMarket = fields?.marketEvidence;
   if (!cachedMarket || cachedMarket.status !== 'measured'
     || cachedMarket.expiresAt && !(Date.parse(cachedMarket.expiresAt) > Date.now())) {
-    try { const response = await getTokenOverview(mint); if (response?.address === mint) overview = response; } catch { /* Preserve missing evidence. */ }
+    try {
+      const response = await Promise.race([
+        getTokenOverview(mint),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+      ]);
+      if (response?.address === mint) overview = response;
+    } catch { /* Preserve missing evidence. */ }
   }
   signal.throwIfAborted();
   const fetched = new Date().toISOString();
@@ -80,13 +91,24 @@ export async function executeSkill(name: string, raw: unknown, signal: AbortSign
   if (name === 'token_assessment') return assess(args.mint, signal);
   if (name === 'creator_analysis') { const result=await assess(args.mint,signal); return { facts: result.facts.filter(f=>f.category==='creator'), notes: ['Only recorded creator counts are available. Wallet relationships and rug history are not inferred.'] }; }
   if (name === 'chart_analysis') {
-    const snapshot = await getChartHistory(args.mint, args.timeframe as ChartTimeframe, 100);
+    let snapshot: Awaited<ReturnType<typeof getChartHistory>> | null = null;
+    try {
+      snapshot = await Promise.race([
+        getChartHistory(args.mint, args.timeframe as ChartTimeframe, 100),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+      ]);
+    } catch {
+      snapshot = null;
+    }
     signal.throwIfAborted();
+    if (!snapshot || !snapshot.candles) {
+      return { facts: [], notes: ['Chart history is temporarily unavailable. Missing candle history is not safety clearance.'] };
+    }
     return { facts: chartFacts(snapshot), notes: ['Calculations use measured USD candles, not screen pixels or MCAP. Indicators require recent contiguous history.'] };
   }
   if (name === 'compare_tokens') {
-    const results: ToolResult[]=[];
-    for (const mint of [...new Set<string>(args.mints)]) results.push(await assess(mint,signal));
+    const uniqueMints = [...new Set<string>(args.mints)];
+    const results = await Promise.all(uniqueMints.map(mint => assess(mint, signal)));
     return { facts: results.flatMap(r=>r.facts), notes: ['Market volumes use the same daily window. Compare freshness before interpreting differences.'] };
   }
   if (name === 'what_changed') {

@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
  * and then fell through to constants: `price = 0.0425`, `devHoldingPct =
  * '0.85%'`, `isLpBurned = true`, a genesis date of 2026-08-13, and a timeline
  * of invented events ("Dev Accumulation Buy +15.00 SOL", impact "+1.8% Pump").
- * On the Wrapped SOL page it reported launches by "Solana Sentinel" with a
+ * On the Wrapped SOL page it reported launches by "Solana Phivex" with a
  * 98/100 Tier 1 Verified trust score.
  *
  * ## What is real now

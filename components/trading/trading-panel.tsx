@@ -317,7 +317,7 @@ export function TradingPanel({
           <dt>Price impact</dt><dd className="text-right">{quote.priceImpactMeasured === false ? 'Unavailable' : `${quote.priceImpact}%`}</dd>
         </dl>}
       </div>}
-      <button type="button" onClick={() => { setCallout(`${tokenSymbol} on Sentinel\n${window.location.origin}/trade/solana/${tokenMint}`); setCopyStatus(''); setCalloutOpen(true); }}
+      <button type="button" onClick={() => { setCallout(`${tokenSymbol} on Phivex\n${window.location.origin}/trade/solana/${tokenMint}`); setCopyStatus(''); setCalloutOpen(true); }}
         className="my-3 flex w-full items-center gap-2 rounded-md border border-sentinel-800 bg-sentinel-900/40 p-2 text-left">
         <Megaphone className="h-4 w-4 shrink-0 text-sky-400" /><span className="min-w-0"><span className="block text-[11px] font-semibold text-slate-200">Make a callout</span><span className="block text-[11px] text-slate-500">Draft a post to copy and share</span></span>
       </button>
@@ -347,7 +347,7 @@ export function TradingPanel({
         <Button onClick={savePreset}>Save preset</Button>
       </Modal>
       <Modal isOpen={calloutOpen} onClose={() => setCalloutOpen(false)} title="Make a callout" size="sm">
-        <p className="mb-3 text-xs text-slate-400">Draft only. Nothing is published automatically; Sentinel has no callout feed connected.</p>
+        <p className="mb-3 text-xs text-slate-400">Draft only. Nothing is published automatically; Phivex has no callout feed connected.</p>
         <textarea aria-label="Callout draft" value={callout} onChange={e => setCallout(e.target.value)} rows={5} className="w-full rounded-md border border-sentinel-700 bg-sentinel-900 p-2 text-sm text-slate-200" />
         <Button className="mt-3" onClick={async () => { try { await navigator.clipboard.writeText(callout); setCopyStatus('Callout copied'); } catch { setCopyStatus('Copy unavailable. Select and copy the draft manually.'); } }}>Copy callout</Button>
         <p role="status" className="mt-2 text-xs text-slate-400">{copyStatus}</p>

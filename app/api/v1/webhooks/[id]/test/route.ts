@@ -28,7 +28,7 @@ export const POST = withApiGateway(
         eventType: webhook.eventTypes[0],
         payload: {
           test: true,
-          message: 'This is a Sentinel test event. It carries the same signature headers as a real delivery.',
+          message: 'This is a Phivex test event. It carries the same signature headers as a real delivery.',
           webhookId: webhook.id,
           sentAt: new Date().toISOString(),
         },

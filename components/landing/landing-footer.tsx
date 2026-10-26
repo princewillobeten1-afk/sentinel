@@ -15,7 +15,7 @@ export function LandingFooter() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 <Zap className="h-4 w-4" />
               </div>
-              <span className="font-heading text-base font-black text-white tracking-wider">PROJECT SENTINEL</span>
+              <span className="font-heading text-base font-black text-white tracking-wider">PHIVEX</span>
             </Link>
 
             <p className="text-2xs text-neutral-400 leading-relaxed max-w-sm font-sans">
@@ -46,7 +46,7 @@ export function LandingFooter() {
               </li>
               <li>
                 <Link href="/ai" className="hover:text-white transition-colors flex items-center gap-1">
-                  Sentinel AI Copilot <ArrowUpRight className="h-3 w-3 text-neutral-500" />
+                  Phivex AI Copilot <ArrowUpRight className="h-3 w-3 text-neutral-500" />
                 </Link>
               </li>
               <li>
@@ -128,7 +128,7 @@ export function LandingFooter() {
         {/* Bottom Disclaimer & Copyright */}
         <div className="pt-8 border-t border-neutral-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-3xs text-neutral-500">
           <div>
-            <p>© 2026 Project Sentinel. Built for serious on-chain traders on Solana.</p>
+            <p>© 2026 Phivex. Built for serious on-chain traders on Solana.</p>
             <p className="mt-0.5">Non-custodial trading software. Not financial advice. Trade responsibly.</p>
           </div>
 

@@ -1,7 +1,7 @@
 export type RoundingMode = 'FLOOR' | 'CEIL' | 'HALF_UP';
 
 /**
- * Fixed-point Decimal precision library for Sentinel financial calculations.
+ * Fixed-point Decimal precision library for Phivex financial calculations.
  * Avoids JavaScript floating-point representation loss (e.g. 0.1 * 0.2 = 0.020000000000000004).
  * Uses native BigInt with 18 fixed decimal places.
  */

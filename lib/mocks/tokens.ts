@@ -22,7 +22,7 @@ export interface DiscoverToken {
 
 export const mockTokenCards: TokenCardData[] = [
   {
-    name: 'Solana Sentinel',
+    name: 'Solana Phivex',
     symbol: '$SENT',
     mint: '7xK99zK8mP2xQ5wN3a19',
     price: '$0.0425',
@@ -78,7 +78,7 @@ export const mockTokenCards: TokenCardData[] = [
 export const mockDiscoverTokens: DiscoverToken[] = [
   {
     id: 'd1',
-    name: 'Alpha Sentinel',
+    name: 'Alpha Phivex',
     symbol: '$ALPHA',
     mint: '7xK9...3a19',
     source: 'Pump.fun',

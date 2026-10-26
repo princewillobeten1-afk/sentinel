@@ -13,8 +13,8 @@ export function LaunchpadView() {
   const mockLaunches = [
     {
       id: 'l1',
-      name: 'Sentinel Protocol',
-      symbol: '$SENT',
+      name: 'Phivex Protocol',
+      symbol: '$PHX',
       raised: '85 SOL / 100 SOL',
       progress: 85,
       participants: 412,

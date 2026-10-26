@@ -74,7 +74,7 @@ export class PgUserRepository {
         `INSERT INTO users (id, display_name, role, status)
          VALUES ($1, $2, 'user', 'active')
          RETURNING *`,
-        [userId, `Sentinel User (${shortAddress})`],
+        [userId, `Phivex User (${shortAddress})`],
       );
 
       const { rows: walletRows } = await client.query(

@@ -99,7 +99,7 @@ export function TradeSidebarInfo({ data, loading, error, refresh }: {
     <details className="mt-3 border-t border-slate-800 pt-2">
       <summary className="cursor-pointer text-slate-300">Reused Image Tokens <span className="text-slate-500">{data.imageReuse ? data.imageReuse.matches.length : '—'}</span></summary>
       {data.imageReuse ? <div className="space-y-1 py-2 text-slate-500" title={`${formatDisplaySource(data.imageReuse.evidence.source)}; ${data.imageReuse.evidence.status}; observed ${data.imageReuse.evidence.observedAt}.`}>
-        <p>{data.imageReuse.matches.length === 0 ? 'No exact image URL reuse found in Sentinel’s indexed tokens.' : `Exact image URL reused by ${data.imageReuse.matches.length} indexed token${data.imageReuse.matches.length === 1 ? '' : 's'}.`}</p>
+        <p>{data.imageReuse.matches.length === 0 ? 'No exact image URL reuse found in Phivex’s indexed tokens.' : `Exact image URL reused by ${data.imageReuse.matches.length} indexed token${data.imageReuse.matches.length === 1 ? '' : 's'}.`}</p>
         {data.imageReuse.matches.slice(0, 5).map(match => <Link key={match.mint} href={`/trade/solana/${match.mint}`} className="block truncate text-sky-400 hover:text-sky-300" title={match.mint}>{match.symbol || match.name || match.mint}</Link>)}
       </div> : <p className="py-2 text-slate-500">Image-index result is pending or unavailable.</p>}
     </details>

@@ -21,7 +21,7 @@ interface WalletReceiveModalProps {
  * docs/security/threat-model.md's "Wallet transfers" section). Read-only:
  * displays an already-known public key + QR code and a live balance read.
  * No signing, no fund movement — funds sent to this address never touch
- * Project Sentinel.
+ * Project Phivex.
  */
 export function WalletReceiveModal({ wallet, isOpen, onClose, onCopy }: WalletReceiveModalProps) {
   const { balance, isLoading, error } = useWalletBalance(wallet.id, isOpen);
@@ -69,7 +69,7 @@ export function WalletReceiveModal({ wallet, isOpen, onClose, onCopy }: WalletRe
         <div className="flex items-start gap-2 rounded-xl border border-sentinel-800 bg-sentinel-950/60 p-3 text-left">
           <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
           <p className="text-2xs text-slate-400 leading-relaxed">
-            This is your own wallet address. Send SOL or USDC to it from any exchange or wallet — Project Sentinel never holds or touches these funds.
+            This is your own wallet address. Send SOL or USDC to it from any exchange or wallet — Project Phivex never holds or touches these funds.
           </p>
         </div>
 

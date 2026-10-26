@@ -165,6 +165,8 @@ export interface FrontRunSentinelConfig {
   estimatedSavingsUsd: number;
 }
 
+export type FrontRunPhivexConfig = FrontRunSentinelConfig;
+
 export interface IntelligenceCabalRadarReport {
   cabalStage: 'BUNDLED_ACCUMULATION' | 'STEALTH_DISTRIBUTION' | 'TERMINAL_DRAIN' | 'ORGANIC_TAKEOVER';
   dumpAlertLevel: 'SAFE' | 'WATCH' | 'WARNING' | 'CRITICAL_DUMP';

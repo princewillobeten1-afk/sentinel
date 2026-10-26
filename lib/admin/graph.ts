@@ -167,7 +167,7 @@ export class AdminGraphEngine {
     const nodes: GraphNode[] = [
       {
         id: targetId,
-        label: entityType === 'TOKEN' ? '$SENT (Sentinel Mint)' : `Wallet ${targetId.slice(0, 6)}...`,
+        label: entityType === 'TOKEN' ? '$SENT (Phivex Mint)' : `Wallet ${targetId.slice(0, 6)}...`,
         type: entityType === 'TOKEN' ? 'TOKEN' : 'WALLET',
         riskScore: 12,
         isFlagged: false,

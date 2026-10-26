@@ -66,7 +66,7 @@ export function CreatorDashboard() {
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center font-bold text-primary">SNT</div>
                 <div>
-                  <div className="font-semibold">Sentinel (SNT)</div>
+                  <div className="font-semibold">Phivex (PHX)</div>
                   <div className="text-sm text-muted-foreground">Launched 2 days ago</div>
                 </div>
               </div>

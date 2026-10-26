@@ -40,7 +40,7 @@ const NODES: ClusterNode[] = [
 ];
 
 export function ClusterAttackFlow() {
-  const [mode, setMode] = useState<'sentinel' | 'retail'>('sentinel');
+  const [mode, setMode] = useState<'phivex' | 'retail'>('phivex');
   const [hoveredNode, setHoveredNode] = useState<ClusterNode | null>(null);
 
   const totalControlled = NODES.slice(1).reduce((acc, n) => acc + n.supplyPct, 0).toFixed(1);
@@ -72,15 +72,15 @@ export function ClusterAttackFlow() {
             Retail DEX View (Deceptive)
           </button>
           <button
-            onClick={() => setMode('sentinel')}
+            onClick={() => setMode('phivex')}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === 'sentinel'
+              mode === 'phivex'
                 ? 'bg-buy-500/20 text-buy-300 border border-buy-500/40 shadow-glow-buy'
                 : 'text-neutral-400 hover:text-white'
             }`}
           >
             <Eye className="h-3.5 w-3.5" />
-            Sentinel Forensic X-Ray
+            Phivex Forensic X-Ray
           </button>
         </div>
       </div>
@@ -137,9 +137,9 @@ export function ClusterAttackFlow() {
                 </div>
               </motion.div>
             ) : (
-              /* SENTINEL FORENSIC X-RAY: The Wallet Genealogy Graph */
+              /* PHIVEX FORENSIC X-RAY: The Wallet Genealogy Graph */
               <motion.div
-                key="sentinel-view"
+                key="phivex-view"
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
@@ -238,9 +238,9 @@ export function ClusterAttackFlow() {
         <div className="lg:col-span-5 p-6 flex flex-col justify-between bg-neutral-900/60 space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-3xs uppercase text-neutral-400 font-bold">SENTINEL RISK VERDICT</span>
-              <span className={`px-2 py-0.5 rounded text-3xs font-bold border ${mode === 'sentinel' ? 'bg-sell-500/20 text-sell-300 border-sell-500/40' : 'bg-neutral-800 text-neutral-400 border-neutral-700'}`}>
-                {mode === 'sentinel' ? 'HIGH RISK (88%)' : 'UNKNOWN'}
+              <span className="text-3xs uppercase text-neutral-400 font-bold">PHIVEX RISK VERDICT</span>
+              <span className={`px-2 py-0.5 rounded text-3xs font-bold border ${mode === 'phivex' ? 'bg-sell-500/20 text-sell-300 border-sell-500/40' : 'bg-neutral-800 text-neutral-400 border-neutral-700'}`}>
+                {mode === 'phivex' ? 'HIGH RISK (88%)' : 'UNKNOWN'}
               </span>
             </div>
 
@@ -280,7 +280,7 @@ export function ClusterAttackFlow() {
               <span>Recommended Action: AVOID / EXIT</span>
             </div>
             <p className="text-2xs text-neutral-300 leading-relaxed font-sans">
-              Sentinel&apos;s autonomous circuit breaker restricts auto-snipes and flags high slippage risk. Don&apos;t donate exit liquidity to coordinated insider bundles.
+              Phivex&apos;s autonomous circuit breaker restricts auto-snipes and flags high slippage risk. Don&apos;t donate exit liquidity to coordinated insider bundles.
             </p>
           </div>
         </div>

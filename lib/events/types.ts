@@ -1,7 +1,7 @@
 /**
  * Canonical Event Schema & Categories (Sprint 34 §31-33, Sprint 44 §47-49).
  *
- * Defines the standard typed events powering the Project Sentinel event-driven backbone:
+ * Defines the standard typed events powering the Phivex event-driven backbone:
  *   - Legacy categories: TOKEN_CREATED, LIQUIDITY_ADDED, LIQUIDITY_REMOVED, SWAP, TRANSFER,
  *     WALLET_BUY, WALLET_SELL, CREATOR_ACTION, ORDER_CREATED, ORDER_FILLED, TRANSACTION_CONFIRMED.
  *   - Sprint 44 Realtime Event Names:

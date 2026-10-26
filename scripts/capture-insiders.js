@@ -14,7 +14,7 @@ async function run() {
   });
 
   console.log('Waiting for verdict card...');
-  await page.waitForSelector('text=AI Sentinel Verdict', { timeout: 25000 });
+  await page.waitForSelector('text=/AI (Sentinel|Phivex) Verdict/', { timeout: 25000 });
   await page.waitForTimeout(1000);
 
   const insiderTab = page.locator('button:has-text("Insider & Snipers")');

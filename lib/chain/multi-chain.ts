@@ -1,7 +1,7 @@
 /**
  * Multi-Chain Abstraction Registry & Chain Adapters (Sprint 34 §24, §75).
  *
- * Implements the universal chain abstraction layer allowing Sentinel to interact with:
+ * Implements the universal chain abstraction layer allowing Phivex to interact with:
  *   - Solana Mainnet (SPL Tokens, Program Instructions, Sub-second slots)
  *   - EVM Chains (Ethereum Mainnet, Base L2, Arbitrum)
  *   - Future High-Throughput Chains

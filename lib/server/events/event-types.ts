@@ -1,5 +1,5 @@
 /**
- * Normalized Real-Time Event Model (Project Sentinel Event Bus)
+ * Normalized Real-Time Event Model (Phivex Event Bus)
  *
  * Adheres to Section 5 of the Real-Time Solana Token Feed Specification.
  */

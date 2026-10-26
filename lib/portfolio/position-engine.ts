@@ -430,7 +430,7 @@ function applyEvent(draft: PositionDraft, item: ClassifiedEvent, deps: ApplyDeps
       draft.firstAcquiredAt = earliest(draft.firstAcquiredAt, event.timestamp);
       if (item.classification === 'AIRDROP') {
         draft.limitations.push(
-          `${round(event.quantity, 6)} ${draft.symbol} was airdropped. Sentinel does not invent an acquisition cost, so P&L on that portion is reported as unknown.`,
+          `${round(event.quantity, 6)} ${draft.symbol} was airdropped. Phivex does not invent an acquisition cost, so P&L on that portion is reported as unknown.`,
         );
       }
       draft.timeline.push(

@@ -28,7 +28,7 @@ export function buildInsights(facts: EvidenceFact[]): Insight[] {
     if (f.metric==='lpLocked') add('Evidence',f.value ? 'The recorded liquidity-lock evidence indicates a lock. Review the audit for scope and expiry; a lock does not eliminate other risks.' : 'The recorded liquidity evidence does not indicate a lock. This is not proof that liquidity will be removed.',[f.id]);
     if (f.metric==='rsi14' && typeof f.value==='number') add('Evidence',f.value>70 ? 'Measured RSI is in the commonly called overbought range. That does not predict a reversal.' : f.value<30 ? 'Measured RSI is in the commonly called oversold range. That does not predict a rebound.' : 'Measured RSI is between the conventional overbought and oversold thresholds. This is not a trading signal by itself.',[f.id]);
     if (['snipers','insiders','bundlers'].includes(f.metric)) add('Caution','Holder classifications are heuristic estimates, not proof of wallet identity or coordination.',[f.id]);
-    if (f.metric==='top10' && typeof f.value==='number' && f.value>=20) add('Caution','The largest holders account for a substantial share under Sentinel’s concentration review threshold. Pool and custody accounts may affect interpretation.',[f.id]);
+    if (f.metric==='top10' && typeof f.value==='number' && f.value>=20) add('Caution','The largest holders account for a substantial share under Phivex’s concentration review threshold. Pool and custody accounts may affect interpretation.',[f.id]);
     if (f.metric.startsWith('delta.') && typeof f.value==='number') add('Evidence',`${f.label} is ${f.value>0?'positive':f.value<0?'negative':'unchanged'} between the stored observations. This is a historical comparison, not a forecast.`,[f.id]);
     if (f.category==='creator') add('Evidence','The creator counts below cover recorded lifecycle events only. They do not establish wallet relationships or a complete launch history.',[f.id]);
     if (f.metric==='series') add('Evidence','Chart calculations use the measured USD candle series for the selected timeframe. They do not analyze a screenshot or infer missing candles.',[f.id]);
@@ -39,12 +39,33 @@ export function buildInsights(facts: EvidenceFact[]): Insight[] {
   return result;
 }
 export function resolveSelection(raw: unknown, facts: EvidenceFact[]): PilotAnswer | null {
-  const parsed=selectionSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  const permitted=new Map(buildInsights(facts).map(i=>[i.id,i]));
-  if (parsed.data.insightIds.some(id=>!permitted.has(id))) return null;
-  return { validated:true, sections:[...new Set(parsed.data.insightIds)].map(id=>{
-    const { title,text,evidenceIds }=permitted.get(id)!;
-    return { title,text,evidenceIds };
-  }) };
+  let ids: string[] | undefined;
+
+  if (Array.isArray(raw) && raw.every(x => typeof x === 'string')) {
+    ids = raw;
+  } else if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, any>;
+    if (Array.isArray(obj.insightIds)) {
+      ids = obj.insightIds.filter(x => typeof x === 'string');
+    } else if (Array.isArray(obj.insights)) {
+      ids = obj.insights.filter(x => typeof x === 'string');
+    } else if (Array.isArray(obj.sections)) {
+      ids = obj.sections.flatMap((s: any) =>
+        Array.isArray(s?.insightIds) ? s.insightIds : typeof s?.id === 'string' ? [s.id] : []
+      ).filter((x: any): x is string => typeof x === 'string');
+    }
+  }
+
+  if (!ids || ids.length === 0 || ids.length > 5) return null;
+
+  const permitted = new Map(buildInsights(facts).map(i => [i.id, i]));
+  if (ids.some(id => !permitted.has(id))) return null;
+
+  return {
+    validated: true,
+    sections: [...new Set(ids)].map(id => {
+      const { title, text, evidenceIds } = permitted.get(id)!;
+      return { title, text, evidenceIds };
+    }),
+  };
 }

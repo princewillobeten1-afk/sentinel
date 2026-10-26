@@ -33,8 +33,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/v1/auth/me', { credentials: 'include' });
       if (res.ok) {
-        const data = authResponseData<{ user: User; linkedWallets: Wallet[] }>(await res.json());
+        const rawJson = await res.json();
+        const data = authResponseData<{ user: User; linkedWallets: Wallet[]; token?: string }>(rawJson);
         if (!data.user?.id) throw new Error('Invalid account profile');
+        if (data.token && typeof window !== 'undefined') {
+          localStorage.setItem('sentinel_session_token', data.token);
+        }
         setUser(data.user);
         setWallets(data.linkedWallets || []);
         setStatus('AUTHENTICATED');
@@ -71,8 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error.error?.message || error.message || 'Login failed');
       }
 
-      const data = authResponseData<{ user: User; session: UserSession }>(await res.json());
+      const data = authResponseData<{ user: User; session: UserSession; token?: string }>(await res.json());
       if (!data.user?.id || !data.session?.id) throw new Error('Sign-in did not create a session');
+      if (data.token && typeof window !== 'undefined') {
+        localStorage.setItem('sentinel_session_token', data.token);
+      }
       setUser(data.user);
       setSession(data.session);
       setStatus('AUTHENTICATED');
@@ -97,8 +104,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error.error?.message || error.message || 'Registration failed');
       }
 
-      const data = authResponseData<{ user: User; session: UserSession }>(await res.json());
+      const data = authResponseData<{ user: User; session: UserSession; token?: string }>(await res.json());
       if (!data.user?.id || !data.session?.id) throw new Error('Registration did not create a session');
+      if (data.token && typeof window !== 'undefined') {
+        localStorage.setItem('sentinel_session_token', data.token);
+      }
       setUser(data.user);
       setSession(data.session);
       setStatus('AUTHENTICATED');
@@ -115,6 +125,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         credentials: 'include',
       });
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('sentinel_session_token');
+      }
       setUser(null);
       setSession(null);
       setWallets([]);

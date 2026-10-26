@@ -29,8 +29,8 @@ interface AdminUsersTabProps {
 const mockUsers = [
   {
     id: 'user_001',
-    email: 'trader@sentinel.local',
-    displayName: 'Sentinel Alpha Trader',
+    email: 'trader@phivex.local',
+    displayName: 'Phivex Alpha Trader',
     role: 'user',
     status: 'active',
     walletsCount: 2,

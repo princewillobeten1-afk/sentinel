@@ -136,7 +136,7 @@ const SAMPLE_TOKENS = [
   { symbol: 'WIF', name: 'dogwifhat', mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', dexBadge: 'raydium', logo: 'https://bafkreibk3covs5ltyqxa272uodhculbx6uh3h52cwopx6rh2i33rq55iaa.ipfs.nftstorage.link', price: 2.14 },
   { symbol: 'POPCAT', name: 'Popcat', mint: '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr', dexBadge: 'raydium', logo: 'https://bafkreidvkvuzw64e262j6u45e6m32h24i4sqquu65t4v4kexnfdx5u2p47m53m.ipfs.nftstorage.link', price: 1.28 },
   { symbol: 'MEW', name: 'cat in a dogs world', mint: 'MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5', dexBadge: 'meteora', logo: 'https://bafybeicg5z3oxcbgq32h72xey4i5qquu65t4v4kexnfdx5u2p47m53m5re.ipfs.nftstorage.link', price: 0.0054 },
-  { symbol: 'SENT', name: 'Project Sentinel', mint: '77wvPgk8otNJNsXbCs7nERU8fxh4sgGeouzEVP5Zpump', dexBadge: 'pump', logo: '/icons/sentinel.png', price: 0.042 },
+  { symbol: 'SENT', name: 'Project Phivex', mint: '77wvPgk8otNJNsXbCs7nERU8fxh4sgGeouzEVP5Zpump', dexBadge: 'pump', logo: '/icons/sentinel.png', price: 0.042 },
   { symbol: 'FART', name: 'Fartcoin', mint: '9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump', dexBadge: 'pump', logo: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=80&h=80&fit=crop', price: 0.38 },
 ];
 

@@ -1,4 +1,4 @@
-# Sentinel visual system
+# Phivex visual system
 
 ## Core terminal cleanup (current implementation)
 

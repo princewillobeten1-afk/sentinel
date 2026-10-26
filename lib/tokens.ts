@@ -1,5 +1,5 @@
 /**
- * Sentinel Centralized Design Token System
+ * Phivex Centralized Design Token System
  * Governs visual styling, colors, typography, spacing, border radii, shadows, and motion transitions.
  */
 

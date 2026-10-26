@@ -80,7 +80,7 @@ const periodFor = (timeframe: ChartTimeframe): Period => timeframe === '1d' ? { 
   : timeframe.endsWith('h') ? { type: 'hour', span: Number(timeframe.slice(0, -1)) }
     : { type: 'minute', span: Number(timeframe.slice(0, -1)) };
 
-// Keep Sentinel's chart styles separate from its provider-backed v10 data loader.
+// Keep Phivex's chart styles separate from its provider-backed v10 data loader.
 const chartStyles: DeepPartial<Styles> = {
   grid: {
     show: true,

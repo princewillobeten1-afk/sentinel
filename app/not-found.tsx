@@ -15,7 +15,7 @@ export default function NotFound() {
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white">404 - Page Not Found</h1>
         <p className="text-sm text-slate-400 max-w-md">
-          The token, contract address, or route you are looking for does not exist on Solana or Sentinel.
+          The token, contract address, or route you are looking for does not exist on Solana or Phivex.
         </p>
         <div className="pt-2">
           <Link href="/discover">

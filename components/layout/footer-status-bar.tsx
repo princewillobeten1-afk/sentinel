@@ -43,7 +43,7 @@ export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarP
           <span className="text-emerald-400 font-bold hidden sm:inline">18ms</span>
         </div>
         <span className="text-slate-700 hidden md:inline">|</span>
-        <span className="text-slate-500 font-mono text-3xs hidden md:inline">SENTINEL V2.4</span>
+        <span className="text-slate-500 font-mono text-3xs hidden md:inline">PHIVEX V2.4</span>
       </div>
 
       {/* Right: Navigation Links & Actions */}

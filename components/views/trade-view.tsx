@@ -184,7 +184,7 @@ export function TradeView({
   const live = useLiveTokenUpdates(activeMints);
   const liveUpdate = activeMint ? live.updates.get(activeMint) : undefined;
 
-  // Direct Sentinel WebSocket listener for sub-second trade / price broadcast
+  // Direct Phivex WebSocket listener for sub-second trade / price broadcast
   const wsTopics = useMemo(() => (activeMint ? [`token.price:${activeMint}`, `token.trade:${activeMint}`] : []), [activeMint]);
   useSentinelWS(wsTopics, (data, msg) => {
     if (
@@ -682,7 +682,7 @@ export function TradeView({
           />
         </div>
         <div className="terminal-trade-details min-w-0 overflow-x-auto">
-          {/* Axiom-Style Navigation Tabs (Trades, Positions, Orders, Sentinel Intelligence Audit, Holders, Top Traders, Dev Tokens) */}
+          {/* Axiom-Style Navigation Tabs (Trades, Positions, Orders, Phivex Intelligence Audit, Holders, Top Traders, Dev Tokens) */}
           <AxiomChartTabs
             currentPrice={currentToken.priceUsd}
             tokenSymbol={currentToken.symbol}

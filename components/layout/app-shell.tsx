@@ -29,7 +29,7 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
   const [hydrated, setHydrated] = useState(false);
   const { setActiveView } = useAppActions();
   const { density, activeView } = useAppState();
-  const fitted = layout === 'workspace' || (initialView ?? activeView) === 'discover';
+  const fitted = layout === 'workspace' || (initialView ?? activeView) === 'discover' || (initialView ?? activeView) === 'ai';
 
   useEffect(() => {
     setHydrated(true);

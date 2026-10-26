@@ -1,7 +1,7 @@
 import type { InsiderDetectionReport, OrganicActivityAssessment } from '@/lib/activity/types';
 
 /**
- * Sentinel Token Intelligence Engine — Core Type System
+ * Phivex Token Intelligence Engine — Core Type System
  * Sprint 5
  *
  * Every intelligence domain type lives here. No business logic.

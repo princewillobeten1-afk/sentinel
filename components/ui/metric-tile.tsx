@@ -121,7 +121,7 @@ export function MetricTile({
       {showAdjusted && (
         <div className="mt-2 pt-1.5 border-t border-sentinel-700/50 flex items-center justify-between text-2xs text-sky-400 font-mono">
           <span className="flex items-center gap-1">
-            <ShieldAlert className="h-3 w-3" /> Sentinel Adjusted Intelligence
+            <ShieldAlert className="h-3 w-3" /> Phivex Adjusted Intelligence
           </span>
           <span>Raw: {actualRaw}</span>
         </div>
