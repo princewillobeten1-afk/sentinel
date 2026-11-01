@@ -24,7 +24,9 @@
  * nobody compared it to the market.
  */
 
-const JUPITER_PRICE_URL = 'https://lite-api.jup.ag/price/v3';
+import { jupiterHeaders, jupiterOrigin } from '@/lib/market/jupiter-api';
+
+const jupiterPriceUrl = () => `${jupiterOrigin()}/price/v3`;
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const SOL_DEX_PRICE_URL = `https://api.dexscreener.com/tokens/v1/solana/${SOL_MINT}`;
 const USD_QUOTES = new Set([
@@ -75,8 +77,8 @@ async function fetchPrice(mint: string): Promise<PriceEntry | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${JUPITER_PRICE_URL}?ids=${mint}`, {
-      signal: controller.signal, headers: { accept: 'application/json' }, cache: 'no-store',
+    const res = await fetch(`${jupiterPriceUrl()}?ids=${mint}`, {
+      signal: controller.signal, headers: jupiterHeaders(), cache: 'no-store',
     });
     if (res.ok) {
       const body = (await res.json()) as Record<string, { usdPrice?: number; priceChange24h?: number }>;

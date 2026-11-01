@@ -160,6 +160,38 @@ describe('ownership fallback orchestrator', () => {
     });
   });
 
+  it('replaces bonding-curve-inflated top10Pct (>80%) on pump tokens when fallback measures curve-excluded concentration', async () => {
+    const { mergeOwnershipProfiles } = await import('../ownership-fallback');
+    const birdeyeProfile: import('../holder-profile').HolderProfile = {
+      mint: 'testtokenpump',
+      top10Pct: 100,
+      totalHolders: 12,
+      snipersPct: 0,
+      insidersPct: 0,
+      bundlersPct: 1.2,
+      devPct: 0,
+      proTraders: 0,
+      kols: 0,
+      fetchedAt: 1000,
+    };
+    const rugcheckProfile: import('../holder-profile').HolderProfile = {
+      mint: 'testtokenpump',
+      top10Pct: 15.5,
+      totalHolders: 12,
+      snipersPct: null,
+      insidersPct: null,
+      bundlersPct: null,
+      devPct: null,
+      proTraders: null,
+      kols: null,
+      source: 'rugcheck-report',
+      fetchedAt: 2000,
+    };
+    const merged = mergeOwnershipProfiles(birdeyeProfile, rugcheckProfile);
+    expect(merged?.top10Pct).toBe(15.5);
+    expect(merged?.source).toContain('rugcheck-report');
+  });
+
   it('returns unknown if every remaining ownership provider fails', async () => {
     mocks.trackerConfigured.mockReturnValue(true);
     for (const provider of [mocks.tracker, mocks.rugcheck, mocks.onchain]) {

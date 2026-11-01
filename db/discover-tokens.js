@@ -41,7 +41,11 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
-const JUPITER_BASE = 'https://lite-api.jup.ag';
+// Keyed origin when a key is configured (higher limits), else the free shared
+// pool. Same selection as lib/trading/jupiter-quote.ts. Resolved lazily because
+// loadEnv() runs inside main(), after module load.
+const jupiterBase = () =>
+  process.env.JUPITER_API_KEY ? 'https://api.jup.ag' : 'https://lite-api.jup.ag';
 
 /** Mirrors db/migrate.js — same precedence, same quote handling. */
 function loadEnv() {
@@ -131,16 +135,70 @@ function mapJupiterToken(t) {
   };
 }
 
-async function fetchList(listPath, limit) {
-  const res = await fetch(`${JUPITER_BASE}/tokens/v2/${listPath}?limit=${limit}`, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`Jupiter ${listPath}: ${res.status} ${res.statusText}`);
+/** Attempts per list before giving up. */
+const MAX_ATTEMPTS = 5;
+/** First backoff; doubles each retry (5s, 10s, 20s, 30s cap) — spans a ~60s rate window. */
+const BASE_BACKOFF_MS = 5_000;
+/** Upper bound on any single wait, including a server-sent Retry-After. */
+const MAX_BACKOFF_MS = 30_000;
+/** Pause between the list requests so they do not land as one burst. */
+const INTER_LIST_DELAY_MS = 1_500;
 
-  const body = await res.json();
-  if (!Array.isArray(body)) throw new Error(`Jupiter ${listPath}: expected an array`);
-  return body;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Retry-After as seconds or HTTP-date (RFC 9110); `null` when absent/unparseable. */
+function retryAfterMs(res) {
+  const raw = res.headers.get('retry-after');
+  if (!raw) return null;
+  const secs = Number(raw);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+
+/**
+ * Fetches one Jupiter list, retrying rate limits, server errors and timeouts.
+ *
+ * The keyless lite-api is a shared, burst-limited pool. At server start the
+ * live Discover feed, canonical price lookups and this job all hit it within
+ * the same second, so a 429 here is usually transient — a manual rerun moments
+ * later succeeds. Any other 4xx is a real error and is not retried.
+ */
+async function fetchList(listPath, limit) {
+  const headers = { accept: 'application/json' };
+  if (process.env.JUPITER_API_KEY) headers['x-api-key'] = process.env.JUPITER_API_KEY;
+
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res = null;
+    try {
+      res = await fetch(`${jupiterBase()}/tokens/v2/${listPath}?limit=${limit}`, {
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err) {
+      lastErr = new Error(`Jupiter ${listPath}: ${err.message}`);
+    }
+
+    if (res && res.ok) {
+      const body = await res.json();
+      if (!Array.isArray(body)) throw new Error(`Jupiter ${listPath}: expected an array`);
+      return body;
+    }
+
+    if (res) {
+      lastErr = new Error(`Jupiter ${listPath}: ${res.status} ${res.statusText}`);
+      if (res.status !== 429 && res.status < 500) throw lastErr;
+    }
+
+    if (attempt === MAX_ATTEMPTS) break;
+
+    const backoff = BASE_BACKOFF_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 500);
+    const wait = Math.min(MAX_BACKOFF_MS, (res && retryAfterMs(res)) ?? backoff);
+    console.warn(`  ${listPath}: ${lastErr.message} — retry ${attempt}/${MAX_ATTEMPTS - 1} in ${wait}ms`);
+    await sleep(wait);
+  }
+  throw lastErr;
 }
 
 async function main() {
@@ -170,12 +228,15 @@ async function main() {
 
   // Deduplicated across lists: a token can top both, and it is one token.
   const byMint = new Map();
-  for (const [listPath, label] of lists) {
+  let failedLists = 0;
+  for (const [i, [listPath, label]] of lists.entries()) {
+    if (i > 0) await sleep(INTER_LIST_DELAY_MS);
     let raw;
     try {
       raw = await fetchList(listPath, limit);
     } catch (err) {
       console.warn(`  ${label}: failed — ${err.message}`);
+      failedLists++;
       continue;
     }
 
@@ -195,6 +256,9 @@ async function main() {
 
   if (tokens.length === 0) {
     console.log('Nothing to write.');
+    // Every source failed (as opposed to legitimately returning nothing):
+    // exit non-zero so the token-refresh worker retries on its next tick.
+    if (failedLists === lists.length) process.exitCode = 2;
     return;
   }
 

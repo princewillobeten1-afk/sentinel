@@ -4,6 +4,7 @@ import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
 import { getTokenCardPatch } from '@/lib/market/live/card-cache';
 import { composeTokenAudit, type JupiterAuditToken } from '@/lib/trading/audit-model';
 import type { MetricEvidence } from '@/lib/discovery/types';
+import { jupiterHeaders, jupiterOrigin } from '@/lib/market/jupiter-api';
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { token: (JupiterAuditToken & Partial<import('@/lib/discovery/jupiter-feed').JupiterToken>) | null; evidence: MetricEvidence; retryAt: number }>();
@@ -18,8 +19,8 @@ async function reconcileJupiter(address: string) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
     try {
-      const res = await fetch(`https://lite-api.jup.ag/tokens/v2/search?query=${encodeURIComponent(address)}`, {
-        signal: controller.signal, headers: { accept: 'application/json' }, cache: 'no-store',
+      const res = await fetch(`${jupiterOrigin()}/tokens/v2/search?query=${encodeURIComponent(address)}`, {
+        signal: controller.signal, headers: jupiterHeaders(), cache: 'no-store',
       });
       if (!res.ok) throw new Error(`Metadata provider returned HTTP ${res.status}.`);
       const body = await res.json();

@@ -131,18 +131,22 @@ class StreamManager {
     const mints = resolveTrackedMints(env.MARKET_STREAM_TRACKED_MINTS);
     logger.info('[market-live] starting stream manager', { mintCount: mints.length });
 
-    // 1. Birdeye Stream
-    try {
-      this.birdeye = new BirdeyeClient({
-        mints,
-        onRawEvent: (event) => { void this.handleRawEvent(event); },
-        onDegraded: (reason) => marketEventPipeline.triggerFailover(`Birdeye: ${reason}`, 'birdeye_ws'),
-      });
-      this.birdeye.connect();
-    } catch (err) {
-      logger.error('[market-live] failed to start Birdeye client', {
-        message: err instanceof Error ? err.message : String(err),
-      });
+    // 1. Birdeye Stream (paid Birdeye plans only; set BIRDEYE_WS_ENABLED=false on Standard REST-only keys)
+    if (process.env.BIRDEYE_WS_ENABLED === 'false') {
+      logger.info('[birdeye] WebSocket disabled via BIRDEYE_WS_ENABLED=false — using Birdeye REST + Helius/QuickNode streams');
+    } else {
+      try {
+        this.birdeye = new BirdeyeClient({
+          mints,
+          onRawEvent: (event) => { void this.handleRawEvent(event); },
+          onDegraded: (reason) => marketEventPipeline.triggerFailover(`Birdeye: ${reason}`, 'birdeye_ws'),
+        });
+        this.birdeye.connect();
+      } catch (err) {
+        logger.error('[market-live] failed to start Birdeye client', {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
 
@@ -279,7 +283,7 @@ class StreamManager {
       chartStreaming: this.quickNodeCharts.getHealth(),
       capabilities: capabilityHealth({ birdeye, chainLogs: helius, chainLogProvider,
         quickNode, chartPolling, chartStreaming: this.quickNodeCharts.getHealth(),
-        birdeyeConfigured: Boolean(env.BIRDEYE_API_KEY) }),
+        birdeyeConfigured: Boolean(env.BIRDEYE_API_KEY) && process.env.BIRDEYE_WS_ENABLED !== 'false' }),
     };
   }
 

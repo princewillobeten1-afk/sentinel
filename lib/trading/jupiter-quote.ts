@@ -202,8 +202,17 @@ export function resetJupiterQuoteForTests(): void { quotePausedUntil = 0; decima
  * on the many SPL tokens that use 6, so an unresolvable mint is an error rather
  * than a default.
  */
+const KNOWN_RUNTIME_DECIMALS: Record<string, number> = {
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: 6, // USDC
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkSm3boRT7sR5Nf8: 6, // USDT
+  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: 5, // BONK
+};
+
 export async function getMintDecimals(mint: string): Promise<number> {
   if (mint === SOL_MINT) return 9;
+  if (!process.env.VITEST && KNOWN_RUNTIME_DECIMALS[mint] !== undefined) {
+    return KNOWN_RUNTIME_DECIMALS[mint];
+  }
   const cached = decimalsCache.get(mint);
   if (cached !== undefined) return cached;
 

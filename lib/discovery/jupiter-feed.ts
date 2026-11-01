@@ -40,8 +40,8 @@ import { normalizeIpfsUrl } from '@/lib/tokens/token-logos';
  * source are now simply absent, and the UI shows `—`.
  */
 
-const JUPITER_BASE = 'https://lite-api.jup.ag';
-const JUPITER_RECENT_BASE = 'https://api.jup.ag';
+import { JUPITER_KEYED_ORIGIN, JUPITER_LITE_ORIGIN, jupiterApiKey, jupiterHeaders, jupiterOrigin } from '@/lib/market/jupiter-api';
+
 const REQUEST_TIMEOUT_MS = 8_000;
 
 /** The feeds each Discover column draws from. */
@@ -96,6 +96,7 @@ export interface JupiterToken {
   audit?: {
     mintAuthorityDisabled?: boolean;
     freezeAuthorityDisabled?: boolean;
+    topHoldersPercentage?: number;
     /**
      * The creator's own holding, already as a percentage (0-100).
      *
@@ -434,14 +435,19 @@ export async function fetchJupiterFeed(
   // The lite host can return 429 while the public API host still serves the
   // same recent launch feed. Do not turn a host-specific quota into an empty
   // New Pairs column; cached launches remain available during an outage.
-  const hosts = feed === 'recent' ? [JUPITER_RECENT_BASE, JUPITER_BASE] : [JUPITER_BASE];
+  // With an API key, try the keyed host first and fall back to the keyless lite
+  // pool if the keyed 1-RPS bucket is momentarily busy.
+  const hosts = jupiterApiKey() || feed === 'recent'
+    ? [JUPITER_KEYED_ORIGIN, JUPITER_LITE_ORIGIN]
+    : [jupiterOrigin()];
   let lastError: Error | null = null;
   for (const host of hosts) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
+      const headers = host === JUPITER_KEYED_ORIGIN ? jupiterHeaders() : { accept: 'application/json' };
       const res = await fetch(`${host}/tokens/v2/${path}?limit=${limit}`, {
-        cache: 'no-store', signal: controller.signal, headers: { accept: 'application/json' },
+        cache: 'no-store', signal: controller.signal, headers,
       });
       if (!res.ok) throw new Error(`Jupiter ${feed} responded ${res.status} on ${new URL(host).host}`);
       const body = await res.json();
@@ -483,8 +489,8 @@ export async function fetchJupiterTokensByMint(mints: string[]): Promise<Jupiter
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       try {
         const res = await fetch(
-          `${JUPITER_BASE}/tokens/v2/search?query=${encodeURIComponent(batch.join(','))}`,
-          { cache: 'no-store', signal: controller.signal, headers: { accept: 'application/json' } },
+          `${jupiterOrigin()}/tokens/v2/search?query=${encodeURIComponent(batch.join(','))}`,
+          { cache: 'no-store', signal: controller.signal, headers: jupiterHeaders() },
         );
         if (!res.ok) return [];
         const body = await res.json();

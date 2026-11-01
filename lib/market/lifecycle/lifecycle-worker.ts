@@ -266,18 +266,27 @@ class LifecycleWorker {
    * but also capture active tokens advancing through the 75%-99% final stretch.
    * Jupiter graduation hints only schedule proof recovery; they never classify a row.
    */
+  private seedFeedCursor = 0;
+
   private async seedNewPairs(): Promise<void> {
     try {
+      // Rotate secondary feeds instead of bursting 9 concurrent Jupiter calls
+      // every 15s (which trips the 1 RPS burst limit on free-tier API keys).
+      const secondaryFeeds: Array<[Parameters<typeof fetchJupiterFeed>[0], NonNullable<Parameters<typeof fetchJupiterFeed>[1]>]> = [
+        ['toptrending', { limit: 100, window: '5m' }],
+        ['toptraded', { limit: 100, window: '5m' }],
+        ['toporganicscore', { limit: 100, window: '5m' }],
+        ['toptrending', { limit: 100, window: '1h' }],
+        ['toptraded', { limit: 100, window: '1h' }],
+        ['toporganicscore', { limit: 100, window: '1h' }],
+        ['toptrending', { limit: 100, window: '6h' }],
+        ['toptraded', { limit: 100, window: '6h' }],
+      ];
+      const [feedName, feedOpts] = secondaryFeeds[this.seedFeedCursor % secondaryFeeds.length];
+      this.seedFeedCursor += 1;
       const results = await Promise.allSettled([
         fetchJupiterFeed('recent', { limit: 100 }),
-        fetchJupiterFeed('toptrending', { limit: 100, window: '5m' }),
-        fetchJupiterFeed('toptrending', { limit: 100, window: '1h' }),
-        fetchJupiterFeed('toptrending', { limit: 100, window: '6h' }),
-        fetchJupiterFeed('toptraded', { limit: 100, window: '5m' }),
-        fetchJupiterFeed('toptraded', { limit: 100, window: '1h' }),
-        fetchJupiterFeed('toptraded', { limit: 100, window: '6h' }),
-        fetchJupiterFeed('toporganicscore', { limit: 100, window: '5m' }),
-        fetchJupiterFeed('toporganicscore', { limit: 100, window: '1h' }),
+        fetchJupiterFeed(feedName, feedOpts),
       ]);
 
       const historicalCandidates: Array<{ mint: string; pool: string }> = [];
@@ -465,13 +474,16 @@ class LifecycleWorker {
   }
 }
 
-const WORKER_REVISION = 4;
+const WORKER_REVISION = 5;
 const globalForLifecycle = globalThis as unknown as {
   lifecycleWorker?: LifecycleWorker;
   lifecycleWorkerRevision?: number;
 };
 const priorWorker = globalForLifecycle.lifecycleWorker;
-const refreshWorker = process.env.NODE_ENV !== 'production' && priorWorker
+const refreshWorker =
+  process.env.NODE_ENV !== 'production' &&
+  Boolean(priorWorker) &&
+  globalForLifecycle.lifecycleWorkerRevision !== WORKER_REVISION;
 const resumeWorker = Boolean(refreshWorker && priorWorker?.stats().running);
 if (refreshWorker) priorWorker?.stop();
 export const lifecycleWorker = !priorWorker || refreshWorker ? new LifecycleWorker() : priorWorker;

@@ -260,6 +260,14 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
   const ownershipTtl = profile.source && profile.source !== 'birdeye-holder-profile'
     ? FALLBACK_TTL_MS : security?.lifecycleState === 'migrated'
       ? MIGRATED_OWNERSHIP_TTL_MS : VISIBLE_OWNERSHIP_TTL_MS;
+  const totalHolders = profile.totalHolders;
+  const clampHolders = (c: number | null | undefined) => typeof c === 'number' && typeof totalHolders === 'number' ? Math.min(c, totalHolders) : (c ?? null);
+  const sniperCount = clampHolders(profile.sniperCount);
+  const bundlerCount = clampHolders(profile.bundlerCount);
+  const insiderCount = clampHolders(profile.insiderCount);
+  const devCount = clampHolders(profile.devCount);
+  const proTradersCount = clampHolders(profile.proTraders);
+  const kolsCount = clampHolders(profile.kols);
   const completeProfile = [profile.top10Pct, profile.totalHolders,
     profile.snipersPct, profile.insidersPct, profile.bundlersPct,
     profile.devPct, profile.proTraders, profile.kols, profile.sniperCount,
@@ -281,12 +289,12 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
     insiderHoldingsPct: profile.insidersPct,
     bundlerPercentage: profile.bundlersPct,
     devHoldingsPct: profile.devPct,
-    sniperCount: profile.sniperCount ?? null,
-    bundlerCount: profile.bundlerCount ?? null,
-    insiderCount: profile.insiderCount ?? null,
-    devCount: profile.devCount ?? null,
-    proTradersCount: profile.proTraders,
-    kolsCount: profile.kols,
+    sniperCount,
+    bundlerCount,
+    insiderCount,
+    devCount,
+    proTradersCount,
+    kolsCount,
     auditPending: false,
     auditVersion: RUG_RISK_VERSION,
     rugRisk: rugRisk ?? undefined,
@@ -306,21 +314,27 @@ export function publishAuditProfile(mint: string, profile: HolderProfile): void 
     insiderHoldingsPct: profile.insidersPct,
     bundlerPercentage: profile.bundlersPct,
     devHoldingsPct: profile.devPct,
-    sniperCount: profile.sniperCount,
-    bundlerCount: profile.bundlerCount,
-    insiderCount: profile.insiderCount,
-    devCount: profile.devCount,
-    proTradersCount: profile.proTraders,
-    kolsCount: profile.kols,
+    sniperCount,
+    bundlerCount,
+    insiderCount,
+    devCount,
+    proTradersCount,
+    kolsCount,
     rugRisk,
   }, observedAt, RUG_RISK_VERSION);
   state.consecutiveFailures = 0;
   state.rateLimitBackoffMs = RATE_LIMIT_BACKOFF_MS;
 }
 
-export async function ensureAudit(mint: string, devAddress?: string | null): Promise<HolderProfile | null> {
+export async function ensureAudit(mint: string, devAddress?: string | null, curveExcludedTop10?: number | null): Promise<HolderProfile | null> {
   const hit = getAudit(mint);
-  if (hit) return hit;
+  if (hit) {
+    if (mint.endsWith('pump') && (hit.top10Pct === null || hit.top10Pct >= 80) && typeof curveExcludedTop10 === 'number' && curveExcludedTop10 >= 0 && curveExcludedTop10 < 80) {
+      hit.top10Pct = Number(curveExcludedTop10.toFixed(2));
+      publishAuditProfile(mint, hit);
+    }
+    return hit;
+  }
   let profile: HolderProfile | null = null;
   if (!quotaPaused() && !circuitOpen()) {
     const primary = await fetchHolderProfileResult(mint);
@@ -334,6 +348,10 @@ export async function ensureAudit(mint: string, devAddress?: string | null): Pro
     profile = await resolveOwnershipFallback(mint, devAddress);
   }
   if (profile) {
+    if (mint.endsWith('pump') && (profile.top10Pct === null || profile.top10Pct >= 80) && typeof curveExcludedTop10 === 'number' && curveExcludedTop10 >= 0 && curveExcludedTop10 < 80) {
+      profile.top10Pct = Number(curveExcludedTop10.toFixed(2));
+      profile.source = profile.source ? String(profile.source) + '+jupiter-token-audit' : 'jupiter-token-audit';
+    }
     publishAuditProfile(mint, profile);
   }
   return profile;

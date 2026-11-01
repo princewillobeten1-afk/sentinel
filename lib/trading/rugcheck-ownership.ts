@@ -1,6 +1,9 @@
 import 'server-only';
 
 import type { HolderProfile } from '@/lib/market/enrichment/holder-profile';
+import { PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { bondingCurveAddress } from '@/lib/market/lifecycle/bonding-curve';
 import { readRugcheckReport } from './rugcheck-report';
 import { measuredNumber } from './sidebar-model';
 
@@ -54,6 +57,18 @@ export function parseRugcheckOwnership(mint: string, body: any): HolderProfile |
       }
     }
   }
+  // Exclude Pump.fun bonding curve PDA and its associated token account
+  try {
+    const curvePda = bondingCurveAddress(mint);
+    poolAddresses.add(curvePda);
+    const mintPubkey = new PublicKey(mint);
+    const curvePubkey = new PublicKey(curvePda);
+    const curveAta = getAssociatedTokenAddressSync(mintPubkey, curvePubkey, true).toBase58();
+    poolAddresses.add(curveAta);
+  } catch {
+    // Mint derivation non-fatal
+  }
+
   const BURN_OR_PROGRAM = new Set([
     '11111111111111111111111111111111',
     '1nc1nerator11111111111111111111111111111111',

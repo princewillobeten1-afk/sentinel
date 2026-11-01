@@ -18,6 +18,18 @@ export function mergeOwnershipProfiles(base: HolderProfile | null, next: HolderP
     if (merged[key] === null && next[key] !== null) {
       merged[key] = next[key];
       contributed = true;
+    } else if (
+      key === 'top10Pct' &&
+      merged.mint.endsWith('pump') &&
+      merged.top10Pct !== null &&
+      merged.top10Pct >= 80 &&
+      next.top10Pct !== null &&
+      next.top10Pct < 80
+    ) {
+      // Birdeye includes the ungraduated Pump.fun bonding curve PDA as a top 10 holder (~80-100%).
+      // When a fallback provider measures the curve-excluded top-10 concentration, adopt it.
+      merged.top10Pct = next.top10Pct;
+      contributed = true;
     }
   }
   if (contributed) {
@@ -29,8 +41,10 @@ export function mergeOwnershipProfiles(base: HolderProfile | null, next: HolderP
 }
 
 function needsMore(profile: HolderProfile | null, devAddress?: string | null): boolean {
+  const curveInflatedTop10 = Boolean(profile?.mint.endsWith('pump') && profile?.top10Pct !== null && profile.top10Pct >= 80);
   return !profile
     || profile.top10Pct === null
+    || curveInflatedTop10
     || profile.totalHolders === null
     || profile.snipersPct === null
     || profile.insidersPct === null

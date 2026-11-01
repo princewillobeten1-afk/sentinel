@@ -28,6 +28,7 @@ export async function GET(
     await hydrateTokenCards([mint]);
     const cached = snapshots.get(mint);
     let data: TradeSidebarSnapshot;
+    let jupTop10: number | undefined;
     if (cached && Date.now() - cached.at < 15_000) data = cached.data;
     else {
       const [tokensResult, paidResult, lockResult] = await Promise.allSettled([
@@ -39,6 +40,7 @@ export async function GET(
       const paid = paidResult.status === 'fulfilled' ? paidResult.value : null;
       const lock = lockResult.status === 'fulfilled' ? lockResult.value : null;
       const token = tokens.find(token => token.id === mint);
+      jupTop10 = token?.audit?.topHoldersPercentage;
       let mapped = token ? mapJupiterToken(token) : null;
 
       if (!mapped) {
@@ -87,21 +89,28 @@ export async function GET(
 
       let auditFields: Partial<TradeSidebarSnapshot> = {};
       if (typeof ensureAudit === 'function') {
-        const auditProfile = await ensureAudit(mint, mapped?.devAddress);
+        const auditProfile = await ensureAudit(mint, mapped?.devAddress, token?.audit?.topHoldersPercentage);
         if (auditProfile) {
+          const totalHolders = auditProfile.totalHolders ?? mapped?.holdersCount;
+          const clampHolders = (c: number | null | undefined) => typeof c === 'number' && typeof totalHolders === 'number' ? Math.min(c, totalHolders) : (c ?? null);
+          let top10Pct = auditProfile.top10Pct;
+          const jupTop10 = token?.audit?.topHoldersPercentage;
+          if ((mapped?.bondingStatus === 'bonding' || mint.endsWith('pump')) && typeof jupTop10 === 'number' && jupTop10 >= 0 && (top10Pct === null || (top10Pct >= 80 && jupTop10 < 80))) {
+            top10Pct = Number(jupTop10.toFixed(2));
+          }
           auditFields = {
-            top10HoldingsPct: auditProfile.top10Pct,
-            holdersCount: auditProfile.totalHolders ?? mapped?.holdersCount,
+            top10HoldingsPct: top10Pct,
+            holdersCount: totalHolders,
             sniperPercentage: auditProfile.snipersPct,
             insiderHoldingsPct: auditProfile.insidersPct,
             bundlerPercentage: auditProfile.bundlersPct,
             devHoldingsPct: auditProfile.devPct ?? mapped?.devHoldingsPct,
-            sniperCount: auditProfile.sniperCount ?? null,
-            bundlerCount: auditProfile.bundlerCount ?? null,
-            insiderCount: auditProfile.insiderCount ?? null,
-            devCount: auditProfile.devCount ?? null,
-            proTradersCount: auditProfile.proTraders,
-            kolsCount: auditProfile.kols,
+            sniperCount: clampHolders(auditProfile.sniperCount),
+            bundlerCount: clampHolders(auditProfile.bundlerCount),
+            insiderCount: clampHolders(auditProfile.insiderCount),
+            devCount: clampHolders(auditProfile.devCount),
+            proTradersCount: clampHolders(auditProfile.proTraders),
+            kolsCount: clampHolders(auditProfile.kols),
             ownershipEvidence: {
               status: 'measured',
               source: auditProfile.source ?? 'birdeye-holder-profile',
@@ -138,6 +147,10 @@ export async function GET(
     }
     const patch = getTokenCardPatch(mint);
     const merged = patch ? mergeTokenCardSnapshot(data as import('@/lib/discovery/types').DiscoveryToken, patch) : data;
-    return jsonResponse({ token: { ...data, ...merged } }, 200, { 'Cache-Control': 'no-store' });
+    const finalToken = { ...data, ...merged };
+    if ((finalToken.bondingStatus === 'bonding' || mint.endsWith('pump')) && typeof jupTop10 === 'number' && jupTop10 >= 0 && (finalToken.top10HoldingsPct === null || finalToken.top10HoldingsPct === undefined || (finalToken.top10HoldingsPct >= 80 && jupTop10 < 80))) {
+      finalToken.top10HoldingsPct = Number(jupTop10.toFixed(2));
+    }
+    return jsonResponse({ token: finalToken }, 200, { 'Cache-Control': 'no-store' });
   } catch (error) { return errorResponse(error instanceof Error ? error : new ApiError('Token card unavailable', 500)); }
 }

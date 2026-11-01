@@ -59,9 +59,19 @@ interface FeedCache {
   error?: string;
 }
 
-const caches = new Map<JupiterFeed, FeedCache>();
+const globalForSolanaFeed = globalThis as unknown as {
+  sentinelSolanaFeedCaches?: Map<JupiterFeed, FeedCache>;
+  sentinelSolanaFeedInFlight?: Map<JupiterFeed, Promise<FeedCache>>;
+  sentinelSolanaFeedLaunchMs?: WeakMap<JupiterToken, number | null>;
+};
 
-export function __resetLiveSolanaFeedForTests(): void { caches.clear(); }
+const caches = (globalForSolanaFeed.sentinelSolanaFeedCaches ??= new Map<JupiterFeed, FeedCache>());
+const inFlight = (globalForSolanaFeed.sentinelSolanaFeedInFlight ??= new Map<JupiterFeed, Promise<FeedCache>>());
+
+export function __resetLiveSolanaFeedForTests(): void {
+  caches.clear();
+  inFlight.clear();
+}
 
 /** Per-feed freshness, matched to how fast each list actually turns over. */
 const FEED_TTL_MS: Record<JupiterFeed, number> = {
@@ -78,36 +88,45 @@ function withCurrentAge(token: DiscoveryToken, launchedAtMs: number | null): Dis
   return { ...token, ageMinutes, ageFormatted: formatAge(ageMinutes) };
 }
 
-const launchMs = new WeakMap<JupiterToken, number | null>();
+const launchMs = (globalForSolanaFeed.sentinelSolanaFeedLaunchMs ??= new WeakMap<JupiterToken, number | null>());
 
 async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
   const cached = caches.get(feed);
   const now = Date.now();
-  if (cached && now - cached.fetchedAt < FEED_TTL_MS[feed]) return cached;
+  if (cached && cached.raw.length > 0 && now - cached.fetchedAt < FEED_TTL_MS[feed]) return cached;
 
-  try {
-    const raw = await fetchJupiterFeed(feed, { limit });
-    const mapped = raw.map((token) => {
-      const dt = mapJupiterToken(token);
-      launchMs.set(token, dt.ageMinutes ? Date.now() - dt.ageMinutes * 60_000 : null);
-      return dt;
-    });
-    const next: FeedCache = { raw, mapped, fetchedAt: now };
-    caches.set(feed, next);
-    return next;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Serve the previous snapshot rather than nothing — but keep the error so
-    // the caller can say the data is stale. Never substitute invented tokens.
-    if (cached) {
-      const stale: FeedCache = { ...cached, error: message };
-      caches.set(feed, stale);
-      return stale;
+  const existing = inFlight.get(feed);
+  if (existing) return existing;
+
+  const work = (async (): Promise<FeedCache> => {
+    try {
+      const raw = await fetchJupiterFeed(feed, { limit });
+      const mapped = raw.map((token) => {
+        const dt = mapJupiterToken(token);
+        launchMs.set(token, dt.ageMinutes ? Date.now() - dt.ageMinutes * 60_000 : null);
+        return dt;
+      });
+      const next: FeedCache = { raw, mapped, fetchedAt: Date.now() };
+      caches.set(feed, next);
+      return next;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Serve the previous snapshot rather than nothing — but keep the error so
+      // the caller can say the data is stale. Never substitute invented tokens.
+      if (cached && cached.raw.length > 0) {
+        const stale: FeedCache = { ...cached, error: message };
+        caches.set(feed, stale);
+        return stale;
+      }
+      // Do not pin an empty failure in cache for 12-25s; let the next caller retry.
+      return { raw: [], mapped: [], fetchedAt: Date.now(), error: message };
+    } finally {
+      inFlight.delete(feed);
     }
-    const empty: FeedCache = { raw: [], mapped: [], fetchedAt: now, error: message };
-    caches.set(feed, empty);
-    return empty;
-  }
+  })();
+
+  inFlight.set(feed, work);
+  return work;
 }
 
 /**

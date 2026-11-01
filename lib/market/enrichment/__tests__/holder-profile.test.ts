@@ -97,6 +97,29 @@ describe('parseHolderProfile', () => {
     expect(parseHolderProfile(MINT, null)).toBeNull();
     expect(parseHolderProfile(MINT, { success: false, message: 'Too many requests' })).toBeNull();
   });
+
+  it('reports 0 pro traders when smart traders have completely sold out (hold_amount = 0 or percent = 0)', () => {
+    const profile = parseHolderProfile(MINT, {
+      data: {
+        token: { top10_holder: { percent_of_supply: 100 } },
+        holder_summary: { total_holder: 11 },
+        tags: [
+          { tag: 'smart_trader', holder_count: 59, hold_amount: '0', percent_of_supply: 0 },
+          { tag: 'sniper', holder_count: 6, hold_amount: '0', percent_of_supply: 0 },
+          { tag: 'bundler', holder_count: 77, hold_amount: '262594.72', percent_of_supply: 0.026 },
+        ],
+      },
+    });
+
+    expect(profile).not.toBeNull();
+    // 59 smart traders bought historically, but all sold out (hold_amount = 0, percent = 0)
+    expect(profile?.proTraders).toBe(0);
+    // 6 snipers bought historically, but all sold out (hold_amount = 0)
+    expect(profile?.sniperCount).toBe(0);
+    // 77 bundlers bought historically, but token only has 11 current holders
+    expect(profile?.bundlerCount).toBe(11);
+    expect(profile?.totalHolders).toBe(11);
+  });
 });
 
 describe('quota exhaustion is its own outcome', () => {

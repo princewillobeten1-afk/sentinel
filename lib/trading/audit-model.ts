@@ -112,7 +112,13 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
   const securityEvidence = currentEvidence(live?.securityEvidence, now);
   const choose = <T,>(liveValue: T | null, fallback: T | null, evidence: MetricEvidence) => liveValue !== null
     ? { value: liveValue, evidence } : { value: fallback, evidence: fallback !== null ? source : currentEvidence() };
-  const top10 = choose(percent(live?.top10HoldingsPct) ?? percent(holder?.top10Pct), percent(audit?.topHoldersPercentage), ownershipEvidence);
+  const rawTop10 = percent(live?.top10HoldingsPct) ?? percent(holder?.top10Pct);
+  const jupTop10 = percent(audit?.topHoldersPercentage);
+  const isBonding = live?.lifecycleState !== 'migrated' || mint.endsWith('pump');
+  const chosenTop10 = isBonding && rawTop10 !== null && rawTop10 >= 80 && jupTop10 !== null && jupTop10 < 80
+    ? jupTop10
+    : rawTop10;
+  const top10 = choose(chosenTop10, jupTop10, ownershipEvidence);
   const dev = choose(percent(live?.devHoldingsPct) ?? percent(holder?.devPct), percent(audit?.devBalancePercentage), ownershipEvidence);
   const mintAuthority = choose(boolean(live?.isMintRenounced), boolean(audit?.mintAuthorityDisabled), securityEvidence);
   const freezeAuthority = choose(boolean(live?.isFreezeDisabled), boolean(audit?.freezeAuthorityDisabled), securityEvidence);
@@ -125,6 +131,9 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
   const observed = [ownershipEvidence, securityEvidence, currentEvidence(live?.liquidityEvidence, now), ...(hasJupiterMeasurements ? [source] : [])]
     .filter(group => group.status === 'measured' || group.status === 'stale')
     .map(group => Date.parse(group.observedAt)).filter(Number.isFinite);
+  const totalHoldersCount = number(live?.holdersCount) ?? number(holder?.totalHolders);
+  const clampCount = (c: number | null) =>
+    c !== null && totalHoldersCount !== null ? Math.min(c, totalHoldersCount) : c;
   return {
     token: mint, chain: 'solana', symbol: jupiter?.symbol ?? null, creatorAddress: live?.devAddress ?? jupiter?.dev ?? null,
     mintAuthorityDisabled: mintAuthority.value, freezeAuthorityDisabled: freezeAuthority.value,
@@ -135,12 +144,12 @@ export function composeTokenAudit(mint: string, live: TokenCardFields | undefine
     snipersPct: percent(live?.sniperPercentage) ?? percent(holder?.snipersPct),
     insidersPct: percent(live?.insiderHoldingsPct) ?? percent(holder?.insidersPct),
     bundlersPct: percent(live?.bundlerPercentage) ?? percent(holder?.bundlersPct),
-    sniperCount: number(live?.sniperCount) ?? number(holder?.sniperCount),
-    bundlerCount: number(live?.bundlerCount) ?? number(holder?.bundlerCount),
-    insiderCount: number(live?.insiderCount) ?? number(holder?.insiderCount),
-    devCount: number(live?.devCount) ?? number(holder?.devCount),
-    holderTop10Pct: percent(live?.top10HoldingsPct) ?? percent(holder?.top10Pct),
-    totalHolders: number(live?.holdersCount) ?? number(holder?.totalHolders),
+    sniperCount: clampCount(number(live?.sniperCount) ?? number(holder?.sniperCount)),
+    bundlerCount: clampCount(number(live?.bundlerCount) ?? number(holder?.bundlerCount)),
+    insiderCount: clampCount(number(live?.insiderCount) ?? number(holder?.insiderCount)),
+    devCount: clampCount(number(live?.devCount) ?? number(holder?.devCount)),
+    holderTop10Pct: top10.value,
+    totalHolders: totalHoldersCount,
     holderAuditPending: pending,
     rugRisk: live?.rugRisk ?? null, auditVersion: live?.auditVersion ?? null,
     marketEvidence: currentEvidence(live?.marketEvidence, now), ownershipEvidence, securityEvidence,

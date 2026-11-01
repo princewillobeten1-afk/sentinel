@@ -163,6 +163,9 @@ class TokenRefreshWorker {
         this.lastDiscoveryAt = now;
         const discovery = await runScript('discover-tokens.js', ['--limit', '100']);
         this.report(discovery);
+        // A failed discovery (e.g. Jupiter rate-limited every list) should not
+        // wait a full discovery interval — retry on the next price tick.
+        if (discovery.timedOut || discovery.exitCode !== 0) this.lastDiscoveryAt = 0;
       }
 
       const refresh = await runScript('backfill-token-enrichment.js', [

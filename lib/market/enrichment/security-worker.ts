@@ -29,6 +29,8 @@ let activeMint: string | null = null;
 let draining = false;
 let consecutiveFailures = 0;
 let circuitOpenUntil = 0;
+let birdeyeSecurityPausedUntil = 0;
+const BIRDEYE_SECURITY_PERMISSION_PAUSE_MS = 15 * 60_000;
 
 interface MintAuthorities {
   mintRevoked?: boolean;
@@ -47,7 +49,7 @@ interface BirdeyeSecurity {
 }
 
 async function fetchBirdeyeSecurity(mint: string): Promise<BirdeyeSecurity | null> {
-  if (!env.BIRDEYE_API_KEY) return null;
+  if (!env.BIRDEYE_API_KEY || Date.now() < birdeyeSecurityPausedUntil) return null;
   await acquireBirdeyeSlot('background');
   const url = new URL('/defi/token_security', 'https://public-api.birdeye.so');
   url.searchParams.set('address', mint);
@@ -56,6 +58,12 @@ async function fetchBirdeyeSecurity(mint: string): Promise<BirdeyeSecurity | nul
     cache: 'no-store',
     signal: AbortSignal.timeout(10_000),
   });
+  if (response.status === 401 || response.status === 403) {
+    // Standard-tier Birdeye keys do not include /defi/token_security. Pause so
+    // background checks stop spending shared rate-limiter slots on every card.
+    birdeyeSecurityPausedUntil = Date.now() + BIRDEYE_SECURITY_PERMISSION_PAUSE_MS;
+    return null;
+  }
   if (!response.ok) return null;
   const body = await response.json() as { success?: boolean; data?: BirdeyeSecurity };
   return body.success && body.data ? body.data : null;
@@ -342,5 +350,5 @@ export function securityStats(): { cached: number; queued: number; draining: boo
 }
 
 export function __resetSecurityWorker(): void {
-  cache.clear(); creatorCache.clear(); authorityCache.clear(); pending.length = 0; queued.clear(); targets.clear(); activeMint = null; draining = false; consecutiveFailures = 0; circuitOpenUntil = 0;
+  cache.clear(); creatorCache.clear(); authorityCache.clear(); pending.length = 0; queued.clear(); targets.clear(); activeMint = null; draining = false; consecutiveFailures = 0; circuitOpenUntil = 0; birdeyeSecurityPausedUntil = 0;
 }

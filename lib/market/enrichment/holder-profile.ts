@@ -45,6 +45,7 @@ export interface HolderTagStat {
   tag: string;
   holderCount: number | null;
   percentOfSupply: number | null;
+  holdAmount: number | null;
 }
 
 export interface HolderProfile {
@@ -110,20 +111,39 @@ export function parseHolderProfile(mint: string, body: unknown): HolderProfile |
       tag,
       holderCount: integer(entry.holder_count),
       percentOfSupply: percent(entry.percent_of_supply),
+      holdAmount: num(entry.hold_amount),
     });
   }
+
+  const totalHolders = integer(summary?.total_holder);
 
   // An absent tag is a real zero: Birdeye returns the class only when it found
   // wallets in it. A failed request never reaches here — it returns null above.
   // Omission is meaningful only in a valid tags collection. A missing or
   // malformed collection (or a present tag with a missing field) is unknown.
   const pct = (tag: string): number | null => !tagsValid ? null : byTag.has(tag) ? byTag.get(tag)!.percentOfSupply : 0;
-  const count = (tag: string): number | null => !tagsValid ? null : byTag.has(tag) ? byTag.get(tag)!.holderCount : 0;
+  const count = (tag: string): number | null => {
+    if (!tagsValid) return null;
+    if (!byTag.has(tag)) return 0;
+    const stat = byTag.get(tag)!;
+    const raw = stat.holderCount;
+    if (raw === null) return null;
+    // Wallets that have completely sold out (holdAmount === 0) are not currently holding.
+    if (stat.holdAmount !== null && stat.holdAmount === 0) return 0;
+    // For smart traders and KOLs, a 0% share means zero wallets currently holding.
+    if ((tag === 'smart_trader' || tag === 'kol') && stat.percentOfSupply === 0) return 0;
+    // Category wallet count cannot exceed total token holders.
+    if (totalHolders !== null && raw > totalHolders) {
+      if (stat.percentOfSupply === 0) return 0;
+      return totalHolders;
+    }
+    return raw;
+  };
 
   return {
     mint,
     top10Pct: percent(token?.top10_holder?.percent_of_supply),
-    totalHolders: integer(summary?.total_holder),
+    totalHolders,
     snipersPct: pct('sniper'),
     insidersPct: pct('insider'),
     bundlersPct: pct('bundler'),

@@ -1,5 +1,6 @@
 import { INITIAL_TREND_ITEMS } from './mock-trends-data';
 import type { TrendItem, TrendStats, TrendSource, TrendCategory, TrendVelocity, TrendToken } from './types';
+import { jupiterHeaders, jupiterOrigin } from '@/lib/market/jupiter-api';
 
 interface DexTokenProfile {
   url?: string;
@@ -276,8 +277,8 @@ export class TrendsService {
       if (targetAddresses.length > 0) {
         try {
           const jupRes = await fetch(
-            `https://lite-api.jup.ag/tokens/v2/search?query=${encodeURIComponent(targetAddresses.join(','))}`,
-            { headers: { accept: 'application/json' }, cache: 'no-store' }
+            `${jupiterOrigin()}/tokens/v2/search?query=${encodeURIComponent(targetAddresses.join(','))}`,
+            { headers: jupiterHeaders(), cache: 'no-store' }
           );
           if (jupRes.ok) {
             const data = await jupRes.json().catch(() => []);
