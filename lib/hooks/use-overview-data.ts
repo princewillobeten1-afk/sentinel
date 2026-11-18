@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { endpoints, apiUrl } from '@/lib/api/endpoints';
 import { readApiData, ApiRequestError } from '@/lib/api/response';
-import type { MetricEvidence, RugRiskEvidence, DiscoveryToken, DiscoveryScore } from '@/lib/discovery/types';
+import type { MetricEvidence, RugRiskEvidence, DiscoveryToken, DiscoveryScore, TimeWindow } from '@/lib/discovery/types';
+import { useAppState } from '@/lib/store';
 
 /**
  * How many tokens each tab shows.
@@ -200,7 +201,15 @@ function toOverviewToken(raw: Record<string, unknown>): OverviewToken {
   };
 }
 
-export function useOverviewData(walletAddress?: string | null): OverviewData {
+export function useOverviewData(
+  walletAddress?: string | null,
+  overrideChain?: string,
+  overrideTimeWindow?: TimeWindow,
+): OverviewData {
+  const { activeChain } = useAppState();
+  const chain = overrideChain ?? activeChain;
+  const timeWindow = overrideTimeWindow ?? '24h';
+
   const [market, setMarket] = useState<OverviewData['market']>(null);
   const [trending, setTrending] = useState<OverviewToken[]>([]);
   const [hotTokens, setHotTokens] = useState<OverviewToken[]>([]);
@@ -243,41 +252,38 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
       }
     };
 
+    const isEvmWallet = Boolean(walletAddress && walletAddress.startsWith('0x'));
+    const canQueryPortfolio = Boolean(
+      walletAddress && ((chain === 'robinhood' && isEvmWallet) || (chain === 'solana' && !isEvmWallet)),
+    );
+
     const [marketRes, trendingRes, hotRes, topRes, alertsRes, portfolioRes, exposureRes] = await Promise.allSettled([
       get<{ marketRegime: MarketRegime; volumeDecomposition: VolumeDecomposition }>(
-        apiUrl('/v1/analytics/market'),
+        apiUrl('/v1/analytics/market', { chain }),
         'market',
       ),
-      // The discovery feeds, not the ranking engine over the registry.
-      //
-      // Measured: 0 of the 20 tokens the registry ranked had traded in the
-      // previous 15 minutes, while 85 other mints had. The Overview was
-      // showing a set disjoint from anything happening on-chain, so its live
-      // price wiring had nothing to deliver. These feeds rank tokens by
-      // current activity, which is what makes the WebSocket merge visible.
+      // The discovery feeds for the selected chain, not the ranking engine over the registry.
       get<{ tokens: Record<string, unknown>[] }>(
-        apiUrl('/v1/discovery/trending', { limit: TRENDING_LIMIT }),
+        apiUrl('/v1/discovery/trending', { limit: TRENDING_LIMIT, chain, timeWindow }),
         'trending',
       ),
       get<{ tokens: Record<string, unknown>[] }>(
-        apiUrl('/v1/discovery/hot', { limit: TRENDING_LIMIT }),
+        apiUrl('/v1/discovery/hot', { limit: TRENDING_LIMIT, chain, timeWindow }),
         'hotTokens',
       ),
-      // "Top" reads Jupiter's organic-score ranking rather than raw volume: a
-      // token can lead the volume tables on wash trading, and separating
-      // genuine flow from manufactured flow is this platform's premise.
+      // "Top" reads organic-score / highest volume ranking for the selected chain.
       get<{ tokens: Record<string, unknown>[] }>(
-        apiUrl('/v1/discovery/volume', { limit: TOP_TOKENS_LIMIT }),
+        apiUrl('/v1/discovery/volume', { limit: TOP_TOKENS_LIMIT, chain, timeWindow }),
         'topTokens',
       ),
       get<{ alerts: OverviewAlert[] }>(apiUrl(endpoints.alerts.events, { limit: 8 }), 'alerts'),
-      walletAddress
+      canQueryPortfolio && walletAddress
         ? get<{ overview: Record<string, { usd?: number | null }> }>(
             apiUrl(endpoints.portfolio.overview(walletAddress)),
             'portfolio',
           )
         : Promise.resolve(null),
-      walletAddress
+      canQueryPortfolio && walletAddress
         ? get<{ exposure: { byToken?: { key: string; label: string; valueUsd: number; sharePct: number }[] } }>(
             apiUrl(endpoints.portfolio.exposure(walletAddress)),
             'portfolio',
@@ -328,7 +334,7 @@ export function useOverviewData(walletAddress?: string | null): OverviewData {
 
     setErrors(nextErrors);
     setIsLoading(false);
-  }, [walletAddress]);
+  }, [walletAddress, chain, timeWindow]);
 
   useEffect(() => {
     void refresh();

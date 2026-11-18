@@ -18,11 +18,11 @@ const paddingStyles = {
 };
 
 const variantStyles = {
-  default: 'bg-sentinel-900 border border-sentinel-700/60',
-  subtle: 'bg-sentinel-900/70 border border-sentinel-800 shadow-sm',
-  inset: 'bg-sentinel-950/80 border border-sentinel-800/90 shadow-inner',
-  bordered: 'bg-transparent border border-sentinel-700',
-  glass: 'bg-sentinel-900 border border-sentinel-700/60',
+  default: 'bg-[#0D1015] border border-[#1E222D]',
+  subtle: 'bg-[#0D1015]/80 border border-[#1E222D] shadow-sm',
+  inset: 'bg-[#080A0F] border border-[#1E222D] shadow-inner',
+  bordered: 'bg-transparent border border-[#1E222D]',
+  glass: 'bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-md',
 };
 
 export function Panel({
@@ -37,22 +37,22 @@ export function Panel({
   ...props
 }: PanelProps) {
   return (
-    <div data-ui="panel" className={clsx('min-w-0 rounded-lg overflow-hidden flex flex-col', variantStyles[variant], className)} {...props}>
+    <div data-ui="panel" className={clsx('min-w-0 rounded-[8px] overflow-hidden flex flex-col', variantStyles[variant], className)} {...props}>
       {(title || subtitle || headerActions) && (
-        <div data-ui="panel-header" className="flex items-center justify-between border-b border-sentinel-700/60 px-4 py-2.5 bg-sentinel-900/50 backdrop-blur-md">
+        <div data-ui="panel-header" className="flex items-center justify-between border-b border-[#1E222D] px-4 py-2.5 bg-[#10131A]/95 backdrop-blur-md">
           <div className="min-w-0">
             {title && (
-              <div data-ui="panel-title" className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-2">
+              <div data-ui="panel-title" className="text-xs sm:text-sm font-semibold text-[#F7F8F9] flex items-center gap-2">
                 {title}
               </div>
             )}
-            {subtitle && <p className="text-2xs text-slate-400 mt-0.5">{subtitle}</p>}
+            {subtitle && <p className="text-[11px] text-[#828598] mt-0.5">{subtitle}</p>}
           </div>
           {headerActions && <div data-ui="panel-actions" className="flex items-center gap-2 shrink-0">{headerActions}</div>}
         </div>
       )}
       <div className={clsx('min-w-0 flex-1', paddingStyles[padding])}>{children}</div>
-      {footer && <div className="border-t border-sentinel-700/60 bg-sentinel-900/40 px-4 py-2 text-xs text-slate-400">{footer}</div>}
+      {footer && <div className="border-t border-[#1E222D] bg-[#0A0D12] px-4 py-2 text-xs text-[#828598]">{footer}</div>}
     </div>
   );
 }

@@ -45,10 +45,14 @@ export function AppShell({ initialView, layout = 'page', children }: AppShellPro
       data-hydrated={hydrated}
       data-layout={fitted ? 'workspace' : 'page'}
       className={clsx(
-        'terminal-shell bg-sentinel-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500/30',
+        'terminal-shell relative bg-[#06070B] text-[#F7F8F9] flex flex-col font-sans selection:bg-[#526FFF]/30',
         fitted ? 'h-dvh overflow-hidden' : 'min-h-dvh'
       )}
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 h-[340px] bg-[radial-gradient(ellipse_65%_45%_at_50%_0%,rgba(82,111,255,0.05),transparent)] z-0"
+      />
       <a href="#main-content" className="terminal-skip-link">Skip to content</a>
       {/* Axiom-Style Full-Width Header Navigation */}
       <TopBar />

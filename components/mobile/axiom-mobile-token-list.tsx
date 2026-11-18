@@ -233,7 +233,7 @@ export function AxiomMobileTokenList({
             return (
               <div
                 key={token.id || token.mint || idx}
-                onClick={() => router.push(`/trade/solana/${token.mint}`)}
+                onClick={() => router.push(`/trade/${token.chain || 'solana'}/${token.mint}`)}
                 className="flex items-center justify-between px-3 py-2.5 hover:bg-[#0a0a0a] transition-colors cursor-pointer group"
               >
                 {/* Left Section: Avatar + Text details */}
@@ -286,12 +286,15 @@ export function AxiomMobileTokenList({
 
                       {/* Explorer search */}
                       <a
-                        href={`https://solscan.io/token/${token.mint}`}
+                        href={token.chain === 'robinhood'
+                          ? `https://robinhoodchain.blockscout.com/token/${token.mint}`
+                          : `https://solscan.io/token/${token.mint}`
+                        }
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="text-[#525252] hover:text-white"
-                        title="View on Solscan"
+                        title={token.chain === 'robinhood' ? 'View on Blockscout' : 'View on Solscan'}
                       >
                         <Search className="w-3 h-3" />
                       </a>

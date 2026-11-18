@@ -42,10 +42,14 @@ class WsBroadcaster {
       broadcast(buildTopic('token.card', patch.mint), patch);
       if (patch.changedFields.lifecycleState) {
         // Discovery listens here, including for mints not yet visible. A card
-        // topic alone cannot insert a newly migrated token into the column.
+        // topic alone cannot insert a newly launched or migrated token into the column.
         const event = { type: 'LIFECYCLE_UPDATE', mint: patch.mint, observedAt: patch.observedAt };
-        broadcast('feed.discovery:migrating', event);
-        broadcast('feed.discovery:graduated', event);
+        if (patch.changedFields.lifecycleState === 'new_pairs') {
+          broadcast('feed.discovery:new', event);
+        } else {
+          broadcast('feed.discovery:migrating', event);
+          broadcast('feed.discovery:graduated', event);
+        }
       }
     });
 
@@ -157,12 +161,14 @@ class WsBroadcaster {
       if (event.type === 'TOKEN_CREATED') {
         const createPayload = {
           type: 'TOKEN_CREATED',
+          chain: typeof event.extra?.chain === 'string' ? event.extra.chain : 'solana',
           mint: event.mint,
           name: event.name,
           symbol: event.symbol,
           dex: event.dex,
           priceUsd: event.priceUsd,
           liquidityUsd: event.liquidityUsd,
+          token: event.extra?.token,
           slot: event.slot,
           timestamp: event.timestamp,
         };

@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard,
@@ -188,13 +189,11 @@ export function Sidebar() {
             }}
             className="flex items-center gap-2.5 cursor-pointer group"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500/30 to-emerald-500/20 text-sky-300 border border-sky-500/40 shadow-[0_0_12px_rgba(0,240,255,0.3)] group-hover:scale-105 transition-transform shrink-0">
-              <Zap className="h-4 w-4 fill-current text-sky-400" />
-            </div>
+            <PhivexLogoMark size="sm" className="group-hover:scale-105 group-hover:border-indigo-400/50" />
             {!isSidebarCollapsed && (
               <div>
-                <p className="text-2xs uppercase font-bold tracking-[0.14em] text-slate-400 whitespace-nowrap">PROJECT</p>
-                <h1 className="text-sm font-extrabold text-white tracking-wider">PHIVEX</h1>
+                <h1 className="text-sm font-extrabold text-white tracking-[0.16em]">PHIVEX</h1>
+                <p className="text-[9px] uppercase font-mono tracking-[0.2em] text-slate-400 whitespace-nowrap">INTELLIGENCE FIRST</p>
               </div>
             )}
           </Link>
@@ -260,8 +259,8 @@ export function Sidebar() {
         onClose={() => setMobileNavOpen(false)}
         position="left"
         title={
-          <span className="flex items-center gap-2 text-sky-400 font-bold text-sm">
-            <Zap className="h-4 w-4 fill-current" /> PHIVEX MOBILE NAV
+          <span className="flex items-center gap-2 text-white font-bold text-sm tracking-wider">
+            <PhivexLogoMark size="xs" /> PHIVEX
           </span>
         }
       >

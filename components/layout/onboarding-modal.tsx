@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, Zap, ArrowRight, CheckCircle2, Sliders, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 import { Badge } from '@/components/ui/badge';
 import { useWalletState, useWalletActions, usePreferencesState, usePreferencesActions, useUIActions } from '@/lib/store';
 
@@ -32,8 +33,8 @@ export function OnboardingModal() {
       isOpen={isOpen}
       onClose={() => setIsOpen(false)}
       title={
-        <span className="flex items-center gap-2 text-sky-400">
-          <Zap className="h-5 w-5 fill-current" /> Welcome to Phivex
+        <span className="flex items-center gap-2.5 text-white">
+          <PhivexLogoMark size="xs" /> Welcome to Phivex
         </span>
       }
       subtitle="Fast-track Web3 onboarding & setup"

@@ -1,4 +1,5 @@
 import { DiscoveryToken, DiscoveryFilter, TimeWindow } from './types';
+import { getRobinhoodDiscoveryTokens } from './robinhood-feed';
 import { calculateTrendingScore } from './trending-engine';
 import { filterDiscoveryTokens } from './service';
 import {
@@ -18,6 +19,7 @@ import { getAudit, isAuditPending, queueAudit } from '@/lib/market/enrichment/au
 import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
 import { getWatchedMints } from '@/lib/market/live/stream-demand';
 import { calculateRugRisk } from '@/lib/market/enrichment/rug-risk';
+import { eventBus } from '@/lib/server/events/event-bus';
 
 /**
  * The live token source behind every Discover column.
@@ -63,19 +65,24 @@ const globalForSolanaFeed = globalThis as unknown as {
   sentinelSolanaFeedCaches?: Map<JupiterFeed, FeedCache>;
   sentinelSolanaFeedInFlight?: Map<JupiterFeed, Promise<FeedCache>>;
   sentinelSolanaFeedLaunchMs?: WeakMap<JupiterToken, number | null>;
+  sentinelSolanaSeenRecentMints?: Set<string>;
+  sentinelSolanaRecentBootstrapped?: boolean;
 };
 
 const caches = (globalForSolanaFeed.sentinelSolanaFeedCaches ??= new Map<JupiterFeed, FeedCache>());
 const inFlight = (globalForSolanaFeed.sentinelSolanaFeedInFlight ??= new Map<JupiterFeed, Promise<FeedCache>>());
+const seenRecentMints = (globalForSolanaFeed.sentinelSolanaSeenRecentMints ??= new Set<string>());
 
 export function __resetLiveSolanaFeedForTests(): void {
   caches.clear();
   inFlight.clear();
+  seenRecentMints.clear();
+  globalForSolanaFeed.sentinelSolanaRecentBootstrapped = false;
 }
 
 /** Per-feed freshness, matched to how fast each list actually turns over. */
 const FEED_TTL_MS: Record<JupiterFeed, number> = {
-  recent: 4_000,
+  recent: 1_500,
   toptrending: 12_000,
   toporganicscore: 25_000,
   toptraded: 12_000,
@@ -93,8 +100,24 @@ const launchMs = (globalForSolanaFeed.sentinelSolanaFeedLaunchMs ??= new WeakMap
 async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
   const cached = caches.get(feed);
   const now = Date.now();
-  if (cached && cached.raw.length > 0 && now - cached.fetchedAt < FEED_TTL_MS[feed]) return cached;
+  if (cached && cached.raw.length > 0) {
+    if (now - cached.fetchedAt >= FEED_TTL_MS[feed] && !inFlight.has(feed)) {
+      void refreshFeed(feed, limit, cached);
+    }
+    return cached;
+  }
 
+  const existing = inFlight.get(feed);
+  if (existing) return existing;
+
+  return refreshFeed(feed, limit, cached);
+}
+
+function refreshFeed(
+  feed: JupiterFeed,
+  limit: number,
+  cached: FeedCache | undefined,
+): Promise<FeedCache> {
   const existing = inFlight.get(feed);
   if (existing) return existing;
 
@@ -106,6 +129,58 @@ async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
         launchMs.set(token, dt.ageMinutes ? Date.now() - dt.ageMinutes * 60_000 : null);
         return dt;
       });
+      if (feed === 'recent') {
+        const bootstrapped = Boolean(globalForSolanaFeed.sentinelSolanaRecentBootstrapped);
+        globalForSolanaFeed.sentinelSolanaRecentBootstrapped = true;
+        raw.forEach((rawToken, idx) => {
+          const dt = mapped[idx];
+          if (!dt?.mint) return;
+          if (!bootstrapped) {
+            seenRecentMints.add(dt.mint);
+            return;
+          }
+          if (seenRecentMints.has(dt.mint) || hasGraduated(rawToken)) return;
+          if (seenRecentMints.size >= 2_000) {
+            const oldest = seenRecentMints.values().next().value;
+            if (oldest) seenRecentMints.delete(oldest);
+          }
+          seenRecentMints.add(dt.mint);
+          updateTokenCard?.(
+            dt.mint,
+            {
+              priceUsd: dt.priceUsd,
+              marketCapUsd: dt.marketCapUsd,
+              liquidityUsd: dt.liquidityUsd,
+              volume5mUsd: dt.volume5mUsd,
+              buysCount5m: dt.buysCount5m,
+              sellsCount5m: dt.sellsCount5m,
+              txCount5m: dt.txCount5m,
+              holdersCount: dt.holdersCount,
+              top10HoldingsPct: dt.top10HoldingsPct,
+              devHoldingsPct: dt.devHoldingsPct,
+              devMints: dt.devMints,
+              devMigrations: dt.devMigrations,
+              lifecycleState: 'new_pairs',
+            },
+            'jupiter-token-api',
+            'fresh',
+            dt.marketEvidence?.observedAt,
+          );
+          eventBus.emit('event', {
+            id: `jup-recent:${dt.mint}:${Date.now()}`,
+            sequence: Date.now(),
+            type: 'TOKEN_CREATED',
+            timestamp: Date.now(),
+            mint: dt.mint,
+            name: dt.name,
+            symbol: dt.symbol,
+            dex: dt.source,
+            priceUsd: Number(dt.priceUsd) || undefined,
+            liquidityUsd: Number(dt.liquidityUsd) || undefined,
+            extra: { chain: 'solana', token: dt },
+          });
+        });
+      }
       const next: FeedCache = { raw, mapped, fetchedAt: Date.now() };
       caches.set(feed, next);
       return next;
@@ -127,6 +202,11 @@ async function loadFeed(feed: JupiterFeed, limit = 30): Promise<FeedCache> {
 
   inFlight.set(feed, work);
   return work;
+}
+
+/** Background poller invoked every 2s so new Solana launches push immediately via WebSocket. */
+export async function pollRecentSolanaLaunches(): Promise<void> {
+  await loadFeed('recent', 30);
 }
 
 /**
@@ -288,6 +368,9 @@ export async function enrichTokensWithAudits(tokens: DiscoveryToken[], section?:
  * engine plus by-mint metadata so lifecycle membership never depends on listing age.
  */
 export async function getLiveDiscoveryTokens(filter?: Partial<DiscoveryFilter>): Promise<DiscoveryToken[]> {
+  if (filter?.chain?.toLowerCase() === 'robinhood') {
+    return getRobinhoodDiscoveryTokens(filter);
+  }
   const section = filter?.section;
   const window: TimeWindow = filter?.timeWindow || '15m';
 

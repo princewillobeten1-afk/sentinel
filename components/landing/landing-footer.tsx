@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Zap, Terminal, Activity, Shield, ArrowUpRight } from 'lucide-react';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 
 export function LandingFooter() {
   return (
@@ -12,10 +13,11 @@ export function LandingFooter() {
           {/* Brand Info (2 Cols) */}
           <div className="lg:col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                <Zap className="h-4 w-4" />
+              <PhivexLogoMark size="sm" className="group-hover:scale-105" />
+              <div>
+                <span className="block font-heading text-base font-black text-white tracking-[0.14em] leading-none">PHIVEX</span>
+                <span className="block text-[9px] font-mono tracking-[0.24em] text-neutral-400 mt-1">INTELLIGENCE FIRST</span>
               </div>
-              <span className="font-heading text-base font-black text-white tracking-wider">PHIVEX</span>
             </Link>
 
             <p className="text-2xs text-neutral-400 leading-relaxed max-w-sm font-sans">

@@ -349,10 +349,10 @@ export function PortfolioView() {
     <div className="space-y-4 max-w-[1400px] mx-auto">
       <div data-page-header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <PieChart className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Portfolio
+          <h1 className="text-xl sm:text-2xl font-bold text-[#F7F8F9] flex items-center gap-2">
+            <PieChart className="h-5 w-5 sm:h-6 sm:w-6 text-[#526FFF]" /> Portfolio
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+          <p className="text-xs sm:text-sm text-[#828598] mt-0.5">
             Track your positions, returns, and portfolio exposure.
           </p>
         </div>
@@ -362,8 +362,8 @@ export function PortfolioView() {
             onClick={() => setWalletModalOpen(true, 'deposit')}
             variant="outline"
             size="sm"
-            leftIcon={<ArrowDownToLine className="h-4 w-4 text-emerald-400" />}
-            className="border-emerald-500/30 text-emerald-300 hover:bg-emerald-950/40"
+            leftIcon={<ArrowDownToLine className="h-4 w-4 text-[#2FE3AC]" />}
+            className="border-[#2FE3AC]/35 bg-[#2FE3AC]/8 text-[#2FE3AC] hover:bg-[#2FE3AC]/15"
           >
             Deposit
           </Button>
@@ -371,8 +371,8 @@ export function PortfolioView() {
             onClick={() => setWalletModalOpen(true, 'withdraw')}
             variant="outline"
             size="sm"
-            leftIcon={<ArrowUpFromLine className="h-4 w-4 text-rose-400" />}
-            className="border-rose-500/30 text-rose-300 hover:bg-rose-950/40"
+            leftIcon={<ArrowUpFromLine className="h-4 w-4 text-[#EC397A]" />}
+            className="border-[#EC397A]/35 bg-[#EC397A]/8 text-[#FF6166] hover:bg-[#EC397A]/15"
           >
             Withdraw
           </Button>

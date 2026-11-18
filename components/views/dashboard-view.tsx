@@ -44,6 +44,7 @@ import { AlertCard, AlertCardData } from '@/components/ui/alert-card';
 import { IntelligenceScore } from '@/components/ui/intelligence-score';
 import { Progress } from '@/components/ui/progress';
 import { useAppState, useAppActions } from '@/lib/store';
+import { useWalletState } from '@/lib/store/wallet-store';
 import { useOverviewData, type OverviewToken } from '@/lib/hooks/use-overview-data';
 import { useWatchlist } from '@/lib/store/watchlist-store';
 
@@ -70,7 +71,8 @@ const n = (v: number | null | undefined, fallback = 0) =>
   v == null || !Number.isFinite(v) ? fallback : v;
 
 export function DashboardView() {
-  const { connectedWallet, primaryWallet } = useAppState();
+  const { connectedWallet, primaryWallet, activeChain } = useAppState();
+  const { evmAddress, evmBalanceEth } = useWalletState();
   const router = useRouter();
   const { refreshOverview, setActiveView, setSelectedToken } = useAppActions();
   const { watchlistedMints } = useWatchlist();
@@ -79,9 +81,19 @@ export function DashboardView() {
   const [tokenSearch, setTokenSearch] = useState('');
   const [copiedWallet, setCopiedWallet] = useState(false);
 
-  const activeWallet = primaryWallet || connectedWallet;
-  const overview = useOverviewData(activeWallet?.address ?? null);
+  const activeWallet = activeChain === 'robinhood'
+    ? (evmAddress ? { address: evmAddress, name: 'EVM Wallet', label: 'EVM Wallet' } : null)
+    : (primaryWallet || connectedWallet);
+  const overview = useOverviewData(activeWallet?.address ?? null, activeChain, timeWindow);
   const isLoading = overview.isLoading;
+
+  const nativeCurrencyLabel = activeChain === 'robinhood' ? 'ETH Balance:' : 'SOL Balance:';
+  const walletBalanceDisplay =
+    activeChain === 'robinhood'
+      ? (evmBalanceEth != null ? `${Number(evmBalanceEth).toFixed(4)} ETH` : '0.0000 ETH')
+      : (activeWallet && 'balanceSol' in activeWallet && typeof activeWallet.balanceSol === 'number'
+          ? `${activeWallet.balanceSol.toFixed(2)} SOL`
+          : '0.00 SOL');
 
   const watchlistTokens = useMemo(() => {
     const all = [...overview.trending, ...(overview.hotTokens || [])];
@@ -115,7 +127,7 @@ export function DashboardView() {
       unsubscribeTrending();
       unsubscribeNew();
     };
-  }, []);
+  }, [activeChain]);
 
   const baseTokens =
     marketTab === 'trending'
@@ -191,26 +203,36 @@ export function DashboardView() {
       {/* 2. Desktop View: Complete Institutional Command Overview */}
       <div className="hidden md:block space-y-4">
         {/* ===================================================================== */}
-        {/* TOP COMMAND HEADER BANNER (PURE BLACK OLED) */}
+        {/* TOP COMMAND HEADER BANNER (OBSIDIAN TERMINAL) */}
         {/* ===================================================================== */}
-        <div className="rounded-2xl sm:rounded-3xl border border-neutral-850 bg-[#0A0A0A] p-5 sm:p-6 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="rounded-[12px] border border-[#1E222D] bg-[#0D1015] p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div className="space-y-2 text-left max-w-3xl">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>SOLANA MAINNET LIVE</span>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                activeChain === 'robinhood'
+                  ? 'bg-[#2FE3AC]/10 text-[#2FE3AC] border-[#2FE3AC]/30'
+                  : 'bg-[#526FFF]/15 text-[#8EA2FF] border-[#526FFF]/35'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-[#2FE3AC]" />
+                <span>{activeChain === 'robinhood' ? 'ROBINHOOD CHAIN LIVE (4663)' : 'SOLANA MAINNET LIVE'}</span>
               </span>
-              <span className="text-neutral-700">•</span>
-              <span className="text-[10px] font-mono text-neutral-400">SURVEILLANCE ENGINE V2.4</span>
-              <span className="text-neutral-700">•</span>
-              <span className="text-[10px] font-mono text-sky-400 font-bold">18MS EXECUTION</span>
+              <span className="text-[#32374A]">•</span>
+              <span className="text-[10px] font-mono text-[#828598]">
+                {activeChain === 'robinhood' ? 'ARBITRUM ORBIT EVM L2' : 'SURVEILLANCE ENGINE V2.4'}
+              </span>
+              <span className="text-[#32374A]">•</span>
+              <span className="text-[10px] font-mono text-[#52C5FF] font-semibold">
+                {activeChain === 'robinhood' ? 'ETH NATIVE GAS' : '18MS EXECUTION'}
+              </span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-snug">
-              Solana Market Integrity & Decision Command Center
+            <h1 className="text-2xl sm:text-3xl font-black text-[#F7F8F9] tracking-tight leading-snug">
+              {activeChain === 'robinhood'
+                ? 'Robinhood Market Integrity & Decision Command Center'
+                : 'Solana Market Integrity & Decision Command Center'}
             </h1>
 
-            <p className="text-xs sm:text-sm text-neutral-400 font-sans leading-relaxed">
+            <p className="text-xs sm:text-sm text-[#828598] font-sans leading-relaxed">
               Live mempool surveillance, wash-trading decomposition, 4-hop wallet cluster forensics, and MEV-protected sub-20ms trade routing.
             </p>
           </div>
@@ -222,24 +244,24 @@ export function DashboardView() {
                 refreshOverview();
                 void overview.refresh();
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#050505] hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-850 text-xs font-mono font-bold transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] bg-[#11141B] hover:bg-[#1C202B] text-[#C8C9D1] hover:text-[#F7F8F9] border border-[#1E222D] text-xs font-mono font-semibold transition-colors cursor-pointer"
               title="Rescan market telemetry"
             >
-              <RefreshCcw className={clsx('w-3.5 h-3.5 text-sky-400', isLoading && 'animate-spin')} />
+              <RefreshCcw className={clsx('w-3.5 h-3.5 text-[#526FFF]', isLoading && 'animate-spin')} />
               <span>Refresh</span>
             </button>
 
             <button
               onClick={() => setActiveView('discover')}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#050505] hover:bg-neutral-800 text-neutral-200 hover:text-white border border-neutral-850 text-xs font-mono font-bold transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[8px] bg-[#11141B] hover:bg-[#1C202B] text-[#F7F8F9] border border-[#1E222D] text-xs font-mono font-semibold transition-colors cursor-pointer"
             >
-              <Compass className="w-3.5 h-3.5 text-sky-400" />
+              <Compass className="w-3.5 h-3.5 text-[#526FFF]" />
               <span>Full Screener</span>
             </button>
 
             <button
               onClick={() => setActiveView('trade')}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 text-neutral-950 font-mono text-xs font-bold shadow-glow-buy transition-transform hover:scale-[1.02] cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#526FFF] hover:bg-[#6683FF] text-white border border-[#6683FF]/50 font-mono text-xs font-semibold shadow-[0_0_16px_rgba(82,111,255,0.35)] transition-all hover:scale-[1.02] cursor-pointer"
             >
               <span>Launch Terminal</span>
               <ArrowUpRight className="w-4 h-4" />
@@ -248,11 +270,11 @@ export function DashboardView() {
         </div>
 
         {/* ===================================================================== */}
-        {/* 4 PRIMARY KPI METRIC CARDS (PURE BLACK OLED) */}
+        {/* 4 PRIMARY KPI METRIC CARDS */}
         {/* ===================================================================== */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Card 1: Market Regime & Sentiment */}
-          <div className="rounded-xl border border-neutral-850 bg-[#0A0A0A] p-3.5 shadow-lg space-y-2 hover:border-neutral-700 transition-all flex flex-col justify-between">
+          <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-3.5 shadow-lg space-y-2 hover:border-[#32374A] transition-all flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono uppercase text-neutral-400 flex items-center gap-1.5">
                 <Gauge className="h-3.5 w-3.5 text-sky-400" />
@@ -294,13 +316,13 @@ export function DashboardView() {
           </div>
 
           {/* Card 2: Organic vs Decomposed Volume */}
-          <div className="rounded-xl border border-neutral-850 bg-[#0A0A0A] p-3.5 shadow-lg space-y-2 hover:border-neutral-700 transition-all flex flex-col justify-between">
+          <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-3.5 shadow-lg space-y-2 hover:border-[#32374A] transition-all flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono uppercase text-neutral-400 flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-[11px] font-mono uppercase text-[#828598] flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5 text-[#2FE3AC]" />
                 <span>Organic Volume (24H)</span>
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-[#2FE3AC] border border-[#2FE3AC]/30 bg-[#2FE3AC]/10">
                 {overview.market?.decomposition.organicVolumePct != null
                   ? `${pct(overview.market.decomposition.organicVolumePct, 1)} CLEAN`
                   : '76.8% CLEAN'}
@@ -308,12 +330,12 @@ export function DashboardView() {
             </div>
 
             <div>
-              <p className="text-2xl font-black text-white font-mono">
+              <p className="text-2xl font-black text-[#F7F8F9] font-mono">
                 {overview.market
                   ? money(overview.market.decomposition.organicVolumeUsd, 0)
                   : '$2.92B'}
               </p>
-              <p className="text-[10px] text-neutral-500 font-sans truncate">
+              <p className="text-[10px] text-[#828598] font-sans truncate">
                 of {overview.market ? money(overview.market.decomposition.totalVolumeUsd, 0) : '$3.80B'} reported volume
               </p>
             </div>
@@ -321,28 +343,28 @@ export function DashboardView() {
             {/* Mini Equalizer Bar Sparkline */}
             <div className="flex items-end gap-1 h-3 pt-0.5">
               {[4, 7, 5, 9, 8, 12, 11, 14, 10, 13, 9, 12].map((val, i) => (
-                <div key={i} className="flex-1 bg-emerald-500/60 rounded-xs" style={{ height: `${val}px` }} />
+                <div key={i} className="flex-1 bg-[#2FE3AC]/60 rounded-xs" style={{ height: `${val}px` }} />
               ))}
             </div>
 
-            <p className="text-[10px] text-neutral-500 font-mono">
+            <p className="text-[10px] text-[#525866] font-mono">
               Filtered $880M in bot wash loops
             </p>
           </div>
 
           {/* Card 3: Active Cabal Cluster Threats */}
-          <div className="rounded-xl border border-neutral-850 bg-[#0A0A0A] p-3.5 shadow-lg space-y-2 hover:border-neutral-700 transition-all flex flex-col justify-between">
+          <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-3.5 shadow-lg space-y-2 hover:border-[#32374A] transition-all flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono uppercase text-neutral-400 flex items-center gap-1.5">
-                <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />
+              <span className="text-[11px] font-mono uppercase text-[#828598] flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 text-[#EC397A]" />
                 <span>Cluster Threats</span>
               </span>
               <span
                 className={clsx(
                   'px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border uppercase',
                   overview.criticalAlertCount > 0
-                    ? 'text-rose-400 border-rose-500/30 bg-rose-500/10'
-                    : 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10'
+                    ? 'text-[#FF6166] border-[#EC397A]/35 bg-[#EC397A]/12'
+                    : 'text-[#2FE3AC] border-[#2FE3AC]/30 bg-[#2FE3AC]/10'
                 )}
               >
                 {overview.criticalAlertCount > 0 ? 'THREAT DETECTED' : 'CLEAR'}
@@ -350,41 +372,41 @@ export function DashboardView() {
             </div>
 
             <div>
-              <p className="text-2xl font-black text-rose-400 font-mono">
+              <p className="text-2xl font-black text-[#FF6166] font-mono">
                 {overview.criticalAlertCount > 0
                   ? `${overview.criticalAlertCount} Flagged Rings`
                   : '14 Active Rings'}
               </p>
-              <p className="text-[10px] text-neutral-500 font-sans truncate">
+              <p className="text-[10px] text-[#828598] font-sans truncate">
                 4-hop wallet genealogies mapped
               </p>
             </div>
 
             {/* Mini alert trendline */}
-            <svg className="h-3.5 w-full text-rose-400" viewBox="0 0 80 14" fill="none">
+            <svg className="h-3.5 w-full text-[#EC397A]" viewBox="0 0 80 14" fill="none">
               <path d="M 2 12 Q 20 10, 35 6 T 55 9 T 78 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
 
-            <p className="text-[10px] text-neutral-500 font-mono">
+            <p className="text-[10px] text-[#525866] font-mono">
               Sybil fund routes isolated in real-time
             </p>
           </div>
 
           {/* Card 4: Portfolio Net Value & Liquidity */}
-          <div className="rounded-xl border border-neutral-850 bg-[#0A0A0A] p-3.5 shadow-lg space-y-2 hover:border-neutral-700 transition-all flex flex-col justify-between">
+          <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-3.5 shadow-lg space-y-2 hover:border-[#32374A] transition-all flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono uppercase text-neutral-400 flex items-center gap-1.5">
-                <PieChart className="h-3.5 w-3.5 text-sky-400" />
+              <span className="text-[11px] font-mono uppercase text-[#828598] flex items-center gap-1.5">
+                <PieChart className="h-3.5 w-3.5 text-[#526FFF]" />
                 <span>Net Portfolio</span>
               </span>
               {activeWallet ? (
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-sky-400 border border-sky-500/30 bg-sky-500/10">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-[#8EA2FF] border border-[#526FFF]/35 bg-[#526FFF]/12">
                   {activeWallet.address.slice(0, 4)}...{activeWallet.address.slice(-4)}
                 </span>
               ) : (
                 <button
                   onClick={() => router.push('/wallet')}
-                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-emerald-400 hover:text-white border border-emerald-500/30 bg-emerald-500/10 cursor-pointer"
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono text-[#2FE3AC] hover:text-white border border-[#2FE3AC]/30 bg-[#2FE3AC]/10 cursor-pointer"
                 >
                   CONNECT
                 </button>
@@ -392,10 +414,10 @@ export function DashboardView() {
             </div>
 
             <div>
-              <p className="text-2xl font-black text-white font-mono">
+              <p className="text-2xl font-black text-[#F7F8F9] font-mono">
                 {activeWallet ? money(overview.portfolio?.totalValueUsd, 2) : '$0.00'}
               </p>
-              <p className="text-[10px] text-neutral-500 font-sans truncate">
+              <p className="text-[10px] text-[#828598] font-sans truncate">
                 {overview.portfolio?.exitValueUsd != null
                   ? `Simulated Exit: ${money(overview.portfolio.exitValueUsd, 2)}`
                   : activeWallet
@@ -405,14 +427,14 @@ export function DashboardView() {
             </div>
 
             {/* Mini balance line */}
-            <div className="flex items-center justify-between text-[11px] font-mono pt-1 border-t border-neutral-850">
-              <span className="text-neutral-500">SOL Balance:</span>
-              <span className="text-emerald-400 font-bold">
-                {activeWallet?.balanceSol != null ? `${activeWallet.balanceSol.toFixed(2)} SOL` : '0.00 SOL'}
+            <div className="flex items-center justify-between text-[11px] font-mono pt-1 border-t border-[#1E222D]">
+              <span className="text-[#828598]">{nativeCurrencyLabel}</span>
+              <span className={clsx('font-bold text-[#2FE3AC]')}>
+                {walletBalanceDisplay}
               </span>
             </div>
 
-            <p className="text-[10px] text-neutral-500 font-mono">
+            <p className="text-[10px] text-[#525866] font-mono">
               0.00% MEV Sandwich loss via Jito
             </p>
           </div>
@@ -427,12 +449,12 @@ export function DashboardView() {
           {/* =================================================================== */}
           <div className="lg:col-span-2 space-y-4">
             {/* PANEL: MARKET TOKENS RADAR */}
-            <div className="rounded-2xl border border-neutral-850 bg-[#0A0A0A] p-4 sm:p-5 shadow-xl space-y-4">
+            <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-4 sm:p-5 shadow-xl space-y-4">
               {/* Header: Title + Stream Status + Tabs + Search */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-850">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1E222D]">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex items-center gap-2 text-white font-bold text-sm sm:text-base">
-                    <Compass className="h-4 w-4 text-sky-400" />
+                  <span className="flex items-center gap-2 text-[#F7F8F9] font-bold text-sm sm:text-base">
+                    <Compass className="h-4 w-4 text-[#526FFF]" />
                     <span>Market Tokens</span>
                   </span>
 
@@ -441,14 +463,14 @@ export function DashboardView() {
                     className={clsx(
                       'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase border',
                       live.status === 'live'
-                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                        : 'border-neutral-800 bg-neutral-900 text-neutral-400'
+                        ? 'border-[#2FE3AC]/30 bg-[#2FE3AC]/10 text-[#2FE3AC]'
+                        : 'border-[#1E222D] bg-[#11141B] text-[#828598]'
                     )}
                   >
                     <span
                       className={clsx(
                         'h-1.5 w-1.5 rounded-full',
-                        live.status === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-500'
+                        live.status === 'live' ? 'bg-[#2FE3AC] animate-pulse' : 'bg-[#525866]'
                       )}
                     />
                     <span>{live.status === 'live' ? 'Live Stream' : 'Polled'}</span>
@@ -457,20 +479,20 @@ export function DashboardView() {
 
                 {/* Filter Search Input */}
                 <div className="relative w-full sm:w-56">
-                  <Search className="w-3.5 h-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <Search className="w-3.5 h-3.5 text-[#525866] absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={tokenSearch}
                     onChange={(e) => setTokenSearch(e.target.value)}
-                    placeholder="Search token ($SOL)..."
-                    className="w-full pl-8 pr-3 py-1 bg-[#050505] border border-neutral-850 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-700 font-mono transition-colors"
+                    placeholder={`Search token (${activeChain === 'robinhood' ? '$ETH' : '$SOL'})...`}
+                    className="w-full pl-8 pr-3 py-1 bg-[#080A0F] border border-[#1E222D] focus:border-[#526FFF]/60 rounded-[6px] text-xs text-[#F7F8F9] placeholder-[#525866] focus:outline-none font-mono transition-colors"
                   />
                 </div>
               </div>
 
               {/* Sub Header: Segmented Tabs + Timeframe Switcher */}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#050505] border border-neutral-850">
+                <div className="flex items-center gap-1.5 p-1 rounded-[8px] bg-[#080A0F] border border-[#1E222D]">
                   {[
                     { id: 'trending', label: 'Trending', count: overview.trending.length },
                     { id: 'hot', label: 'Hot Tokens', count: (overview.hotTokens || []).length },
@@ -482,15 +504,15 @@ export function DashboardView() {
                         key={tab.id}
                         onClick={() => setMarketTab(tab.id as any)}
                         className={clsx(
-                          'flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer',
+                          'flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-mono transition-colors cursor-pointer',
                           isSelected
-                            ? 'bg-neutral-800 text-white font-bold shadow-sm'
-                            : 'text-neutral-400 hover:text-white'
+                            ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                            : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
                         )}
                       >
                         <span>{tab.label}</span>
                         {tab.count > 0 && (
-                          <span className="text-[10px] text-neutral-500">({tab.count})</span>
+                          <span className="text-[10px] text-[#828598]">({tab.count})</span>
                         )}
                       </button>
                     );
@@ -498,17 +520,17 @@ export function DashboardView() {
                 </div>
 
                 {/* Time Window Switcher */}
-                <div className="flex items-center bg-[#050505] rounded-xl border border-neutral-850 p-0.5 text-2xs font-mono">
+                <div className="flex items-center bg-[#080A0F] rounded-[8px] border border-[#1E222D] p-0.5 text-[11px] font-mono">
                   {(['5m', '1h', '24h'] as TimeWindow[]).map((w) => (
                     <button
                       key={w}
                       type="button"
                       onClick={() => setTimeWindow(w)}
                       className={clsx(
-                        'px-2.5 py-1 rounded-lg transition-colors cursor-pointer',
+                        'px-2.5 py-1 rounded-[6px] transition-colors cursor-pointer',
                         timeWindow === w
-                          ? 'bg-neutral-800 text-sky-400 font-bold border border-neutral-700'
-                          : 'text-neutral-400 hover:text-white'
+                          ? 'bg-[#526FFF]/15 text-[#8EA2FF] font-semibold border border-[#526FFF]/35'
+                          : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
                       )}
                     >
                       {w}
@@ -566,11 +588,11 @@ export function DashboardView() {
           {/* =================================================================== */}
           <div className="space-y-4">
             {/* PANEL: PORTFOLIO ALLOCATION & EXPOSURE */}
-            <div className="rounded-2xl border border-neutral-850 bg-[#0A0A0A] p-4 sm:p-5 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-neutral-850">
+            <div className="rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-4 sm:p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#1E222D]">
                 <div className="flex items-center gap-2">
-                  <PieChart className="h-4 w-4 text-emerald-400" />
-                  <span className="text-white font-bold text-sm sm:text-base">
+                  <PieChart className="h-4 w-4 text-[#2FE3AC]" />
+                  <span className="text-[#F7F8F9] font-semibold text-sm sm:text-base">
                     Portfolio Exposure
                   </span>
                 </div>
@@ -638,9 +660,9 @@ export function DashboardView() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-400">SOL Balance:</span>
-                  <span className="text-emerald-400 font-bold">
-                    {activeWallet?.balanceSol != null ? `${activeWallet.balanceSol.toFixed(2)} SOL` : '0.00 SOL'}
+                  <span className="text-neutral-400">{nativeCurrencyLabel}</span>
+                  <span className={clsx('font-bold', activeChain === 'robinhood' ? 'text-lime-400' : 'text-emerald-400')}>
+                    {walletBalanceDisplay}
                   </span>
                 </div>
 

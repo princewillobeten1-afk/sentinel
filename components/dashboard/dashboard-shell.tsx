@@ -4,6 +4,7 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import { useAppState } from '@/lib/store';
+import { DiscoverView } from '@/components/views/discover-view';
 
 /**
  * Shared fallback while a tab's code chunk loads (Sprint 31 — Item 8). Every
@@ -24,9 +25,6 @@ const DashboardView = dynamic(() => import('@/components/views/dashboard-view').
   loading: ViewLoadingFallback,
 });
 const TradeView = dynamic(() => import('@/components/views/trade-view').then((m) => m.TradeView), {
-  loading: ViewLoadingFallback,
-});
-const DiscoverView = dynamic(() => import('@/components/views/discover-view').then((m) => m.DiscoverView), {
   loading: ViewLoadingFallback,
 });
 const PortfolioView = dynamic(() => import('@/components/views/portfolio-view').then((m) => m.PortfolioView), {

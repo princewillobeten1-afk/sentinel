@@ -4,6 +4,8 @@ import { realtimeRepository } from '@/lib/server/db/realtime-repository';
 import { getTokenOverview } from '@/lib/api/birdeye/stats';
 import { fetchLiveSolanaTokens } from '@/lib/discovery/live-solana-feed';
 import { fetchOnChainTokenSupply } from '@/lib/tokens/holder-analysis';
+import { getRobinhoodTokenDetail } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 import { ApiError } from '@/lib/server/errors';
 
 export const dynamic = 'force-dynamic';
@@ -51,6 +53,13 @@ export async function GET(
 ) {
   try {
     const { chain, address } = await Promise.resolve(context.params);
+    if (chain?.toLowerCase() === 'robinhood') {
+      if (!isEvmAddress(address)) {
+        throw new ApiError('Invalid Robinhood Chain token address', 400);
+      }
+      const tokenDetail = await getRobinhoodTokenDetail(address);
+      return jsonResponse({ token: tokenDetail });
+    }
     let token: any = null;
 
     // Fetch verified on-chain total supply when chain is Solana

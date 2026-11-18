@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './auth-provider';
 import { Button } from '@/components/ui/button';
+import { PhivexLogoLockup } from '@/components/ui/phivex-logo';
 
 export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?: () => void }) {
   const router = useRouter();
@@ -48,12 +49,10 @@ export function LoginForm({ onWalletConnectRequest }: { onWalletConnectRequest?:
   return (
     <div className="w-full max-w-md p-8 rounded-2xl bg-[#0e0e0e] border border-sentinel-700 shadow-2xl backdrop-blur-xl">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mb-3 shadow-[0_0_20px_rgba(6,182,212,0.25)]">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
+        <div className="mb-3 flex justify-center">
+          <PhivexLogoLockup size="sm" />
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-wide">Phivex Access</h1>
+        <h1 className="text-xl font-bold text-white tracking-wide">Access Terminal</h1>
         <p className="text-sm text-cyan-200/60 mt-1">Authenticate to access institutional market intelligence</p>
       </div>
 

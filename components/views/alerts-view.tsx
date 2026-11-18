@@ -192,52 +192,52 @@ export function AlertsView() {
     <div className="space-y-6">
       <div data-page-header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Radio className="h-6 w-6 text-emerald-400 animate-pulse" /> Terminal Alerts & Signals
+          <h1 className="text-2xl font-bold text-[#F7F8F9] flex items-center gap-2">
+            <Radio className="h-6 w-6 text-[#2FE3AC] animate-pulse" /> Terminal Alerts & Signals
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[#828598] mt-1">
             On-chain whale buys, potential early insiders, developer-wallet movements, and confirmed token migrations.
           </p>
         </div>
 
         {/* Tab Navigation Strip */}
-        <div className="flex items-center gap-1 p-1 rounded-xl border border-sentinel-800 bg-sentinel-900/60 text-xs font-mono">
+        <div className="flex items-center gap-1 p-1 rounded-[8px] border border-[#1E222D] bg-[#0D1015] text-xs font-mono">
           <button
             onClick={() => setViewTab('live')}
             className={clsx(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] transition font-semibold select-none',
               viewTab === 'live'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35'
+                : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
             )}
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Live Stream (BullX)</span>
+            <Sparkles className="w-3.5 h-3.5 text-[#52C5FF]" />
+            <span>Live Stream</span>
           </button>
 
           <button
             onClick={() => setViewTab('risk')}
             className={clsx(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] transition font-semibold select-none',
               viewTab === 'risk'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35'
+                : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
             )}
           >
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+            <ShieldAlert className="w-3.5 h-3.5 text-[#EC397A]" />
             <span>Threat Events ({alerts.length})</span>
           </button>
 
           <button
             onClick={() => setViewTab('rules')}
             className={clsx(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition font-bold select-none',
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] transition font-semibold select-none',
               viewTab === 'rules'
-                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35'
+                : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
             )}
           >
-            <Bell className="w-3.5 h-3.5 text-sky-400" />
+            <Bell className="w-3.5 h-3.5 text-[#526FFF]" />
             <span>Rules ({rules.length})</span>
           </button>
         </div>

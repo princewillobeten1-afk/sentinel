@@ -22,7 +22,8 @@ import { TerminalColumn } from '@/components/discovery/terminal-column';
 import { AdvancedFilterDrawer } from '@/components/discovery/advanced-filter-drawer';
 import { useDebouncedValue } from '@/lib/hooks/use-debounce';
 import { subscribeToDiscovery, getDiscoverySnapshot, setDiscoveryQuery, getDiscoveryHealth, pauseDiscovery, resumeDiscovery } from '@/lib/discovery/discovery-store';
-import { useAppActions } from '@/lib/store';
+import { useAppState, useAppActions } from '@/lib/store';
+import { normalizeChainKey } from '@/lib/chains/chain-config';
 import type {
   DiscoverySection,
   DiscoveryColumnConfig,
@@ -33,12 +34,14 @@ import type {
 
 // Bumped to _v7: canonical tabs New Pairs (newest), Final Stretch (bonding %), Migrated (recency)
 const STORAGE_COLUMNS_KEY = 'sentinel_discovery_columns_v7';
+const STORAGE_ROBINHOOD_COLUMNS_KEY = 'sentinel_discovery_columns_robinhood_v1';
 const STORAGE_QUICKBUY_KEY = 'sentinel_quickbuy_presets_v2';
 const STORAGE_QUERY_KEY = 'sentinel_discovery_query_v1';
 
 /**
  * The canonical discovery feed columns matching Axiom & Trojan standards:
- * New Pairs (newest first), Final Stretch (highest bonding % first), and Migrated (newest migration first).
+ * New Pairs (newest first), Final Stretch (bonding/launchpad/migration progress), and Migrated (newest migration first).
+ * Standardized across all supported chains (Solana, Robinhood Chain).
  */
 const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
   { id: 'col_new', type: 'new', title: 'New Pairs', sortBy: 'newest' },
@@ -49,7 +52,13 @@ const DEFAULT_COLUMNS: DiscoveryColumnConfig[] = [
 const DEFAULT_QUICKBUY_PRESETS = [0.05, 0.1, 0.5, 1.0];
 
 export function DiscoverView() {
-  const { setQuickBuyOpen } = useAppActions();
+  const { activeChain } = useAppState();
+  const { setQuickBuyOpen, setActiveChain } = useAppActions();
+  const selectedChain = activeChain;
+  const setSelectedChain = useCallback(
+    (chain: string) => setActiveChain(normalizeChainKey(chain)),
+    [setActiveChain],
+  );
 
   // State: Columns
   const [columns, setColumns] = useState<DiscoveryColumnConfig[]>(DEFAULT_COLUMNS);
@@ -67,7 +76,6 @@ export function DiscoverView() {
 
   // State: Global Controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedChain, setSelectedChain] = useState('solana');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('5m');
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [globalFilters, setGlobalFilters] = useState<Partial<DiscoveryFilter>>({});
@@ -82,15 +90,16 @@ export function DiscoverView() {
   // Debounced search query
   const debouncedSearch = useDebouncedValue(searchQuery, 250);
 
-  // Load persisted layout & preferences
+  // Load persisted layout & preferences whenever selectedChain changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const savedCols = localStorage.getItem(STORAGE_COLUMNS_KEY);
+        const storageKey = selectedChain === 'robinhood' ? STORAGE_ROBINHOOD_COLUMNS_KEY : STORAGE_COLUMNS_KEY;
+        const savedCols = localStorage.getItem(storageKey);
         if (savedCols) {
           const parsed = JSON.parse(savedCols);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            // Strip trending and hot columns (now on the Overview page)
+            // Strip trending and hot columns (they belong on the Overview page)
             const cleaned = parsed
               .filter((c: any) => c.type !== 'trending' && c.type !== 'hot')
               .map((c: any) => {
@@ -104,8 +113,16 @@ export function DiscoverView() {
                 }
                 return updated as DiscoveryColumnConfig;
               });
-            setColumns(cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS);
+            const nextCols = cleaned.length > 0 ? cleaned : DEFAULT_COLUMNS;
+            setColumns(nextCols);
+            setActiveMobileColumnId(nextCols[0].id);
+          } else {
+            setColumns(DEFAULT_COLUMNS);
+            setActiveMobileColumnId(DEFAULT_COLUMNS[0].id);
           }
+        } else {
+          setColumns(DEFAULT_COLUMNS);
+          setActiveMobileColumnId(DEFAULT_COLUMNS[0].id);
         }
         const savedQB = localStorage.getItem(STORAGE_QUICKBUY_KEY);
         if (savedQB) {
@@ -121,7 +138,6 @@ export function DiscoverView() {
         if (savedQuery) {
           const parsedQuery = JSON.parse(savedQuery);
           if (typeof parsedQuery.searchQuery === 'string') setSearchQuery(parsedQuery.searchQuery);
-          if (typeof parsedQuery.selectedChain === 'string') setSelectedChain(parsedQuery.selectedChain);
           if (['5m', '1h', '24h'].includes(parsedQuery.timeWindow)) setTimeWindow(parsedQuery.timeWindow);
           if (typeof parsedQuery.showZeroLiquidity === 'boolean') setShowZeroLiquidity(parsedQuery.showZeroLiquidity);
           if (parsedQuery.globalFilters && typeof parsedQuery.globalFilters === 'object') setGlobalFilters(parsedQuery.globalFilters);
@@ -130,7 +146,11 @@ export function DiscoverView() {
         console.warn('Failed to load discovery layout', e);
       }
     }
-  }, []);
+  }, [selectedChain]);
+
+  useEffect(() => {
+    setDiscoveryQuery({ chain: selectedChain });
+  }, [selectedChain]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -148,12 +168,13 @@ export function DiscoverView() {
     setColumns(newCols);
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_COLUMNS_KEY, JSON.stringify(newCols));
+        const storageKey = selectedChain === 'robinhood' ? STORAGE_ROBINHOOD_COLUMNS_KEY : STORAGE_COLUMNS_KEY;
+        localStorage.setItem(storageKey, JSON.stringify(newCols));
       } catch (e) {
         console.warn('Failed to persist discovery columns', e);
       }
     }
-  }, []);
+  }, [selectedChain]);
 
   /**
    * Feed health for the header indicator.
@@ -263,7 +284,7 @@ export function DiscoverView() {
   ).length;
 
   return (
-    <div className="discovery-workspace flex flex-1 min-h-0 min-w-0 flex-col w-full bg-[#000000] text-xs">
+    <div className="discovery-workspace flex flex-1 min-h-0 min-w-0 flex-col w-full bg-[#06070B] text-xs">
       {/* Sticky Global Top Bar (Desktop Only) */}
       <div className="hidden md:block">
         <TerminalTopBar
@@ -297,19 +318,19 @@ export function DiscoverView() {
         />
       </div>
 
-      {/* Mobile Sub-Header & Feed Tab Selector matching Axiom Photo 2 */}
-      <div className="md:hidden flex flex-col gap-2 pt-2 px-2 border-b border-[#141414] bg-[#000000] shrink-0">
+      {/* Mobile Sub-Header & Feed Tab Selector */}
+      <div className="md:hidden flex flex-col gap-2 pt-2 px-2 border-b border-[#1E222D] bg-[#06070B] shrink-0">
         {/* Chain Pill + Preset/Settings row */}
         <div className="flex items-center justify-between px-1">
           <ChainPillSelector selectedChain={selectedChain} onSelectChain={setSelectedChain} />
           <button
             type="button"
             onClick={handleCycleQuickBuyPreset}
-            className="flex items-center gap-1.5 bg-[#0a0a0a] hover:bg-[#141414] border border-[#262626] rounded-full px-2.5 py-1 text-xs text-[#a3a3a3] hover:text-white transition-colors"
+            className="flex items-center gap-1.5 bg-[#11141B] hover:bg-[#1C202B] border border-[#222634] rounded-full px-2.5 py-1 text-xs text-[#828598] hover:text-[#F7F8F9] transition-colors"
             title="Preset 1 (Click to cycle Quick Buy amount)"
           >
-            <span className="font-semibold text-white font-mono">P1</span>
-            <Settings className="w-3 h-3 text-[#737373]" />
+            <span className="font-semibold text-[#F7F8F9] font-mono">P1</span>
+            <Settings className="w-3 h-3 text-[#828598]" />
           </button>
         </div>
 
@@ -317,7 +338,7 @@ export function DiscoverView() {
         <div
           role="tablist"
           aria-label="Discovery columns"
-          className="bg-[#0a0a0a] border border-[#1f1f1f] rounded-full p-1 flex items-center justify-between gap-1 mb-1"
+          className="bg-[#0D1015] border border-[#1E222D] rounded-full p-1 flex items-center justify-between gap-1 mb-1"
         >
           {columns.map((col) => {
             const isSelected = selectedColumnId === col.id;
@@ -329,8 +350,8 @@ export function DiscoverView() {
                 onClick={() => setActiveMobileColumnId(col.id)}
                 className={`flex-1 py-1.5 px-3 rounded-full text-xs font-semibold whitespace-nowrap transition-all text-center ${
                   isSelected
-                    ? 'bg-[#262626] text-white shadow-sm'
-                    : 'text-[#737373] hover:text-white'
+                    ? 'bg-[#526FFF]/20 text-[#F7F8F9] border border-[#526FFF]/40 shadow-sm'
+                    : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
                 }`}
               >
                 {col.title}
@@ -341,12 +362,12 @@ export function DiscoverView() {
       </div>
 
       {/* Main Workspace Feed Area */}
-      <div className="flex-1 min-h-0 min-w-0 pt-0 md:pt-2 flex flex-col h-full">
+      <div className="flex-1 min-h-0 min-w-0 pt-0 md:pt-1.5 flex flex-col h-full">
         {/* Mount each feed once; hidden duplicate copies competed for the
             same visible-card enrichment and socket budget. */}
         <div
-          className="discovery-columns-grid grid flex-1 h-full min-h-0 gap-0 md:gap-3 overflow-x-auto pb-1"
-          style={{ gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : `repeat(${columns.length}, minmax(290px, 1fr))` }}
+          className="discovery-columns-grid grid flex-1 h-full min-h-0 gap-0 border border-[#1E222D] rounded-[6px] overflow-hidden bg-[#0B0E14] overflow-x-auto"
+          style={{ gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : `repeat(${columns.length}, minmax(310px, 1fr))` }}
         >
           {(isMobile ? columns.filter((column) => column.id === selectedColumnId) : columns).map((col) => (
             <TerminalColumn

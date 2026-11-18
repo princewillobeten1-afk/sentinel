@@ -6,6 +6,8 @@ import { getTradeHistory } from '@/lib/market/trade-history';
 import { describeError } from '@/lib/server/describe-error';
 import { logger } from '@/lib/server/logger';
 import { measuredTradeUsd, mergeTradeTape, type TapeTrade } from '@/lib/market/trade-tape';
+import { getRobinhoodLiveTrades } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -131,6 +133,25 @@ export async function GET(
     const pages = Number.isFinite(pagesRaw) ? pagesRaw : 2;
 
     const { address, chain } = await params;
+    if (chain.toLowerCase() === 'robinhood') {
+      if (!isEvmAddress(address)) {
+        throw new ApiError('A valid Robinhood Chain contract address is required', 400);
+      }
+      const rh = await getRobinhoodLiveTrades(address, { limit, side, wallet });
+      return jsonResponse({
+        mint: address.toLowerCase(),
+        chain: 'robinhood',
+        count: rh.trades.length,
+        source: 'geckoterminal-robinhood',
+        poolAddress: rh.poolAddress,
+        coverage:
+          rh.trades.length > 0
+            ? 'Recent on-chain swaps from GeckoTerminal (Robinhood Chain), newest first.'
+            : 'No recent trades indexed for this Robinhood Chain token.',
+        trades: rh.trades,
+      });
+    }
+
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }

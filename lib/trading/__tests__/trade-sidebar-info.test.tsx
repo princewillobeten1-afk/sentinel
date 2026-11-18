@@ -30,4 +30,34 @@ describe('trade sidebar evidence labels', () => {
     fireEvent.focus(screen.getByLabelText('LP Locked', { exact: true }));
     expect((await screen.findByRole('tooltip')).textContent).toContain('deepest liquidity pool');
   });
+
+  it('clamps pro traders count so it never exceeds total holders count', () => {
+    const { container } = render(<TradeSidebarInfo data={{
+      mint: 'mint',
+      holdersCount: 17,
+      proTradersCount: 59,
+      ownershipEvidence: { status: 'measured', source: 'birdeye-holder-profile', observedAt: new Date().toISOString() },
+    }} loading={false} refresh={() => {}} />);
+
+    // Pro traders should be clamped to total holders (17), never 59
+    expect(screen.queryByText('59')).toBeNull();
+    expect(screen.getAllByText('17').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('colors LP Locked 100% as safe emerald and Top 10 31.8% as normal slate', () => {
+    const { container } = render(<TradeSidebarInfo data={{
+      mint: 'mint',
+      top10HoldingsPct: 31.8,
+      lpLockedPct: 100,
+      ownershipEvidence: { status: 'measured', source: 'birdeye-holder-profile', observedAt: new Date().toISOString() },
+      liquidityEvidence: { status: 'measured', source: 'rugcheck-largest-pool-lock', observedAt: new Date().toISOString() },
+    }} loading={false} refresh={() => {}} />);
+
+    const lpValue = screen.getByText('100.0%');
+    expect(lpValue.className).toContain('text-emerald-400');
+
+    const top10Value = screen.getByText('31.8%');
+    expect(top10Value.className).not.toContain('text-rose-400');
+    expect(top10Value.className).toContain('text-slate-200');
+  });
 });

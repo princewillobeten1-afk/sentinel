@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 import {
   LayoutDashboard,
   Wallet,
@@ -89,8 +90,8 @@ export function MobileNavDrawer() {
       onClose={() => setMobileNavOpen(false)}
       position="left"
       title={
-        <span className="flex items-center gap-2 text-sky-400 font-bold text-sm font-mono">
-          <Zap className="h-4 w-4 fill-current" /> PHIVEX NAV
+        <span className="flex items-center gap-2 text-white font-bold text-sm font-mono tracking-wider">
+          <PhivexLogoMark size="xs" /> PHIVEX NAV
         </span>
       }
     >

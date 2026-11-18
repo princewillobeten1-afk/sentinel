@@ -50,6 +50,7 @@ import { OpenOrdersDashboard } from '@/components/limit-orders/open-orders-dashb
 import { useAppState, useAppActions } from '@/lib/store';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import { mapLiveTradeFields } from '@/lib/market/trade-history-mappers';
+import { getExplorerTxUrl, getExplorerAddressUrl } from '@/lib/chains/chain-config';
 
 export type AxiomTabType =
   | 'trades'
@@ -158,6 +159,7 @@ export interface AxiomChartTabsProps {
   currentPrice?: number;
   tokenSymbol?: string;
   tokenMint?: string;
+  chain?: string;
   onOpenLimitBuilder?: () => void;
   onQuickTrade?: (type: 'buy' | 'sell', solAmount: number) => void;
   onPriceUpdate?: (price: number) => void;
@@ -294,10 +296,13 @@ export function AxiomChartTabs({
   currentPrice = 142.5,
   tokenSymbol = 'SOL',
   tokenMint = 'So11111111111111111111111111111111111111112',
+  chain = 'solana',
   onOpenLimitBuilder,
   onQuickTrade,
   onPriceUpdate,
 }: AxiomChartTabsProps) {
+  const normalizedChain = chain?.toLowerCase() === 'robinhood' ? 'robinhood' : 'solana';
+  const nativeSymbol = normalizedChain === 'robinhood' ? 'ETH' : 'SOL';
   const { connectedWallet, primaryWallet } = useAppState();
   const { addNotification, addExecutionLog, setQuickBuyOpen, setWalletModalOpen } = useAppActions();
 
@@ -381,7 +386,7 @@ export function AxiomChartTabs({
    * every token, and the tab never actually called this endpoint. Every field
    * here starts unknown and is filled only by what `/audit` measured.
    */
-  const { data: auditData, error: auditError, refreshing: auditRefreshing, refresh: refreshAudit } = useTokenAudit(safeMint, activeTab === 'audit');
+  const { data: auditData, error: auditError, refreshing: auditRefreshing, refresh: refreshAudit } = useTokenAudit(safeMint, activeTab === 'audit', normalizedChain);
 
   // Selected Map Node for Bubble Map Inspector
   const [selectedMapNode, setSelectedMapNode] = useState<MapClusterNode | null>(null);
@@ -610,7 +615,7 @@ export function AxiomChartTabs({
     const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
     tradesInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?limit=50${sideParam}`);
+      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/live-trades?limit=50${sideParam}`);
       const body = res.ok ? await res.json() : null;
       // Stale only if fresher rows already landed.
       if (request <= tradesAppliedRef.current) return;
@@ -635,11 +640,12 @@ export function AxiomChartTabs({
     } finally {
       tradesInFlightRef.current = false;
     }
-  }, [safeMint, tradeFilter, onPriceUpdate]);
+  }, [safeMint, normalizedChain, tradeFilter, onPriceUpdate]);
 
   const loadTopTraders = useCallback(async () => {
+    if (normalizedChain === 'robinhood') return;
     try {
-      const res = await fetch(`/api/v1/tokens/solana/${safeMint}/top-traders?limit=15`);
+      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/top-traders?limit=15`);
       const body = res.ok ? await res.json() : null;
       if (!Array.isArray(body?.data?.topTraders)) return;
       setTopTraders(body.data.topTraders);
@@ -649,7 +655,7 @@ export function AxiomChartTabs({
     } catch {
       // The table keeps its last rows; the next poll retries.
     }
-  }, [safeMint]);
+  }, [safeMint, normalizedChain]);
 
   // A different token starts from nothing, not from the last token's tape.
   useEffect(() => {
@@ -685,7 +691,7 @@ export function AxiomChartTabs({
     const creator = devProfile.creatorWallet;
     if (!creator) return;
     let alive = true;
-    fetch(`/api/v1/tokens/solana/${safeMint}/live-trades?wallet=${encodeURIComponent(creator)}&limit=50`)
+    fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/live-trades?wallet=${encodeURIComponent(creator)}&limit=50`)
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
         const rows = body?.data?.trades;
@@ -714,7 +720,7 @@ export function AxiomChartTabs({
     return () => {
       alive = false;
     };
-  }, [safeMint, devProfile.creatorWallet]);
+  }, [safeMint, normalizedChain, devProfile.creatorWallet]);
 
   // ---------------------------------------------------------------------------
   // API ROUTING: Fetch Data Dynamically from API Endpoints
@@ -722,64 +728,57 @@ export function AxiomChartTabs({
   useEffect(() => {
     let isMounted = true;
 
-    // 0. Aim the live stream at this token for as long as the page is open.
-    //
-    // Enrichment is budget-capped, so a market-wide sweep and a single token's
-    // tape cannot both be served. Focusing trades breadth for depth on the
-    // token actually being watched; the sweep resumes on unmount. Failure here
-    // is non-fatal — the tape then shows whatever was already captured.
-    void fetch('/api/v1/market/live/focus', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ mint: safeMint }),
-    }).catch(() => {});
+    // 0. Aim the live Solana stream at this token for as long as the page is open.
+    if (normalizedChain === 'solana') {
+      void fetch('/api/v1/market/live/focus', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mint: safeMint }),
+      }).catch(() => {});
+    }
 
     // 1. Trade tape — see `loadTrades`.
     void loadTrades();
 
-    // 2. Fetch Dev Activity
-    fetch(`/api/v1/tokens/solana/${safeMint}/dev-activity?filter=${devFilter}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        // `events` is always empty here (no timeline is reconstructed); the
-        // deployer's trades come from the tape instead — see the effect above.
-        // `/dev-activity` returns the deployer's real identity and mint
-        // history. Fields it cannot know stay null rather than being filled.
-        const profile = data?.data;
-        if (profile && isMounted) {
-          setDevProfile({
-            creatorWallet: profile.creatorAddress ?? null,
-            devMints: typeof profile.devMints === 'number' ? profile.devMints : null,
-            devMigrations: typeof profile.devMigrations === 'number' ? profile.devMigrations : null,
-            migrationRatePct:
-              typeof profile.migrationRatePct === 'number' ? profile.migrationRatePct : null,
-            mintAuthorityDisabled: profile.mintAuthorityDisabled ?? null,
-            freezeAuthorityDisabled: profile.freezeAuthorityDisabled ?? null,
-            // Jupiter's own read of the dev wallet's balance against supply.
-            currentHoldingSupplyPct:
-              typeof profile.devBalancePct === 'number' ? profile.devBalancePct : null,
-          });
-        }
-      })
-      .catch(() => {});
+    // 2. Fetch Dev Activity (Solana only)
+    if (normalizedChain === 'solana') {
+      fetch(`/api/v1/tokens/solana/${safeMint}/dev-activity?filter=${devFilter}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const profile = data?.data;
+          if (profile && isMounted) {
+            setDevProfile({
+              creatorWallet: profile.creatorAddress ?? null,
+              devMints: typeof profile.devMints === 'number' ? profile.devMints : null,
+              devMigrations: typeof profile.devMigrations === 'number' ? profile.devMigrations : null,
+              migrationRatePct:
+                typeof profile.migrationRatePct === 'number' ? profile.migrationRatePct : null,
+              mintAuthorityDisabled: profile.mintAuthorityDisabled ?? null,
+              freezeAuthorityDisabled: profile.freezeAuthorityDisabled ?? null,
+              currentHoldingSupplyPct:
+                typeof profile.devBalancePct === 'number' ? profile.devBalancePct : null,
+            });
+          }
+        })
+        .catch(() => {});
 
-
-    // 3. Fetch Bubble Map
-    fetch(`/api/v1/tokens/solana/${safeMint}/bubble-map`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const payload = data?.data;
-        if (!payload || !isMounted) return;
-        if (payload.nodes) setMapClusterNodes(payload.nodes);
-        setMapTop10ConcentrationPct(
-          typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
-        );
-      })
-      .catch(() => {});
+      // 3. Fetch Bubble Map (Solana only)
+      fetch(`/api/v1/tokens/solana/${safeMint}/bubble-map`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const payload = data?.data;
+          if (!payload || !isMounted) return;
+          if (payload.nodes) setMapClusterNodes(payload.nodes);
+          setMapTop10ConcentrationPct(
+            typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
+          );
+        })
+        .catch(() => {});
+    }
 
     // 4. Fetch Liquidity Pools
-    fetch(`/api/v1/tokens/solana/${safeMint}/liquidity`)
+    fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/liquidity`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.data?.pools && isMounted) {
@@ -805,7 +804,7 @@ export function AxiomChartTabs({
     // 5. Fetch Holders
     // Real concentration from chain state. The endpoint returns raw numbers,
     // so formatting happens here rather than rendering 7193508364031.43106.
-    fetch(`/api/v1/tokens/solana/${safeMint}/holders`)
+    fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/holders`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const payload = data?.data;
@@ -860,15 +859,17 @@ export function AxiomChartTabs({
 
     return () => {
       isMounted = false;
-      // Hand the budget back to the market-wide sweep.
-      void fetch('/api/v1/market/live/focus', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ mint: null }),
-      }).catch(() => {});
+      if (normalizedChain === 'solana') {
+        // Hand the budget back to the market-wide sweep.
+        void fetch('/api/v1/market/live/focus', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ mint: null }),
+        }).catch(() => {});
+      }
     };
-  }, [safeMint, tradeFilter, devFilter, loadTrades, loadTopTraders]);
+  }, [safeMint, normalizedChain, tradeFilter, devFilter, loadTrades, loadTopTraders]);
 
   // Calculate live expected output
   const solNum = parseFloat(instantSolAmount) || 0;
@@ -1137,12 +1138,12 @@ export function AxiomChartTabs({
   });
 
   return (
-    <div className={`rounded-xl border border-sentinel-750 bg-sentinel-900 shadow-card overflow-hidden transition-all duration-200 ${isExpanded ? 'ring-1 ring-sky-500/40' : ''}`}>
+    <div className={`rounded-[8px] border border-[#1E222D] bg-[#0D1015] overflow-hidden transition-all duration-200 ${isExpanded ? 'ring-1 ring-[#526FFF]/40' : ''}`}>
       
       {/* ========================================================================= */}
       {/* 1. Axiom-Style Sleek Navigation Header Bar                                */}
       {/* ========================================================================= */}
-      <div className="flex flex-wrap items-center justify-between border-b border-sentinel-800 bg-sentinel-950/90 px-3 py-1.5 gap-2 select-none">
+      <div className="flex flex-wrap items-center justify-between border-b border-[#1E222D] bg-[#10131A] px-3 py-1 gap-2 select-none">
         
         {/* Left Side: Horizontal Tab List with indicators */}
         <div className="terminal-detail-tabs flex min-w-0 max-w-full items-center gap-1 overflow-x-auto py-1 scrollbar-none overscroll-x-contain" aria-label="Token details">
@@ -1150,13 +1151,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('trades')}
             aria-pressed={activeTab === 'trades'}
-            className={`relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-2 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'trades'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+            <TrendingUp className="h-3.5 w-3.5 text-[#2FE3AC]" />
             <span>Trades</span>
           </button>
 
@@ -1164,17 +1165,15 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('positions')}
             aria-pressed={activeTab === 'positions'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'positions'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
             <span>Positions</span>
-            {/* Was a hardcoded 1 — the tab claimed a position for every visitor,
-                matching the fabricated one it opened onto. */}
             {userPosition && (
-              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-2xs font-mono text-emerald-400 font-bold">
+              <span className="rounded-full bg-[#2FE3AC]/15 border border-[#2FE3AC]/30 px-1.5 py-px text-[10px] font-mono text-[#2FE3AC] font-semibold">
                 1
               </span>
             )}
@@ -1184,13 +1183,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('orders')}
             aria-pressed={activeTab === 'orders'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'orders'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Target className="h-3.5 w-3.5 text-sky-400" />
+            <Target className="h-3.5 w-3.5 text-[#52C5FF]" />
             <span>Orders</span>
           </button>
 
@@ -1198,16 +1197,16 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('dev-activity')}
             aria-pressed={activeTab === 'dev-activity'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'dev-activity'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Activity className="h-3.5 w-3.5 text-rose-400" />
+            <Activity className="h-3.5 w-3.5 text-[#EC397A]" />
             <span>Dev Activity</span>
             {devProfile.currentHoldingSupplyPct !== null && (
-              <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-1.5 py-0.2 text-2xs font-mono text-rose-300 font-bold">
+              <span className="rounded-full bg-[#EC397A]/15 border border-[#EC397A]/30 px-1.5 py-px text-[10px] font-mono text-[#FF6166] font-semibold">
                 {devProfile.currentHoldingSupplyPct.toFixed(2)}% Dev
               </span>
             )}
@@ -1217,13 +1216,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('maps')}
             aria-pressed={activeTab === 'maps'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'maps'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Network className="h-3.5 w-3.5 text-cyan-400" />
+            <Network className="h-3.5 w-3.5 text-[#52C5FF]" />
             <span>Maps</span>
           </button>
 
@@ -1231,13 +1230,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('liquidity')}
             aria-pressed={activeTab === 'liquidity'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'liquidity'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Droplets className="h-3.5 w-3.5 text-blue-400" />
+            <Droplets className="h-3.5 w-3.5 text-[#6683FF]" />
             <span>Liquidity{totalLiquidityDisplay ? ` (${totalLiquidityDisplay})` : ''}</span>
           </button>
 
@@ -1245,13 +1244,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('audit')}
             aria-pressed={activeTab === 'audit'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'audit'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <ShieldCheck className="h-3.5 w-3.5 text-sky-400" />
+            <ShieldCheck className="h-3.5 w-3.5 text-[#526FFF]" />
             <span>Token Audit</span>
           </button>
 
@@ -1259,13 +1258,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('holders')}
             aria-pressed={activeTab === 'holders'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'holders'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Users className="h-3.5 w-3.5 text-slate-400" />
+            <Users className="h-3.5 w-3.5 text-[#828598]" />
             <span>Holders{holdersDisplay ? ` (${holdersDisplay})` : ''}</span>
           </button>
 
@@ -1273,13 +1272,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('top-traders')}
             aria-pressed={activeTab === 'top-traders'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'top-traders'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Award className="h-3.5 w-3.5 text-amber-400" />
+            <Award className="h-3.5 w-3.5 text-[#FFB224]" />
             <span>Top Traders</span>
           </button>
 
@@ -1287,14 +1286,13 @@ export function AxiomChartTabs({
           <button
             onClick={() => setActiveTab('dev-tokens')}
             aria-pressed={activeTab === 'dev-tokens'}
-            className={`relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
               activeTab === 'dev-tokens'
-                ? 'bg-sentinel-800/90 text-sky-300 shadow-sm border border-sentinel-700 font-bold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-900/60'
+                ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
-            <Code2 className="h-3.5 w-3.5 text-indigo-400" />
-            {/* Was "(100)" regardless of deployer. */}
+            <Code2 className="h-3.5 w-3.5 text-[#8EA2FF]" />
             <span>
               Dev History
               {devProfile.devMints === null ? '' : ` (${devProfile.devMints.toLocaleString()})`}
@@ -1302,47 +1300,47 @@ export function AxiomChartTabs({
           </button>
         </div>
 
-        {/* Right Side: Quick Instant Trade & Terminal Controls (matching Axiom bottom bar) */}
+        {/* Right Side: Quick Instant Trade & Terminal Controls */}
         <div className="flex items-center gap-2">
           
           {/* Instant Trade Toggle Button */}
           <button
             onClick={() => setShowInstantTrade(!showInstantTrade)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition shadow-sm ${
+            className={`inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-xs font-semibold transition ${
               showInstantTrade
-                ? 'border border-emerald-500/50 bg-emerald-500/20 text-emerald-300 shadow-glow-buy'
-                : 'border border-sentinel-700 bg-sentinel-800 text-slate-300 hover:text-white'
+                ? 'border border-[#2FE3AC]/40 bg-[#2FE3AC]/15 text-[#2FE3AC]'
+                : 'border border-[#1E222D] bg-[#151821] text-[#C8C9D1] hover:text-[#F7F8F9]'
             }`}
             title="Toggle Instant Trade Bar"
           >
-            <Zap className={`h-3.5 w-3.5 fill-current ${showInstantTrade ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <Zap className={`h-3.5 w-3.5 fill-current ${showInstantTrade ? 'text-[#2FE3AC]' : 'text-[#828598]'}`} />
             <span>Instant Trade</span>
-            <span className={`h-1.5 w-1.5 rounded-full ${showInstantTrade ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+            <span className={`h-1.5 w-1.5 rounded-full ${showInstantTrade ? 'bg-[#2FE3AC] animate-pulse' : 'bg-[#525866]'}`} />
           </button>
 
           {/* Currency Format Toggle (USD / SOL) */}
           <button
             onClick={() => setCurrencyMode(currencyMode === 'USD' ? 'SOL' : 'USD')}
-            className="inline-flex items-center gap-1 rounded-md border border-sentinel-800 bg-sentinel-900 px-2 py-1 text-2xs font-mono text-slate-300 hover:bg-sentinel-800 transition"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-[#1E222D] bg-[#11141B] px-2 py-1 text-[11px] font-mono text-[#C8C9D1] hover:bg-[#1C202B] transition"
             title="Toggle USD / SOL Denomination"
           >
-            <span className="text-slate-500">⇅</span>
+            <span className="text-[#828598]">⇅</span>
             <span>{currencyMode}</span>
           </button>
 
           {/* Refresh Action */}
           <button
             onClick={handleManualRefresh}
-            className="p-1 rounded-md border border-sentinel-800 bg-sentinel-900 text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition"
+            className="p-1.5 rounded-[6px] border border-[#1E222D] bg-[#11141B] text-[#828598] hover:text-[#F7F8F9] hover:bg-[#1C202B] transition"
             title="Refresh Table Data"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-sky-400' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-[#526FFF]' : ''}`} />
           </button>
 
           {/* Expand / Collapse Height */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 rounded-md border border-sentinel-800 bg-sentinel-900 text-slate-400 hover:text-slate-200 hover:bg-sentinel-800 transition hidden sm:inline-flex"
+            className="p-1.5 rounded-[6px] border border-[#1E222D] bg-[#11141B] text-[#828598] hover:text-[#F7F8F9] hover:bg-[#1C202B] transition hidden sm:inline-flex"
             title={isExpanded ? 'Collapse View' : 'Expand View'}
           >
             {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -1713,22 +1711,22 @@ export function AxiomChartTabs({
         {activeTab === 'trades' && (
           <div className="space-y-3">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-sentinel-800/80">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-[#1E222D]">
               <div className="flex items-center gap-1.5 font-mono text-xs">
                 {(['all', 'buy', 'sell', 'whale'] as const).map((filterKey) => (
                   <button
                     key={filterKey}
                     onClick={() => setTradeFilter(filterKey)}
-                    className={`px-2.5 py-0.8 rounded-md text-2xs font-bold uppercase transition ${
+                    className={`px-2.5 py-1 rounded-[5px] text-[11px] font-semibold uppercase transition ${
                       tradeFilter === filterKey
                         ? filterKey === 'buy'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          ? 'bg-[#2FE3AC]/15 text-[#2FE3AC] border border-[#2FE3AC]/35'
                           : filterKey === 'sell'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                          ? 'bg-[#EC397A]/15 text-[#EC397A] border border-[#EC397A]/35'
                           : filterKey === 'whale'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
-                        : 'text-slate-400 hover:text-slate-200 bg-sentinel-850'
+                          ? 'bg-[#FFB224]/15 text-[#FFB224] border border-[#FFB224]/35'
+                          : 'bg-[#526FFF]/15 text-[#8EA2FF] border border-[#526FFF]/35'
+                        : 'text-[#828598] hover:text-[#F7F8F9] bg-[#11141B] border border-[#1E222D]'
                     }`}
                   >
                     {filterKey === 'whale' ? '🐋 Whales (>5 SOL)' : filterKey}
@@ -1742,7 +1740,7 @@ export function AxiomChartTabs({
                   placeholder="Filter wallet / tx..."
                   value={tradeSearch}
                   onChange={(e) => setTradeSearch(e.target.value)}
-                  className="w-full rounded-md border border-sentinel-800 bg-sentinel-950 px-2.5 py-0.8 text-2xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  className="w-full rounded-[6px] border border-[#1E222D] focus:border-[#526FFF]/60 bg-[#080A0F] px-2.5 py-1 text-[11px] font-mono text-[#F7F8F9] placeholder-[#525866] outline-none transition-colors"
                 />
               </div>
             </div>
@@ -1751,7 +1749,7 @@ export function AxiomChartTabs({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs font-numeric border-collapse">
                 <thead>
-                  <tr className="border-b border-sentinel-800 text-2xs text-slate-400 font-mono uppercase tracking-wider">
+                  <tr className="border-b border-[#1E222D] text-[10px] text-[#828598] font-mono uppercase tracking-wider bg-[#0A0D12]">
                     <th className="py-1.5 px-2">Type</th>
                     <th className="py-1.5 px-2">Price</th>
                     <th className="py-1.5 px-2">Amount SOL</th>
@@ -1763,10 +1761,10 @@ export function AxiomChartTabs({
                     <th className="py-1.5 px-2 text-right">Tx</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-sentinel-800/60">
+                <tbody className="divide-y divide-[#1E222D]/60">
                   {filteredTrades.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-xs font-mono text-slate-500">
+                      <td colSpan={9} className="py-8 text-center text-xs font-mono text-[#828598]">
                         {tradesState === 'loading'
                           ? 'Loading trades…'
                           : tradesState === 'error'
@@ -1780,8 +1778,8 @@ export function AxiomChartTabs({
                   {filteredTrades.map((tr) => {
                     const parsedSol = tr.amountSolValue;
                     return (
-                    <tr key={tr.id} className="hover:bg-sentinel-800/50 transition-colors group">
-                      <td className="py-2 px-2 whitespace-nowrap">
+                    <tr key={tr.id} className="hover:bg-[#131720] transition-colors group">
+                      <td className="py-1.5 px-2 whitespace-nowrap">
                         <button
                           type="button"
                           disabled={!parsedSol}
@@ -1792,10 +1790,10 @@ export function AxiomChartTabs({
                           className="cursor-pointer focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <span
-                            className={`inline-flex items-center gap-1 font-bold font-mono px-2 py-0.5 rounded text-2xs uppercase transition active:scale-95 ${
+                            className={`inline-flex items-center gap-1 font-semibold font-mono px-2 py-0.5 rounded text-[10px] uppercase transition active:scale-95 ${
                               tr.type === 'buy'
-                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 hover:border-emerald-500/50'
-                                : 'bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 hover:border-rose-500/50'
+                                ? 'bg-[#2FE3AC]/12 text-[#2FE3AC] border border-[#2FE3AC]/30 hover:bg-[#2FE3AC]/25'
+                                : 'bg-[#EC397A]/12 text-[#EC397A] border border-[#EC397A]/30 hover:bg-[#EC397A]/25'
                             }`}
                           >
                             {tr.type === 'buy' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
@@ -1803,8 +1801,8 @@ export function AxiomChartTabs({
                           </span>
                         </button>
                       </td>
-                      <td className="py-2 px-2 font-bold text-slate-200">{tr.price}</td>
-                      <td className="py-2 px-2">
+                      <td className="py-1.5 px-2 font-semibold text-[#F7F8F9]">{tr.price}</td>
+                      <td className="py-1.5 px-2">
                         <button
                           type="button"
                           disabled={!parsedSol}
@@ -1812,29 +1810,29 @@ export function AxiomChartTabs({
                           title={parsedSol
                             ? `Click to load ${parsedSol} SOL into Order Form`
                             : 'SOL amount is unavailable for this trade'}
-                          className="flex items-center gap-1 font-bold text-white hover:text-sky-300 transition cursor-pointer disabled:cursor-not-allowed"
+                          className="flex items-center gap-1 font-semibold text-[#F7F8F9] hover:text-[#8EA2FF] transition cursor-pointer disabled:cursor-not-allowed"
                         >
                           <span>{tr.amountSol}</span>
                           {tr.isWhale && <span className="text-2xs" title="Whale Order">🐋</span>}
                         </button>
                       </td>
-                      <td className="py-2 px-2 text-slate-300 font-mono text-2xs">{tr.tokens}</td>
-                      <td className="py-2 px-2 font-bold text-slate-100">{currencyMode === 'USD' ? tr.valueUsd : tr.amountSol}</td>
-                      <td className="py-2 px-2 font-mono text-slate-400">
+                      <td className="py-1.5 px-2 text-[#C8C9D1] font-mono text-[11px]">{tr.tokens}</td>
+                      <td className="py-1.5 px-2 font-semibold text-[#F7F8F9]">{currencyMode === 'USD' ? tr.valueUsd : tr.amountSol}</td>
+                      <td className="py-1.5 px-2 font-mono text-[#828598]">
                         <button
                           onClick={() => handleCopy(tr.fullWallet ?? tr.wallet)}
-                          className="inline-flex items-center gap-1 hover:text-sky-300 transition"
+                          className="inline-flex items-center gap-1 hover:text-[#8EA2FF] transition"
                         >
                           <span>{tr.wallet}</span>
                           {copiedAddress === (tr.fullWallet ?? tr.wallet) ? (
-                            <Check className="h-3 w-3 text-emerald-400" />
+                            <Check className="h-3 w-3 text-[#2FE3AC]" />
                           ) : (
                             <Copy className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100" />
                           )}
                         </button>
                       </td>
-                      <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{tr.timestamp ? tapeAge(tr.timestamp) : tr.time}</td>
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-1.5 px-2 text-right font-mono text-[11px] text-[#828598]">{tr.timestamp ? tapeAge(tr.timestamp) : tr.time}</td>
+                      <td className="py-1.5 px-2 text-center">
                         <button
                           type="button"
                           disabled={!parsedSol}
@@ -1842,32 +1840,29 @@ export function AxiomChartTabs({
                           title={parsedSol
                             ? `Quick Trade: Load ${tr.type.toUpperCase()} ${parsedSol} SOL into Order Form`
                             : 'SOL amount is unavailable for this trade'}
-                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold transition shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                             tr.type === 'buy'
-                              ? 'bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30'
+                              ? 'bg-[#2FE3AC]/12 hover:bg-[#2FE3AC]/25 text-[#2FE3AC] border border-[#2FE3AC]/30'
+                              : 'bg-[#EC397A]/12 hover:bg-[#EC397A]/25 text-[#EC397A] border border-[#EC397A]/30'
                           }`}
                         >
                           <Zap className="h-2.5 w-2.5 fill-current" />
                           <span>{tr.type === 'buy' ? 'Buy' : 'Sell'}</span>
                         </button>
                       </td>
-                      <td className="py-2 px-2 text-right font-mono text-2xs">
-                        {/* A trade still confirming has no signature yet, and
-                            an explorer link built from a fabricated one leads
-                            nowhere. Say pending instead. */}
+                      <td className="py-1.5 px-2 text-right font-mono text-[11px]">
                         {tr.txHash ? (
                           <a
-                            href={`https://solscan.io/tx/${tr.txHash}`}
+                            href={getExplorerTxUrl(normalizedChain, tr.txHash)}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5"
+                            className="text-[#828598] hover:text-[#8EA2FF] inline-flex items-center gap-0.5"
                           >
                             <span>{tr.txHash.slice(0, 4)}</span>
                             <ExternalLink className="h-2.5 w-2.5" />
                           </a>
                         ) : (
-                          <span className="text-slate-600" title="Awaiting on-chain confirmation">pending</span>
+                          <span className="text-[#525866]" title="Awaiting on-chain confirmation">pending</span>
                         )}
                       </td>
                     </tr>
@@ -2183,7 +2178,7 @@ export function AxiomChartTabs({
                       <td className="py-2 px-2 text-right font-mono text-2xs text-slate-400">{act.time}</td>
                       <td className="py-2 px-2 text-right font-mono text-2xs">
                         <a
-                          href={`https://solscan.io/tx/${act.txHash}`}
+                          href={getExplorerTxUrl(normalizedChain, act.txHash)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-slate-500 hover:text-sky-400 inline-flex items-center gap-0.5"
@@ -2414,12 +2409,12 @@ export function AxiomChartTabs({
                       Copy Address
                     </button>
                     <a
-                      href={`https://solscan.io/account/${selectedMapNode.address}`}
+                      href={getExplorerAddressUrl(normalizedChain, selectedMapNode.address)}
                       target="_blank"
                       rel="noreferrer"
                       className="flex-1 py-1 px-2 rounded-lg bg-sentinel-900 hover:bg-sentinel-800 text-slate-300 hover:text-white font-mono text-2xs border border-sentinel-750 transition text-center flex items-center justify-center gap-1"
                     >
-                      Solscan <ExternalLink className="h-2.5 w-2.5" />
+                      {normalizedChain === 'robinhood' ? 'Explorer' : 'Solscan'} <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   </div>
                 )}
@@ -2496,7 +2491,7 @@ export function AxiomChartTabs({
                   <div className="pt-2 border-t border-sentinel-800/80 text-2xs font-mono text-slate-400 flex items-center justify-between">
                     <span>Pool: {pool.poolAddress.slice(0, 6)}...</span>
                     <a
-                      href={`https://solscan.io/account/${pool.poolAddress}`}
+                      href={getExplorerAddressUrl(normalizedChain, pool.poolAddress)}
                       target="_blank"
                       rel="noreferrer"
                       className="text-sky-400 hover:underline inline-flex items-center gap-0.5"
@@ -2671,15 +2666,25 @@ export function AxiomChartTabs({
                 chip where nothing checks the claim, never a green one. */}
             <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3.5 space-y-2.5 text-xs">
               <span className="text-2xs font-bold text-white font-mono uppercase tracking-wider block">
-                Contract & On-Chain Security
+                {normalizedChain === 'robinhood' ? 'EVM Contract & On-Chain Security (GoPlus)' : 'Contract & On-Chain Security'}
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-2xs">
-                {([
-                  ['Mint Authority', auditData.mintAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.mintAuthorityEvidence],
-                  ['Freeze Authority', auditData.freezeAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.freezeAuthorityEvidence],
-                  ['LP Burn Status', auditData.lpTokensBurned, 'Burnt', 'Not burnt', undefined],
-                  ['Honeypot / Tax', auditData.honeypotTaxZero, 'Clean', 'Tax detected', undefined],
-                ] as const).map(([label, value, passLabel, failLabel, evidence]) => (
+                {(normalizedChain === 'robinhood'
+                  ? ([
+                      ['Contract Verified', auditData.isContractVerified ?? null, 'Verified', 'Unverified', auditData.securityEvidence],
+                      ['Mintable', auditData.mintAuthorityDisabled, 'Not Mintable', 'Mintable', auditData.mintAuthorityEvidence],
+                      ['Blacklist / Pause', auditData.freezeAuthorityDisabled, 'None', 'Detected', auditData.freezeAuthorityEvidence],
+                      ['Honeypot Check', auditData.honeypotTaxZero, 'Clean', 'Flagged / Tax', auditData.securityEvidence],
+                      ['Proxy Contract', auditData.isProxy === null || auditData.isProxy === undefined ? null : !auditData.isProxy, 'Non-Proxy', 'Upgradeable Proxy', auditData.securityEvidence],
+                      ['LP Lock Status', auditData.liquidityLocked, 'Locked', 'Unlocked / Unverified', auditData.liquidityEvidence],
+                    ] as const)
+                  : ([
+                      ['Mint Authority', auditData.mintAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.mintAuthorityEvidence],
+                      ['Freeze Authority', auditData.freezeAuthorityDisabled, 'Revoked', 'ACTIVE', auditData.freezeAuthorityEvidence],
+                      ['LP Burn Status', auditData.lpTokensBurned, 'Burnt', 'Not burnt', undefined],
+                      ['Honeypot / Tax', auditData.honeypotTaxZero, 'Clean', 'Tax detected', undefined],
+                    ] as const)
+                ).map(([label, value, passLabel, failLabel, evidence]) => (
                   <div
                     key={label}
                     title={evidence ? `${formatDisplaySource(evidence.source)} · ${evidence.status} · ${evidence.observedAt || 'No observation'}` : 'No verification is performed for this check.'}
@@ -2699,10 +2704,33 @@ export function AxiomChartTabs({
                     </span>
                   </div>
                 ))}
+                {normalizedChain === 'robinhood' && (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800">
+                    <Percent className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                    <span className="text-slate-300">
+                      Buy / Sell Tax:{' '}
+                      {auditData.buyTaxPct !== undefined &&
+                      auditData.buyTaxPct !== null &&
+                      auditData.sellTaxPct !== undefined &&
+                      auditData.sellTaxPct !== null
+                        ? `${auditData.buyTaxPct.toFixed(1)}% / ${auditData.sellTaxPct.toFixed(1)}%`
+                        : 'Not verified'}
+                    </span>
+                  </div>
+                )}
+                {normalizedChain === 'robinhood' && auditData.ownerAddress && (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sentinel-950 border border-sentinel-800 truncate" title={auditData.ownerAddress}>
+                    <Lock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    <span className="text-slate-300 truncate">
+                      Owner: {auditData.ownerAddress.slice(0, 6)}...{auditData.ownerAddress.slice(-4)}
+                    </span>
+                  </div>
+                )}
               </div>
               <p className="text-2xs text-slate-500 font-mono">
-                Mint and freeze authority are read from the mint account. LP-burn status and honeypot/tax behavior
-                are not checked by this platform -- they show &quot;Not verified&quot; rather than an assumed pass.
+                {normalizedChain === 'robinhood'
+                  ? 'EVM contract verification, ownership, minting, tax, honeypot, and pause/blacklist flags are queried live from GoPlus Security (Chain ID 4663).'
+                  : 'Mint and freeze authority are read from the mint account. LP-burn status and honeypot/tax behavior are not checked by this platform -- they show "Not verified" rather than an assumed pass.'}
               </p>
             </div>
 
@@ -2792,11 +2820,11 @@ export function AxiomChartTabs({
                           </button>
                           {h.fullAddress && (
                             <a
-                              href={`https://solscan.io/account/${h.fullAddress}`}
+                              href={getExplorerAddressUrl(normalizedChain, h.fullAddress)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-slate-500 hover:text-sky-400 transition"
-                              title="View on Solscan"
+                              title={normalizedChain === 'robinhood' ? 'View on Robinhood Explorer' : 'View on Solscan'}
                             >
                               <ExternalLink className="h-2.5 w-2.5 opacity-60 hover:opacity-100" />
                             </a>

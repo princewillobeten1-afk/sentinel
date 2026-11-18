@@ -31,6 +31,22 @@ export interface QuoteRequest {
   marketId?: string; // Optional preferred market
 }
 
+export interface EvmSwapApprovalSpec {
+  kind: 'erc20' | 'permit2';
+  tokenAddress: string;
+  spender: string;
+  permit2Address?: string;
+  amountRaw: string;
+}
+
+export interface EvmSwapTxSpec {
+  chainId: number;
+  to: string;
+  data: string;
+  value: string;
+  approval?: EvmSwapApprovalSpec;
+}
+
 export interface Quote {
   id: string;
   chainId: string;
@@ -53,8 +69,14 @@ export interface Quote {
   expiresAt: string; // ISO timestamp
   provider: string; // e.g. "Jupiter Router (Solana)"
   isValid: boolean;
+  executionSupported?: boolean;
+  unavailableReason?: string;
+  routerAddress?: string | null;
   inputMint?: string;
   outputMint?: string;
+  /** EVM unsigned transaction calldata + ERC-20/Permit2 approval preflight requirement */
+  evmTx?: EvmSwapTxSpec;
+  gasEstimate?: string;
   /** Full provider quote retained for a later serialized swap preparation. */
   providerQuote?: unknown;
 }

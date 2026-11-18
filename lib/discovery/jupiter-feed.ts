@@ -241,6 +241,10 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
 
   const onCurve = isOnBondingCurve(token);
 
+  const hasZero5mWindow =
+    s5.numBuys === 0 && s5.numSells === 0;
+  const resolvedVolume5m = volume(s5) ?? (hasZero5mWindow ? 0 : undefined);
+
   const discoveryScore = calculateDiscoveryScore(
     {
       ageMinutes,
@@ -313,7 +317,7 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
     priceChange15m: num(s1h.priceChange) ?? num(s5.priceChange) ?? Number.NaN,
     priceChange1h: num(s1h.priceChange) ?? Number.NaN,
     priceChange24h: num(s24.priceChange) ?? Number.NaN,
-    volume5mUsd: money(volume(s5)),
+    volume5mUsd: money(resolvedVolume5m),
     volume1hUsd: money(volume(s1h)),
     volume24hUsd: money(volume(s24)),
     volumeChange15mPct: num(s1h.volumeChange) ?? Number.NaN,
@@ -393,6 +397,8 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
   // was in the response all along.
   const devBalance = num(token.audit?.devBalancePercentage);
   if (devBalance !== undefined) mapped.devHoldingsPct = Number(devBalance.toFixed(2));
+  const top10 = num(token.audit?.topHoldersPercentage);
+  if (top10 !== undefined) mapped.top10HoldingsPct = Number(top10.toFixed(2));
   if (token.dev) mapped.devAddress = token.dev;
   const devMints = num(token.audit?.devMints);
   if (devMints !== undefined) mapped.devMints = devMints;
@@ -404,6 +410,14 @@ export function mapJupiterToken(token: JupiterToken): DiscoveryToken {
       source: 'jupiter-token-api',
       observedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    };
+  }
+  if (holdersCount !== undefined || top10 !== undefined || devBalance !== undefined) {
+    mapped.ownershipEvidence = {
+      status: 'measured',
+      source: 'jupiter-token-api',
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
     };
   }
   if (token.audit?.mintAuthorityDisabled !== undefined || token.audit?.freezeAuthorityDisabled !== undefined) {

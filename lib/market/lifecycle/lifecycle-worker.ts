@@ -8,6 +8,7 @@ import { bondingCurveAddress, decodeBondingCurve, PUMPFUN_PROGRAM_ID } from './b
 import { fetchConfirmedSignatures, fetchMigrationWithFailover } from './migration-rpc';
 import { MigrationHistory } from './migration-history';
 import { fetchJupiterFeed, hasReadableCurve, type JupiterToken } from '@/lib/discovery/jupiter-feed';
+import { pollRecentSolanaLaunches } from '@/lib/discovery/live-solana-feed';
 import {
   applyCurveReading,
   evictStale,
@@ -75,6 +76,7 @@ function curveRpcUrl(): string {
 
 class LifecycleWorker {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private recentPollTimer: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
   private pendingMigrations = new Set<string>();
   private unsubscribeLifecycle: (() => void) | null = null;
@@ -175,6 +177,10 @@ class LifecycleWorker {
       this.scheduleCheckpoint();
     });
     this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
+    this.recentPollTimer = setInterval(() => {
+      void pollRecentSolanaLaunches().catch(() => undefined);
+    }, 2_000);
+    this.recentPollTimer.unref?.();
     logger.info('[lifecycle] worker started', {
       sweepIntervalMs: SWEEP_INTERVAL_MS,
       rpc: curveRpcUrl().replace(/api-key=[^&]+/, 'api-key=***'),
@@ -202,6 +208,8 @@ class LifecycleWorker {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.recentPollTimer) clearInterval(this.recentPollTimer);
+    this.recentPollTimer = null;
     if (this.checkpointTimer) clearTimeout(this.checkpointTimer);
     this.checkpointTimer = null;
     void this.writeCheckpoint();
@@ -474,7 +482,7 @@ class LifecycleWorker {
   }
 }
 
-const WORKER_REVISION = 5;
+const WORKER_REVISION = 6;
 const globalForLifecycle = globalThis as unknown as {
   lifecycleWorker?: LifecycleWorker;
   lifecycleWorkerRevision?: number;

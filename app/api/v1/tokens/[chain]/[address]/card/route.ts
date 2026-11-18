@@ -10,6 +10,8 @@ import { queueSecurityTarget } from '@/lib/market/enrichment/security-worker';
 import type { TradeSidebarSnapshot } from '@/lib/trading/sidebar-model';
 import { queueSidebarEnrichment, enrichSidebar } from '@/lib/trading/sidebar-enrichment';
 import { getLiquidityLock } from '@/lib/trading/rugcheck-liquidity';
+import { getRobinhoodTokenCard } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 
 export const dynamic = 'force-dynamic';
 const snapshots = new Map<string, { at: number; data: TradeSidebarSnapshot }>();
@@ -20,7 +22,12 @@ export async function GET(
 ) {
   try {
     const params = await Promise.resolve(context.params);
-    if (params.chain !== 'solana') throw new ApiError('Only Solana token cards are supported', 400);
+    const chain = params.chain.toLowerCase();
+    if (chain === 'robinhood') {
+      if (!isEvmAddress(params.address)) throw new ApiError('Invalid Robinhood token address', 400);
+      return jsonResponse({ token: await getRobinhoodTokenCard(params.address) });
+    }
+    if (chain !== 'solana') throw new ApiError('Only Solana and Robinhood token cards are supported', 400);
     let mint: string;
     try { mint = new PublicKey(params.address).toBase58(); } catch { throw new ApiError('Invalid mint address', 400); }
     queueAudit([mint]);
@@ -150,6 +157,26 @@ export async function GET(
     const finalToken = { ...data, ...merged };
     if ((finalToken.bondingStatus === 'bonding' || mint.endsWith('pump')) && typeof jupTop10 === 'number' && jupTop10 >= 0 && (finalToken.top10HoldingsPct === null || finalToken.top10HoldingsPct === undefined || (finalToken.top10HoldingsPct >= 80 && jupTop10 < 80))) {
       finalToken.top10HoldingsPct = Number(jupTop10.toFixed(2));
+    }
+    if (typeof finalToken.holdersCount === 'number' && finalToken.holdersCount >= 0) {
+      if (typeof finalToken.proTradersCount === 'number') {
+        finalToken.proTradersCount = Math.min(finalToken.proTradersCount, finalToken.holdersCount);
+      }
+      if (typeof finalToken.devCount === 'number') {
+        finalToken.devCount = Math.min(finalToken.devCount, finalToken.holdersCount);
+      }
+      if (typeof finalToken.sniperCount === 'number') {
+        finalToken.sniperCount = Math.min(finalToken.sniperCount, finalToken.holdersCount);
+      }
+      if (typeof finalToken.bundlerCount === 'number') {
+        finalToken.bundlerCount = Math.min(finalToken.bundlerCount, finalToken.holdersCount);
+      }
+      if (typeof finalToken.insiderCount === 'number') {
+        finalToken.insiderCount = Math.min(finalToken.insiderCount, finalToken.holdersCount);
+      }
+      if (typeof finalToken.kolsCount === 'number') {
+        finalToken.kolsCount = Math.min(finalToken.kolsCount, finalToken.holdersCount);
+      }
     }
     return jsonResponse({ token: finalToken }, 200, { 'Cache-Control': 'no-store' });
   } catch (error) { return errorResponse(error instanceof Error ? error : new ApiError('Token card unavailable', 500)); }

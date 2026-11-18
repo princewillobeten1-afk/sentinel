@@ -78,6 +78,7 @@ export interface DiscoverySnapshot {
 }
 
 const POLL_INTERVAL_MS = 4_000;
+const NEW_PAIRS_POLL_MS = 1_500;
 
 function emptySnapshot(): DiscoverySnapshot {
   return {
@@ -95,11 +96,14 @@ function emptySnapshot(): DiscoverySnapshot {
 
 let snapshot: DiscoverySnapshot = emptySnapshot();
 let timer: ReturnType<typeof setInterval> | null = null;
+let newPairsTimer: ReturnType<typeof setInterval> | null = null;
 let subscribers = 0;
 const listeners = new Set<() => void>();
 const sectionSubscribers = new Map<DiscoverySection, number>();
-let tickInFlight = false;
-let rerunAfterFlight = false;
+const sectionInFlight = new Set<DiscoverySection>();
+const sectionRerunAfterFlight = new Set<DiscoverySection>();
+const dirtySections = new Set<DiscoverySection>();
+const snapshotsByQuery = new Map<string, DiscoverySnapshot>();
 let queryRevision = 0;
 
 function activeSections(): DiscoverySection[] {
@@ -132,7 +136,7 @@ let paused = false;
 let pendingRefresh = false;
 
 /** Shortest gap between an event arriving and the fetch it triggers. */
-const NUDGE_DEBOUNCE_MS = 400;
+const NUDGE_DEBOUNCE_MS = 150;
 
 const subscribedTopics = new Set<string>();
 
@@ -164,9 +168,104 @@ interface FeedResponse {
   tokens?: DiscoveryToken[];
 }
 
+function queryKey(c = chain, w = timeWindow, z = includeZeroLiquidity): string {
+  return `${c}:${w}:${z}`;
+}
+
 function tokensFrom(body: FeedResponse): DiscoveryToken[] {
   const rows = body?.data?.tokens ?? body?.tokens;
   return Array.isArray(rows) ? rows : [];
+}
+
+async function tickSection(section: DiscoverySection, force = false): Promise<void> {
+  if (paused) {
+    pendingRefresh = true;
+    snapshot = { ...snapshot, pendingRefresh: true };
+    listeners.forEach((notify) => notify());
+    return;
+  }
+
+  // Skipped while hidden: a background tab polling every few seconds is pure
+  // cost, and the first tick on focus refreshes everything anyway.
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+  if ((sectionSubscribers.get(section) ?? 0) <= 0) return;
+
+  if (sectionInFlight.has(section)) {
+    if (force) sectionRerunAfterFlight.add(section);
+    return;
+  }
+
+  sectionInFlight.add(section);
+  const revision = queryRevision;
+  const targetKey = queryKey();
+  const endpoint = SECTION_ENDPOINTS[section] ?? section;
+
+  try {
+    const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const result = await fetchOnce<FeedResponse>(
+      `/api/v1/discovery/${endpoint}?chain=${chain}&timeWindow=${timeWindow}&limit=50` +
+        (includeZeroLiquidity ? '&includeZeroLiquidity=true' : ''),
+      { credentials: 'include' },
+    );
+    const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
+    const now = Date.now();
+
+    if (revision !== queryRevision) return;
+    if (paused) {
+      pendingRefresh = true;
+      snapshot = { ...snapshot, pendingRefresh: true };
+      listeners.forEach((notify) => notify());
+      return;
+    }
+
+    pendingRefresh = false;
+    snapshot = {
+      ...snapshot,
+      sections: {
+        ...snapshot.sections,
+        [section]: { state: 'live', tokens: tokensFrom(result), at: now },
+      },
+      rttMs,
+      at: now,
+      hasLoaded: true,
+      paused,
+      pausedAt: snapshot.pausedAt,
+      pendingRefresh,
+    };
+    snapshotsByQuery.set(targetKey, snapshot);
+    listeners.forEach((notify) => notify());
+  } catch (reason) {
+    if (revision !== queryRevision) return;
+    const now = Date.now();
+    const previous = snapshot.sections[section];
+    pendingRefresh = false;
+    snapshot = {
+      ...snapshot,
+      sections: {
+        ...snapshot.sections,
+        [section]: {
+          state: 'stale',
+          tokens: previous?.tokens ?? [],
+          at: previous?.at ?? 0,
+          error: reason instanceof Error ? reason.message : String(reason),
+        },
+      },
+      at: now,
+      hasLoaded: true,
+      paused,
+      pausedAt: snapshot.pausedAt,
+      pendingRefresh,
+    };
+    snapshotsByQuery.set(targetKey, snapshot);
+    listeners.forEach((notify) => notify());
+  } finally {
+    if (revision === queryRevision) {
+      sectionInFlight.delete(section);
+      if (sectionRerunAfterFlight.delete(section) && timer && subscribers > 0) {
+        void tickSection(section);
+      }
+    }
+  }
 }
 
 async function tick(force = false): Promise<void> {
@@ -181,89 +280,60 @@ async function tick(force = false): Promise<void> {
   // cost, and the first tick on focus refreshes everything anyway.
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
 
-  if (tickInFlight) {
-    if (force) rerunAfterFlight = true;
-    return;
-  }
   const requestedSections = activeSections();
   if (requestedSections.length === 0) return;
-  tickInFlight = true;
-  const revision = queryRevision;
 
-  try {
+  await Promise.allSettled(requestedSections.map((section) => tickSection(section, force)));
+}
 
-  const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+function applyPushedToken(targetSection: DiscoverySection, token: DiscoveryToken): void {
+  if (paused || !token?.mint) return;
+  if ((sectionSubscribers.get(targetSection) ?? 0) <= 0) return;
 
-  const results = await Promise.allSettled(
-    requestedSections.map((section) =>
-      fetchOnce<FeedResponse>(
-        `/api/v1/discovery/${SECTION_ENDPOINTS[section] ?? section}?chain=${chain}&timeWindow=${timeWindow}&limit=50` +
-          (includeZeroLiquidity ? '&includeZeroLiquidity=true' : ''),
-        { credentials: 'include' },
-      ),
-    ),
-  );
+  const prevSection = snapshot.sections[targetSection];
+  const prevTokens = prevSection?.tokens ?? [];
+  const mintLower = token.mint.toLowerCase();
+  const existingIdx = prevTokens.findIndex((t) => t.mint.toLowerCase() === mintLower);
+  const nextTokens =
+    existingIdx >= 0
+      ? prevTokens.map((t, idx) => (idx === existingIdx ? { ...t, ...token } : t))
+      : [token, ...prevTokens].slice(0, 50);
 
-  const rttMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
   const now = Date.now();
-
-  // Freeze is an inspection boundary. An already-running request may finish
-  // after it, but must not replace the rows the trader is inspecting.
-  if (revision !== queryRevision) {
-    rerunAfterFlight = true;
-    return;
-  }
-  if (paused) {
-    pendingRefresh = true;
-    snapshot = { ...snapshot, pendingRefresh: true };
-    listeners.forEach((notify) => notify());
-    return;
-  }
-
-  const sections: Record<string, SectionSnapshot> = { ...snapshot.sections };
-  requestedSections.forEach((section, index) => {
-    const result = results[index];
-    const previous = snapshot.sections[section];
-
-    if (result.status === 'fulfilled') {
-      sections[section] = { state: 'live', tokens: tokensFrom(result.value), at: now };
-      return;
-    }
-
-    // Keep the previous rows so a blip does not empty the column, but mark them
-    // stale and carry the reason. Never silently.
-    sections[section] = {
-      state: 'stale',
-      tokens: previous?.tokens ?? [],
-      at: previous?.at ?? 0,
-      error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-    };
-  });
-
-  pendingRefresh = false;
-  snapshot = { sections, rttMs, at: now, hasLoaded: true, paused, pausedAt: snapshot.pausedAt, pendingRefresh };
+  snapshot = {
+    ...snapshot,
+    sections: {
+      ...snapshot.sections,
+      [targetSection]: {
+        state: 'live',
+        tokens: nextTokens,
+        at: now,
+      },
+    },
+    at: now,
+    hasLoaded: true,
+  };
+  snapshotsByQuery.set(queryKey(), snapshot);
   listeners.forEach((notify) => notify());
-  } finally {
-    tickInFlight = false;
-    if (rerunAfterFlight && timer && subscribers > 0) {
-      rerunAfterFlight = false;
-      void tick();
-    }
-  }
 }
 
 /**
- * Brings the next fetch forward after a live event.
+ * Brings the next fetch forward after a live event for the dirtied section(s).
  *
  * Debounced because launches arrive in bursts — ten `TOKEN_CREATED` events in
  * a second must cost one fetch, not ten. Without this the socket would be
  * strictly worse than the timer it is meant to improve on.
  */
-function nudge(): void {
+function nudge(targetSection?: DiscoverySection): void {
+  if (targetSection) dirtySections.add(targetSection);
+  else activeSections().forEach((s) => dirtySections.add(s));
+
   if (nudgeTimer) return;
   nudgeTimer = setTimeout(() => {
     nudgeTimer = null;
-    void tick(true);
+    const toRefresh = dirtySections.size > 0 ? [...dirtySections] : activeSections();
+    dirtySections.clear();
+    void Promise.allSettled(toRefresh.map((s) => tickSection(s, true)));
   }, NUDGE_DEBOUNCE_MS);
 }
 
@@ -296,7 +366,11 @@ function connectSocket(): void {
   };
 
   next.onmessage = (event) => {
-    let payload: { type?: string; topic?: string };
+    let payload: {
+      type?: string;
+      topic?: string;
+      data?: { chain?: string; token?: DiscoveryToken };
+    };
     try {
       payload = JSON.parse(String(event.data));
     } catch {
@@ -313,11 +387,21 @@ function connectSocket(): void {
       return;
     }
 
-    // Any event on a discovery topic means that section changed. Which section
-    // is not read: the fetch refreshes all three anyway, and acting on the
-    // topic name would make a dropped frame look like a section with no news.
     if (payload.type === 'event' && payload.topic?.startsWith('feed.discovery:')) {
-      nudge();
+      const topicSection = payload.topic.slice('feed.discovery:'.length);
+      const isValidSection =
+        topicSection !== 'all' && DISCOVERY_SECTIONS.includes(topicSection as DiscoverySection);
+      const targetSection = isValidSection ? (topicSection as DiscoverySection) : undefined;
+
+      const pushed = payload.data;
+      if (targetSection && pushed?.token?.mint) {
+        const pushedChain = (pushed.chain ?? pushed.token.chain ?? 'solana').toLowerCase();
+        if (pushedChain === chain.toLowerCase()) {
+          applyPushedToken(targetSection, pushed.token);
+        }
+      }
+
+      nudge(targetSection);
     }
   };
 
@@ -371,12 +455,18 @@ function start(): void {
   if (timer) return;
   void tick();
   timer = setInterval(() => void tick(), POLL_INTERVAL_MS);
+  newPairsTimer = setInterval(() => {
+    if ((sectionSubscribers.get('new') ?? 0) > 0) void tickSection('new');
+  }, NEW_PAIRS_POLL_MS);
   connectSocket();
 }
 
 function stop(): void {
   if (timer) clearInterval(timer);
   timer = null;
+  if (newPairsTimer) clearInterval(newPairsTimer);
+  newPairsTimer = null;
+  dirtySections.clear();
   disconnectSocket();
 }
 
@@ -396,7 +486,7 @@ export function subscribeToDiscovery(listener: () => void, section?: DiscoverySe
   if (subscribers === 1) start();
   else if (section) {
     reconcileTopics();
-    void tick(true);
+    void tickSection(section, true);
   }
 
   return () => {
@@ -463,8 +553,9 @@ export function getSection(section: DiscoverySection): SectionSnapshot {
 }
 
 /**
- * Changes the shared query. Resets to loading rather than showing the previous
- * chain's rows under the new label.
+ * Changes the shared query. Restores cached snapshot for the target query when
+ * available so switching chains never flashes a blank screen, while refreshing
+ * live in the background.
  */
 export function setDiscoveryQuery(next: {
   chain?: string;
@@ -477,11 +568,20 @@ export function setDiscoveryQuery(next: {
     (next.includeZeroLiquidity !== undefined && next.includeZeroLiquidity !== includeZeroLiquidity);
   if (!changed) return;
 
+  if (snapshot.hasLoaded) {
+    snapshotsByQuery.set(queryKey(), snapshot);
+  }
+
   chain = next.chain ?? chain;
   timeWindow = next.timeWindow ?? timeWindow;
   includeZeroLiquidity = next.includeZeroLiquidity ?? includeZeroLiquidity;
   queryRevision += 1;
-  snapshot = emptySnapshot();
+  sectionInFlight.clear();
+  sectionRerunAfterFlight.clear();
+  dirtySections.clear();
+
+  const cached = snapshotsByQuery.get(queryKey());
+  snapshot = cached && cached.hasLoaded ? cached : emptySnapshot();
   listeners.forEach((notify) => notify());
   if (timer) void tick(true);
 }
@@ -501,11 +601,13 @@ export function refreshDiscovery(): void {
 export function __resetDiscoveryStore(): void {
   stop();
   snapshot = emptySnapshot();
+  snapshotsByQuery.clear();
   listeners.clear();
   subscribers = 0;
   sectionSubscribers.clear();
-  tickInFlight = false;
-  rerunAfterFlight = false;
+  sectionInFlight.clear();
+  sectionRerunAfterFlight.clear();
+  dirtySections.clear();
   queryRevision = 0;
   chain = 'solana';
   timeWindow = '15m';

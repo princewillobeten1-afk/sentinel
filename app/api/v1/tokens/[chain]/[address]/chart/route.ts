@@ -3,8 +3,9 @@ import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { validateSchema } from '@/lib/server/validation';
 import { ApiError } from '@/lib/server/errors';
 import { withApiGateway } from '@/lib/server/api-gateway';
-import { CHART_TIMEFRAMES, isSolanaMint } from '@/lib/market/chart-model';
+import { CHART_TIMEFRAMES, isEvmTokenAddress, isSolanaMint } from '@/lib/market/chart-model';
 import { getChartHistory } from '@/lib/market/chart-history';
+import { getRobinhoodChartHistory } from '@/lib/market/robinhood-token-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +25,17 @@ export const GET = withApiGateway(
     try {
       const url = new URL(request.url);
       const query = validateSchema(chartQuerySchema, Object.fromEntries(url.searchParams));
+      const chain = params.chain.toLowerCase();
 
-      if (params.chain.toLowerCase() !== 'solana' || !isSolanaMint(params.address)) {
+      if (chain === 'robinhood') {
+        if (!isEvmTokenAddress(params.address)) {
+          throw new ApiError('A valid Robinhood Chain contract address is required for this chart.', 400);
+        }
+        const snapshot = await getRobinhoodChartHistory(params.address, query.timeframe, query.limit, query.before);
+        return jsonResponse(snapshot, 200, { 'Cache-Control': 'no-store' });
+      }
+
+      if (chain !== 'solana' || !isSolanaMint(params.address)) {
         throw new ApiError('A valid Solana mint is required for this chart.', 400);
       }
       const snapshot = await getChartHistory(params.address, query.timeframe, query.limit, query.before);

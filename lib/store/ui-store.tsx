@@ -3,6 +3,12 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AppView, DensityMode, NetworkId } from '@/lib/store';
 import {
+  SupportedChainKey,
+  ROBINHOOD_WETH_ADDRESS,
+  normalizeChainKey,
+} from '@/lib/chains/chain-config';
+import { setDiscoveryQuery } from '@/lib/discovery/discovery-store';
+import {
   UI_SCALE_MIN,
   UI_SCALE_MAX,
   UI_SCALE_DEFAULT,
@@ -29,6 +35,7 @@ export { UI_SCALE_MIN, UI_SCALE_MAX, UI_SCALE_DEFAULT, clampUiScale } from './ui
 interface UIState {
   activeView: AppView;
   activeNetwork: NetworkId;
+  activeChain: SupportedChainKey;
   density: DensityMode;
   theme: ThemeMode;
   uiScale: number;
@@ -43,6 +50,7 @@ interface UIState {
 interface UIActions {
   setActiveView: (view: AppView) => void;
   setActiveNetwork: (network: NetworkId) => void;
+  setActiveChain: (chain: SupportedChainKey) => void;
   setDensity: (density: DensityMode) => void;
   setTheme: (theme: ThemeMode) => void;
   /** Clamped to 10–200. */
@@ -60,6 +68,8 @@ interface UIActions {
 const UIStateContext = createContext<UIState | undefined>(undefined);
 const UIActionsContext = createContext<UIActions | undefined>(undefined);
 
+const ACTIVE_CHAIN_STORAGE_KEY = 'sentinel_active_chain';
+
 const DEFAULT_SELECTED_TOKEN: SelectedToken = {
   mint: 'So11111111111111111111111111111111111111112',
   symbol: 'SOL',
@@ -67,9 +77,17 @@ const DEFAULT_SELECTED_TOKEN: SelectedToken = {
   chain: 'solana',
 };
 
+const DEFAULT_ROBINHOOD_TOKEN: SelectedToken = {
+  mint: ROBINHOOD_WETH_ADDRESS,
+  symbol: 'WETH',
+  name: 'Wrapped Ether (Robinhood Chain)',
+  chain: 'robinhood',
+};
+
 export function UIStoreProvider({ children }: { children: React.ReactNode }) {
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [activeNetwork, setActiveNetwork] = useState<NetworkId>('mainnet');
+  const [activeChain, setActiveChainState] = useState<SupportedChainKey>('solana');
   const [density, setDensity] = useState<DensityMode>('standard');
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -87,8 +105,33 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const saved = window.localStorage.getItem(UI_SCALE_STORAGE_KEY);
       if (saved !== null) setUiScaleState(clampUiScale(Number(saved)));
+      const savedChain = window.localStorage.getItem(ACTIVE_CHAIN_STORAGE_KEY);
+      if (savedChain) {
+        const normalized = normalizeChainKey(savedChain);
+        setActiveChainState(normalized);
+        setDiscoveryQuery({ chain: normalized });
+        if (normalized === 'robinhood') {
+          setSelectedToken((prev) => (prev.chain === 'robinhood' ? prev : DEFAULT_ROBINHOOD_TOKEN));
+        }
+      }
     } catch {
       // Private mode or storage disabled — the default is fine.
+    }
+  }, []);
+
+  const setActiveChain = useCallback((chainInput: SupportedChainKey) => {
+    const chain = normalizeChainKey(chainInput);
+    setActiveChainState(chain);
+    setDiscoveryQuery({ chain });
+    setSelectedToken((prev) => {
+      const prevChain = normalizeChainKey(prev.chain);
+      if (prevChain === chain) return prev;
+      return chain === 'robinhood' ? DEFAULT_ROBINHOOD_TOKEN : DEFAULT_SELECTED_TOKEN;
+    });
+    try {
+      window.localStorage.setItem(ACTIVE_CHAIN_STORAGE_KEY, chain);
+    } catch {
+      // Ignore storage failures
     }
   }, []);
 
@@ -148,6 +191,7 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
       value={{
         activeView,
         activeNetwork,
+        activeChain,
         density,
         theme,
         uiScale,
@@ -163,6 +207,7 @@ export function UIStoreProvider({ children }: { children: React.ReactNode }) {
         value={{
           setActiveView,
           setActiveNetwork,
+          setActiveChain,
           setDensity,
           setTheme,
           setUiScale,

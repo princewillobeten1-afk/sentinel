@@ -91,11 +91,18 @@ export function formatSmartPrice(val: number | string | undefined): string {
 export const formatCount = formatCountBase;
 
 function CardSocialLinks({ token }: { token: DiscoveryToken }) {
+  const isRobinhood = token.chain?.toLowerCase() === 'robinhood';
   const links = [
     { href: token.websiteUrl, label: 'Website', Icon: Globe },
     { href: token.telegramUrl, label: 'Telegram', Icon: Send },
     { href: token.twitterUrl || `https://x.com/search?q=${encodeURIComponent(token.mint)}`, label: token.twitterUrl ? 'Official X account' : 'Search X for this contract address', Icon: Twitter },
-    { href: `https://solscan.io/token/${token.mint}`, label: 'Solscan', Icon: Search },
+    {
+      href: isRobinhood
+        ? `https://robinhoodchain.blockscout.com/token/${token.mint}`
+        : `https://solscan.io/token/${token.mint}`,
+      label: isRobinhood ? 'Robinhood Explorer' : 'Solscan',
+      Icon: Search,
+    },
   ];
   return <div className="discovery-card-socials flex items-center gap-0.5 text-slate-500">
     {links.filter(link => link.href).map(({ href, label, Icon }) => (
@@ -297,8 +304,11 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
     setLiveTxCount(finiteOrNull(txs) ?? (measuredBuys !== null && measuredSells !== null ? measuredBuys + measuredSells : null));
   }, [timeWindow, token.mint, token.buysCount5m, token.buysCount1h, token.buysCount24h, token.sellsCount5m, token.sellsCount1h, token.sellsCount24h, token.txCount5m, token.txCount1h, token.txCount24h]);
 
-  // Live elapsed ticker for seconds-accurate age
+  // Live elapsed ticker for seconds-accurate age, reset whenever server ageMinutes refreshes
   const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    setElapsedSec(0);
+  }, [token.mint, token.ageMinutes]);
   useEffect(() => {
     const timer = setInterval(() => setElapsedSec((s) => s + 1), 1000);
     return () => clearInterval(timer);
@@ -789,8 +799,6 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
   }
 
   const isHighMcap = Number(marketCapUsd) >= 40000 || isMigrated;
-  const snipersCountFormatted = proTraders !== null && proTraders !== undefined ? formatCount(proTraders) : '0';
-  const insidersCountFormatted = kols !== null && kols !== undefined ? formatCount(kols) : '0';
 
   return (
     <div
@@ -840,11 +848,15 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             <Bell size={13} />
           </button>
           <Link
-            href={`https://solscan.io/token/${token.mint}`}
+            href={
+              token.chain?.toLowerCase() === 'robinhood'
+                ? `https://robinhoodchain.blockscout.com/token/${token.mint}`
+                : `https://solscan.io/token/${token.mint}`
+            }
             target="_blank"
             rel="noreferrer"
-            title="Inspect on Solscan"
-            aria-label={`Inspect ${token.symbol} on Solscan`}
+            title={token.chain?.toLowerCase() === 'robinhood' ? 'Inspect on Blockscout' : 'Inspect on Solscan'}
+            aria-label={`Inspect ${token.symbol} on ${token.chain?.toLowerCase() === 'robinhood' ? 'Blockscout' : 'Solscan'}`}
             className="discovery-icon-button"
           >
             <Search size={13} />
@@ -853,7 +865,15 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
         {/* Square Avatar + Status Badge + Truncated Address */}
         <div className="flex flex-col items-center gap-1">
-          <div className={`discovery-card-avatar-wrap border ${isMigrated ? 'border-amber-500/60' : 'border-rose-500/50'}`}>
+          <div
+            className={`discovery-card-avatar-wrap border transition-colors ${
+              isMigrated
+                ? 'border-[#FFB224]/60 shadow-[0_0_10px_rgba(255,178,36,0.18)]'
+                : shouldRenderBondingCurve
+                  ? 'border-[#2FE3AC]/50 shadow-[0_0_8px_rgba(47,227,172,0.16)]'
+                  : 'border-[#526FFF]/40 group-hover:border-[#526FFF]/75'
+            }`}
+          >
             <TokenAvatar
               src={token.logoURI}
               symbol={token.symbol}
@@ -867,7 +887,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             {(isMigrated || shouldRenderBondingCurve) && (
               <span
                 className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] shadow-sm ${
-                  isMigrated ? 'bg-amber-400 text-slate-950 font-bold' : 'bg-rose-500 text-white font-bold'
+                  isMigrated ? 'bg-[#FFB224] text-[#06070B] font-bold' : 'bg-[#2FE3AC] text-[#04130E] font-bold'
                 }`}
                 title={isMigrated ? 'Graduated pool' : 'Bonding curve'}
               >
@@ -884,16 +904,16 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             aria-label={`Copy contract address for ${token.symbol}`}
             title={copied ? 'Copied' : token.mint}
           >
-            {copied ? <span className="text-emerald-400 flex items-center gap-0.5"><Check size={10} /> Copied</span> : shortMint}
+            {copied ? <span className="text-[#2FE3AC] flex items-center gap-0.5"><Check size={10} /> Copied</span> : shortMint}
           </button>
         </div>
       </div>
 
       {/* RIGHT AREA: 5 Distinct Rows */}
       <div className="discovery-card-content">
-        {/* ROW 1: Symbol + Name + Copy ... Volume + Market Cap */}
+        {/* ROW 1: Symbol + Name + Copy + Hover Tools ... Volume + Market Cap */}
         <div className="discovery-card-row-header">
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
             <span className="discovery-card-symbol" title={token.symbol}>
               {token.symbol}
             </span>
@@ -903,32 +923,83 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             <button
               type="button"
               onClick={handleCopyAddress}
-              className="discovery-icon-button"
+              className="discovery-icon-button !min-w-[18px] !min-h-[18px]"
               aria-label={`Copy ${token.symbol} address`}
               title={copied ? 'Copied' : 'Copy contract address'}
             >
-              {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+              {copied ? <Check size={11} className="text-[#2FE3AC]" /> : <Copy size={11} />}
             </button>
             {token.hasDeceptiveName && (
               <LegendTooltip label="Deceptive name" definition="Invisible characters were removed from this name. Verify the contract address before trading.">
-                <span className="text-rose-400 text-2xs font-semibold">NAME!</span>
+                <span className="text-[#FF6166] text-2xs font-semibold shrink-0">NAME!</span>
               </LegendTooltip>
             )}
             {(token.duplicateCount ?? 1) > 1 && (
               <LegendTooltip label="Duplicate launches" definition={`${token.duplicateCount} tokens launched together with this name and symbol. The most liquid is shown.`}>
-                <span className="text-amber-400 text-2xs font-numeric">×{token.duplicateCount}</span>
+                <span className="text-[#FFB224] text-2xs font-numeric shrink-0">×{token.duplicateCount}</span>
               </LegendTooltip>
             )}
+            <div className="discovery-card-tools hidden md:flex items-center gap-0.5 ml-0.5 opacity-60 group-hover:opacity-100 focus-within:opacity-100 transition-opacity" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  setShowSafety((open) => !open);
+                }}
+                aria-expanded={showSafety}
+                aria-controls={safetyId}
+                aria-label={`Safety details for ${token.symbol}`}
+                className={`discovery-icon-button !min-w-[18px] !min-h-[18px] ${showSafety ? 'text-[#52C5FF]' : ''}`}
+                title="Safety details"
+              >
+                <ShieldCheck size={12} />
+                <ChevronDown size={9} className={showSafety ? 'rotate-180' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={handleToggleWatchlist}
+                aria-label="Toggle watchlist"
+                aria-pressed={isWatchlisted}
+                title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
+                className={`discovery-icon-button !min-w-[18px] !min-h-[18px] ${isWatchlisted ? 'text-[#FFB224]' : ''}`}
+              >
+                <Star size={12} fill={isWatchlisted ? 'currentColor' : 'none'} />
+              </button>
+              <Popover
+                trigger={
+                  <button type="button" className="discovery-icon-button !min-w-[18px] !min-h-[18px]" aria-label={`Token actions for ${token.symbol}`}>
+                    <MoreHorizontal size={12} />
+                  </button>
+                }
+                className="discovery-actions-popover w-44"
+              >
+                <div role="menu" aria-label={`Manage ${token.symbol}`} className="flex flex-col">
+                  <button type="button" role="menuitem" onClick={() => hideToken(token.mint)} className="discovery-action-item">
+                    <EyeOff size={14} />Hide token
+                  </button>
+                  {devAddress && (
+                    <button type="button" role="menuitem" onClick={() => blacklistDev(devAddress)} className="discovery-action-item">
+                      <UserX size={14} />Blacklist deployer
+                    </button>
+                  )}
+                  {twitterHandle && (
+                    <button type="button" role="menuitem" onClick={() => muteSocial(twitterHandle)} className="discovery-action-item">
+                      <BellOff size={14} />Mute {twitterHandle}
+                    </button>
+                  )}
+                </div>
+              </Popover>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-xs flex-shrink-0">
+          <div className="flex items-center gap-2.5 font-mono text-xs flex-shrink-0">
             <div className="flex items-center gap-1">
-              <span className="text-slate-500 font-medium">V</span>
-              <span className="font-bold text-slate-100">{formatCompactUSD(volumeDisplay)}</span>
+              <span className="text-[#828598] font-medium text-[11px]">V</span>
+              <span className="font-bold text-[#F7F8F9] text-[12px]">{formatCompactUSD(volumeDisplay)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-slate-500 font-medium">MC</span>
-              <span className="font-bold text-amber-400">
+              <span className="text-[#828598] font-medium text-[11px]">MC</span>
+              <span className={`font-bold text-[12.5px] ${Number(marketCapUsd) >= 30000 ? 'text-[#FFB224]' : 'text-[#52C5FF]'}`}>
                 {formatCompactUSD(marketCapUsd)}
               </span>
             </div>
@@ -942,14 +1013,14 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               className="discovery-card-age"
               title={migrationAgeMinutes !== null ? `Since confirmed migration; launched ${token.ageFormatted || formatLiveAge(token.ageMinutes, elapsedSec)} ago` : protocolLabel}
             >
-              {isMigrated && <GraduationCap size={13} className="text-purple-400" />}
+              {isMigrated && <GraduationCap size={12} className="text-purple-400" />}
               {formatLiveAge(migrationAgeMinutes ?? token.ageMinutes, migrationAgeMinutes === null ? elapsedSec : 0)}
             </span>
 
             {/* Bonding Curve or Migration Info */}
             {isMigrated ? (
               <span className="inline-flex items-center gap-1">
-                <span className="truncate text-emerald-400 font-semibold" title={`Confirmed migration from ${originLaunchpad} to ${destinationDex || 'an AMM pool'}`}>
+                <span className="truncate text-[#2FE3AC] font-semibold text-[11px]" title={`Confirmed migration from ${originLaunchpad} to ${destinationDex || 'an AMM pool'}`}>
                   {destinationDex || 'Migrated'}
                 </span>
                 {migrationSignature && (
@@ -958,46 +1029,48 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
                     target="_blank"
                     rel="noreferrer"
                     onClick={(event) => event.stopPropagation()}
-                    className="discovery-icon-button"
+                    className="discovery-icon-button !min-w-[16px] !min-h-[16px]"
                     aria-label="Verify migration transaction on Solscan"
                   >
-                    <ExternalLink size={12} />
+                    <ExternalLink size={11} />
                   </Link>
                 )}
                 {migratedPool && (
                   <Link
-                    href={`https://solscan.io/account/${migratedPool}`}
+                    href={token.chain === 'robinhood'
+                      ? `https://robinhoodchain.blockscout.com/address/${migratedPool}`
+                      : `https://solscan.io/account/${migratedPool}`
+                    }
                     target="_blank"
                     rel="noreferrer"
                     onClick={(event) => event.stopPropagation()}
-                    className="discovery-pool-link text-[10px] text-slate-400 hover:text-sky-300"
+                    className="discovery-pool-link text-[10px] text-[#828598] hover:text-[#52C5FF]"
                     title={migratedPool}
-                    aria-label="View migrated pool on Solscan"
+                    aria-label={`View migrated pool on ${token.chain === 'robinhood' ? 'Blockscout' : 'Solscan'}`}
                   >
                     {migratedPool.slice(0, 4)}…{migratedPool.slice(-4)}
                   </Link>
                 )}
               </span>
             ) : isMigrating ? (
-              <span className="inline-flex items-center gap-1 text-amber-400 font-mono text-[11px]">
-                <Flame size={12} /> Migrating
+              <span className="inline-flex items-center gap-1 text-[#FFB224] font-mono text-[10.5px]">
+                <Flame size={11} /> Migrating
               </span>
             ) : shouldRenderBondingCurve && curvePct !== null ? (
               <LegendTooltip
                 label={`${launchpadConfig.name} bonding curve`}
                 definition={`Last measured completion for ${launchpadConfig.name}. Graduation target: ${gradTarget}. Destination: ${launchpadConfig.destinationDex}. ${curveStale ? 'Delayed reading, being rechecked.' : ''}`}
               >
-                <span className={`discovery-curve inline-flex items-center gap-1 font-mono text-[11px] ${curveStale ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  <Flame size={12} />
-                  <span className="text-[10px] text-slate-400 font-sans">Bonding curve</span>
-                  <span>{curvePct.toFixed(1)}%</span>
+                <span className={`discovery-curve inline-flex items-center gap-1 font-mono text-[10.5px] ${curveStale ? 'text-[#FFB224]' : 'text-[#2FE3AC]'}`}>
+                  <Flame size={11} />
+                  <span>{curvePct.toFixed(0)}%</span>
                   <span
                     role="progressbar"
                     aria-label="Bonding curve progress"
                     aria-valuenow={curvePct}
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    className="discovery-curve-track inline-block h-1 w-8 rounded-sm bg-slate-800 overflow-hidden"
+                    className="discovery-curve-track inline-block h-1 w-6 rounded-sm bg-[#1C202B] overflow-hidden"
                   >
                     <span style={{ width: `${Math.min(100, Math.max(0, curvePct))}%` }} className="bg-current h-full block" />
                   </span>
@@ -1007,8 +1080,8 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
             {/* Countdown / Boost Pill */}
             {formattedBoost && (
-              <span className="inline-flex items-center gap-1 bg-rose-950/80 border border-rose-800/80 text-rose-300 rounded px-1.5 py-0.5 text-[10px] font-mono leading-none">
-                <Flame size={10} className="text-rose-400" />
+              <span className="inline-flex items-center gap-1 bg-[#EC397A]/15 border border-[#EC397A]/35 text-[#FF6166] rounded px-1 py-0 text-[10px] font-mono leading-none">
+                <Flame size={9} className="text-[#EC397A]" />
                 <span>{formattedBoost}</span>
               </span>
             )}
@@ -1016,22 +1089,22 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             {/* Social / Link Icons */}
             <CardSocialLinks token={token} />
             {liveUnavailable && (
-              <span title="Live subscription capacity reached. REST reconciliation remains active." className="text-amber-400 text-2xs">
+              <span title="Live subscription capacity reached. REST reconciliation remains active." className="text-[#FFB224] text-[10px]">
                 Delayed
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs flex-shrink-0">
-            <div className="flex items-center gap-0.5" title="Price in SOL">
-              <span className="text-slate-500 text-[11px] font-medium">F</span>
-              <span className="text-slate-400 text-[11px]">≡</span>
-              <span className="font-bold text-slate-100">{solFloorPriceFormatted}</span>
+          <div className="flex items-center gap-2 font-mono text-[11px] flex-shrink-0">
+            <div className="flex items-center gap-0.5" title={`Price in ${token.chain === 'robinhood' ? 'ETH' : 'SOL'}`}>
+              <span className="text-[#828598] text-[10.5px] font-medium">F</span>
+              <span className="text-[#52C5FF] text-[10.5px]">{token.chain === 'robinhood' ? 'Ξ' : '≡'}</span>
+              <span className="font-bold text-[#F7F8F9]">{solFloorPriceFormatted}</span>
             </div>
 
             <div className="flex items-center gap-1" title={`${metricWindow} transactions`}>
-              <span className="text-slate-500 text-[11px] font-medium">TX</span>
-              <span className="font-bold text-slate-100">{liveTxCount ?? '—'}</span>
+              <span className="text-[#828598] text-[10.5px] font-medium">TX</span>
+              <span className="font-bold text-[#F7F8F9]">{liveTxCount ?? '—'}</span>
             </div>
 
             {buyPct !== null && (
@@ -1039,15 +1112,15 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
                 role="img"
                 aria-label={`${buyPct}% buys`}
                 title={`${buyPct}% buys / ${100 - buyPct}% sells`}
-                className="discovery-trade-ratio inline-flex w-5 h-1 rounded-sm bg-rose-500 overflow-hidden flex-shrink-0"
+                className="discovery-trade-ratio inline-flex w-5 h-[2.5px] rounded-sm bg-[#EC397A] overflow-hidden flex-shrink-0"
               >
-                <span style={{ width: `${buyPct}%` }} className="bg-emerald-400 h-full block" />
+                <span style={{ width: `${buyPct}%` }} className="bg-[#2FE3AC] h-full block" />
               </span>
             )}
           </div>
         </div>
 
-        {/* ROW 3: Twitter handle + Follower count (only if present, matching Photo 2) */}
+        {/* ROW 3: Twitter handle + Follower count */}
         {twitterHandle && (
           <div className="discovery-card-row-social">
             <Link
@@ -1055,29 +1128,29 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               target="_blank"
               rel="noreferrer"
               onClick={(event) => event.stopPropagation()}
-              className="truncate text-sky-400 hover:text-sky-300 font-medium"
+              className="truncate text-[#52C5FF] hover:text-[#8EA2FF] font-medium"
               title={twitterHandle}
             >
               {twitterHandle.startsWith('@') ? twitterHandle : `@${twitterHandle}`}
             </Link>
             {twitterFollowers != null && (
-              <span className="inline-flex shrink-0 items-center gap-1 text-sky-400 font-mono text-[11px]" title="X followers · official API">
+              <span className="inline-flex shrink-0 items-center gap-1 text-[#52C5FF] font-mono text-[11px]" title="X followers · official API">
                 <Users size={11} /> {formatCount(twitterFollowers)}
               </span>
             )}
           </div>
         )}
 
-        {/* ROW 4: Stats: 👥 holders   🛡️ snipers   🎯 insiders   👑 devRecord   👁️ views ... Quick Buy Button */}
+        {/* ROW 4: Stats: 👥 holders   🛡️ snipers   🎯 insiders   👑 devRecord   👁️ views */}
         <div className="discovery-card-row-stats">
-          <div className="flex items-center gap-2.5 text-xs font-mono text-slate-300 flex-wrap">
+          <div className="flex items-center gap-2 text-[11.5px] font-mono text-[#C8C9D1] flex-nowrap overflow-hidden">
             {/* Holders */}
             <LegendTooltip
               label="Holders"
               definition={`Unique token holders. ${ownershipEvidence ? `Source: ${formatDisplaySource(ownershipEvidence.source)}; ${ownershipEvidence.status}; observed ${ownershipEvidence.observedAt}.` : 'Not measured yet.'}`}
             >
               <span className="discovery-activity-stat inline-flex items-center gap-1">
-                <Users size={13} className="text-slate-500" />
+                <Users size={12} className="text-[#828598]" />
                 <MetricValue
                   state={toValueState(live?.holdersCount ?? token.holdersCount, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: ownershipEvidence?.reason })}
                   label="Holders"
@@ -1086,19 +1159,27 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
               </span>
             </LegendTooltip>
 
-            {/* Snipers */}
-            <LegendTooltip label="Snipers" definition="Wallets buying in opening blocks or identified sniper bots.">
+            {/* Pro Traders / Snipers */}
+            <LegendTooltip label="Pro Traders" definition="Tracked pro/sniper wallets holding this token when wallet-label telemetry is available.">
               <span className="discovery-activity-stat inline-flex items-center gap-1">
-                <ShieldCheck size={13} className="text-slate-500" />
-                <span>{snipersCountFormatted}</span>
+                <ShieldCheck size={12} className="text-[#828598]" />
+                <MetricValue
+                  state={toValueState(proTraders, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: 'No wallet-label provider available' })}
+                  label="Pro Traders"
+                  format={formatCount}
+                />
               </span>
             </LegendTooltip>
 
-            {/* Insiders / Target */}
-            <LegendTooltip label="Insiders / Top Wallets" definition="Wallets with prior connection to deployer or early funding.">
+            {/* KOLs / Insiders */}
+            <LegendTooltip label="KOLs / Insiders" definition="Tracked KOL or insider wallets holding this token when wallet-label telemetry is available.">
               <span className="discovery-activity-stat inline-flex items-center gap-1">
-                <Target size={13} className="text-slate-500" />
-                <span>{insidersCountFormatted}</span>
+                <Target size={12} className="text-[#828598]" />
+                <MetricValue
+                  state={toValueState(kols, { isPending: isAuditLoading, isStale: ownershipEvidence?.status === 'stale', reason: 'No wallet-label provider available' })}
+                  label="KOLs"
+                  format={formatCount}
+                />
               </span>
             </LegendTooltip>
 
@@ -1106,7 +1187,7 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             {devRecord && (
               <LegendTooltip label="Deployer record" definition={`${devMigrations} of this creator's ${devMints} reported launches have graduated.`}>
                 <span className={`discovery-activity-stat inline-flex items-center gap-1 ${devRateFg}`}>
-                  <Crown size={13} />
+                  <Crown size={12} className="text-[#FFB224]" />
                   <span>{devRecord}</span>
                 </span>
               </LegendTooltip>
@@ -1115,8 +1196,8 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
             {/* Viewers */}
             {recentVisitors !== null && (
               <LegendTooltip label="Recent viewers" definition="Measured internal token page views.">
-                <span className="discovery-activity-stat inline-flex items-center gap-1 text-slate-400">
-                  <Eye size={13} className="text-slate-500" />
+                <span className="discovery-activity-stat inline-flex items-center gap-1 text-[#C8C9D1]">
+                  <Eye size={12} className="text-[#828598]" />
                   <span>{formatCount(recentVisitors)}</span>
                 </span>
               </LegendTooltip>
@@ -1124,9 +1205,9 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
           </div>
         </div>
 
-        {/* ROW 5: Audit & Security Pills (Left) + Quick Buy Button (Right) matching Axiom Photo 2 */}
-        <div className="discovery-card-row-pills flex items-center justify-between gap-2 mt-0.5">
-          <div className="flex items-center gap-1 flex-wrap flex-1 min-w-0">
+        {/* ROW 5: Audit & Security Pills (Left) + Quick Buy Button (Right) — Single Line */}
+        <div className="discovery-card-row-pills flex items-center justify-between gap-1.5 flex-nowrap overflow-hidden mt-0.5">
+          <div className="flex items-center gap-1 flex-nowrap overflow-hidden flex-1 min-w-0">
             <AuditPills
               top10HoldingsPct={top10 ?? undefined}
               devHoldingsPct={devHoldings ?? undefined}
@@ -1146,83 +1227,35 @@ export const TokenDiscoveryCard = memo(function TokenDiscoveryCard({
 
             {/* DexScreener Paid / Status pill */}
             {isDexPaid ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-emerald-800/60 bg-emerald-950/60 text-emerald-400 font-mono text-[10px] font-bold">
-                🏷️ Paid{dexPaidAge ? ` · ${dexPaidAge}` : ''}
+              <span className="inline-flex shrink-0 items-center gap-1 px-1.5 h-[19px] rounded-full border border-[#12AF80]/30 bg-[#12AF80]/12 text-[#2FE3AC] font-mono text-[10px] font-semibold">
+                DS{dexPaidAge ? ` ${dexPaidAge}` : ' ✓'}
               </span>
             ) : dexPaidAge ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-sky-800/60 bg-sky-950/50 text-sky-400 font-mono text-[10px] font-bold">
-                DS ✖ {dexPaidAge}
+              <span className="inline-flex shrink-0 items-center gap-1 px-1.5 h-[19px] rounded-full border border-[#526FFF]/35 bg-[#526FFF]/12 text-[#8EA2FF] font-mono text-[10px] font-semibold">
+                DS {dexPaidAge}
               </span>
             ) : null}
           </div>
 
-          {/* Right: Quick Buy Button (Bright Blue Pill) & Tools Popover */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Right: Quick Buy Button */}
+          <div className="flex items-center flex-shrink-0">
             <button
               type="button"
               onClick={(event) => handleTriggerBuy(event, quickBuyPresets[0])}
               disabled={!hasConfirmedVenue}
-              className="discovery-quick-buy bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-md transition-all disabled:opacity-50 disabled:bg-neutral-800"
-              aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode.toUpperCase()}`}
+              className="discovery-quick-buy bg-[#415CF2] hover:bg-[#526FFF] text-white font-bold text-[11px] px-2.5 h-[22px] rounded-full flex items-center gap-1 shadow-[0_0_10px_rgba(65,92,242,0.35)] transition-all disabled:opacity-40 disabled:bg-[#151821]"
+              aria-label={`Quick buy ${token.symbol} for ${quickBuyPresets[0]} ${quickBuyMode === 'sol' ? (token.chain === 'robinhood' ? 'ETH' : 'SOL') : 'USD'}`}
               title={hasConfirmedVenue ? 'Open quick buy — review before trading' : 'Quick Buy unavailable until a trading venue is confirmed'}
             >
-              <Zap size={11} fill="currentColor" />
-              <span>{quickBuyMode === 'sol' ? `${quickBuyPresets[0]} SOL` : `$${quickBuyPresets[0]}`}</span>
+              <Zap size={10} fill="currentColor" />
+              <span>
+                {quickBuyMode === 'sol'
+                  ? `${quickBuyPresets[0]} ${token.chain === 'robinhood' ? 'ETH' : 'SOL'}`
+                  : `$${quickBuyPresets[0]}`}
+              </span>
             </button>
-
-            <div className="discovery-card-tools hidden md:flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  setShowSafety((open) => !open);
-                }}
-                aria-expanded={showSafety}
-                aria-controls={safetyId}
-              aria-label={`Safety details for ${token.symbol}`}
-              className={`discovery-icon-button ${showSafety ? 'text-sky-400' : ''}`}
-              title="Safety details"
-            >
-              <ShieldCheck size={14} />
-              <ChevronDown size={10} className={showSafety ? 'rotate-180' : ''} />
-            </button>
-            <button
-              type="button"
-              onClick={handleToggleWatchlist}
-              aria-label="Toggle watchlist"
-              aria-pressed={isWatchlisted}
-              title={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
-              className={`discovery-icon-button ${isWatchlisted ? 'text-amber-400' : ''}`}
-            >
-              <Star size={14} fill={isWatchlisted ? 'currentColor' : 'none'} />
-            </button>
-            <Popover
-              trigger={
-                <button type="button" className="discovery-icon-button" aria-label={`Token actions for ${token.symbol}`}>
-                  <MoreHorizontal size={15} />
-                </button>
-              }
-              className="discovery-actions-popover w-44"
-            >
-              <div role="menu" aria-label={`Manage ${token.symbol}`} className="flex flex-col">
-                <button type="button" role="menuitem" onClick={() => hideToken(token.mint)} className="discovery-action-item">
-                  <EyeOff size={14} />Hide token
-                </button>
-                {devAddress && (
-                  <button type="button" role="menuitem" onClick={() => blacklistDev(devAddress)} className="discovery-action-item">
-                    <UserX size={14} />Blacklist deployer
-                  </button>
-                )}
-                {twitterHandle && (
-                  <button type="button" role="menuitem" onClick={() => muteSocial(twitterHandle)} className="discovery-action-item">
-                    <BellOff size={14} />Mute {twitterHandle}
-                  </button>
-                )}
-              </div>
-            </Popover>
           </div>
         </div>
-      </div>
 
         {/* EXPANDABLE SAFETY DETAILS */}
         {showSafety && (

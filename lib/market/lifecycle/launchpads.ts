@@ -26,7 +26,7 @@ export interface LaunchpadConfig {
   graduationTargetSol?: number;
   graduationTargetUsd?: number;
   graduationTargetQuote?: string;
-  quoteToken: 'SOL' | '$VIRTUAL' | 'USDC';
+  quoteToken: 'SOL' | '$VIRTUAL' | 'USDC' | 'ETH' | 'ERC20';
   lpHandling: 'Burned' | 'Locked' | 'Locked 10Y';
   migrationInstructions: string[];
   curveType: string;

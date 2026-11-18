@@ -28,9 +28,28 @@ import { TradingPanel } from '@/components/trading/trading-panel';
 import { TokenAvatar } from '@/components/ui/token-avatar';
 import { formatTokenPrice, formatCompactUsd, formatAge } from '@/lib/discovery/format';
 import { TokenLoreBadge } from '@/components/lore/token-lore-badge';
+import {
+  normalizeChainKey,
+  getExplorerTokenUrl,
+  ROBINHOOD_WETH_ADDRESS,
+} from '@/lib/chains/chain-config';
+
+async function loadCandlestickChartModule(attempt = 0): Promise<typeof import('@/components/trading/candlestick-chart')> {
+  try {
+    return await import('@/components/trading/candlestick-chart');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isChunkError = err instanceof Error && (err.name === 'ChunkLoadError' || /Loading chunk|timeout/i.test(msg));
+    if (isChunkError && attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      return loadCandlestickChartModule(attempt + 1);
+    }
+    throw err;
+  }
+}
 
 // Lazy-load Candlestick Chart for code-splitting and fast initial render
-const DynamicCandlestickChart = dynamic(() => import('@/components/trading/candlestick-chart'), {
+const DynamicCandlestickChart = dynamic(() => loadCandlestickChartModule(), {
   loading: () => <SkeletonChart />,
   ssr: false,
 });
@@ -154,14 +173,24 @@ export function TradeView({
   tokenSymbol: propTokenSymbol,
   chain: propChain,
 }: TradeViewProps = {}) {
-  const { connectedWallet, primaryWallet, selectedToken } = useAppState();
-  const { addNotification } = useAppActions();
+  const { connectedWallet, primaryWallet, selectedToken, activeChain: globalChain } = useAppState();
+  const { addNotification, setActiveChain } = useAppActions();
   const { isWatchlisted, toggleWatchlist } = useWatchlist();
   const { marketSummary } = useMarketSummary();
 
-  const activeMint = propTokenMint || selectedToken?.mint || 'So11111111111111111111111111111111111111112';
-  const activeSymbol = propTokenSymbol || selectedToken?.symbol || 'SOL';
-  const activeChain = propChain || 'solana';
+  const activeChain = normalizeChainKey(propChain || selectedToken?.chain || globalChain);
+  const isRobinhood = activeChain === 'robinhood';
+  const activeMint =
+    propTokenMint ||
+    selectedToken?.mint ||
+    (isRobinhood ? ROBINHOOD_WETH_ADDRESS : 'So11111111111111111111111111111111111111112');
+  const activeSymbol = propTokenSymbol || selectedToken?.symbol || (isRobinhood ? 'WETH' : 'SOL');
+
+  useEffect(() => {
+    if (propChain) {
+      setActiveChain(normalizeChainKey(propChain));
+    }
+  }, [propChain, setActiveChain]);
 
   const [tokenOverview, setTokenOverview] = useState<any>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
@@ -385,7 +414,7 @@ export function TradeView({
       mint: activeMint,
       name: currentToken.name,
       symbol: currentToken.symbol,
-      chain: 'solana',
+      chain: activeChain,
       priceUsd: currentToken.priceUsd !== undefined ? String(currentToken.priceUsd) : undefined,
       marketCapUsd: currentToken.marketCapUsd !== undefined ? `$${formatCompactUsd(currentToken.marketCapUsd)}` : undefined,
       liquidityUsd: currentToken.liquidityUsd !== undefined ? `$${formatCompactUsd(currentToken.liquidityUsd)}` : undefined,
@@ -405,15 +434,15 @@ export function TradeView({
   return (
     <div className="terminal-trade space-y-2 sm:space-y-2.5 min-w-0">
       {/* ─────── Axiom Pro Real-Time Token Strip ─────── */}
-      <div className="axiom-token-strip rounded-xl border border-sentinel-700/60 bg-gradient-to-r from-sentinel-900 via-sentinel-850 to-sentinel-900 px-3 py-2 sm:px-4 sm:py-2.5 shadow-card">
+      <div className="axiom-token-strip rounded-[8px] border border-[#1E222D] bg-[#0D1015] px-3 py-2 sm:px-4 sm:py-2.5">
         <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-none overscroll-x-contain pb-0.5 pr-2">
 
           {/* 1. Leftmost DEX / Platform Icon Button */}
           <a
-            href={currentToken.dexUrl || `https://dexscreener.com/solana/${currentToken.mint}`}
+            href={currentToken.dexUrl || `https://dexscreener.com/${activeChain}/${currentToken.mint}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 w-8 h-8 rounded-lg border border-slate-700/70 bg-slate-900/90 hover:bg-slate-800 hover:border-amber-500/50 transition-all flex items-center justify-center shadow-sm group"
+            className="shrink-0 w-8 h-8 rounded-[6px] border border-[#1E222D] bg-[#11141B] hover:bg-[#1C202B] hover:border-[#526FFF]/50 transition-all flex items-center justify-center group"
             title={`Trading on ${currentToken.dexId?.toUpperCase() || 'DEX'} (Click to view pair)`}
           >
             <PlatformLogo dexId={currentToken.dexId} isPump={currentToken.isPump} className="w-5 h-5" />
@@ -426,8 +455,8 @@ export function TradeView({
               onClick={() => setShowChartTrades((prev) => !prev)}
               className={`w-5 h-3.5 rounded flex items-center justify-center border transition-all ${
                 showChartTrades
-                  ? 'border-slate-700 bg-slate-800 text-slate-300 hover:text-white'
-                  : 'border-slate-800/80 bg-slate-950/60 text-slate-600 hover:text-slate-400'
+                  ? 'border-[#222634] bg-[#151821] text-[#C8C9D1] hover:text-[#F7F8F9]'
+                  : 'border-[#1E222D] bg-[#080A0F] text-[#525866] hover:text-[#828598]'
               }`}
               title={showChartTrades ? 'Hide Trades on Chart' : 'Show Trades on Chart'}
             >
@@ -438,8 +467,8 @@ export function TradeView({
               onClick={() => setShowChartOverlays((prev) => !prev)}
               className={`w-5 h-3.5 rounded flex items-center justify-center border transition-all ${
                 showChartOverlays
-                  ? 'border-slate-700 bg-slate-800 text-slate-300 hover:text-white'
-                  : 'border-slate-800/80 bg-slate-950/60 text-slate-600 hover:text-slate-400'
+                  ? 'border-[#222634] bg-[#151821] text-[#C8C9D1] hover:text-[#F7F8F9]'
+                  : 'border-[#1E222D] bg-[#080A0F] text-[#525866] hover:text-[#828598]'
               }`}
               title={showChartOverlays ? 'Hide Chart Overlays & Indicators' : 'Show Chart Overlays & Indicators'}
             >
@@ -458,19 +487,19 @@ export function TradeView({
             />
             {/* Corner Badge */}
             {currentToken.isMeteora ? (
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500/20 border border-amber-400/80 flex items-center justify-center text-[9px] shadow-sm" title="Meteora Pool">
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[#FFB224]/20 border border-[#FFB224]/80 flex items-center justify-center text-[9px] shadow-sm" title="Meteora Pool">
                 ☄️
               </span>
             ) : currentToken.isPump ? (
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/80 flex items-center justify-center text-[9px] shadow-sm" title="Pump.fun Curve">
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[#2FE3AC]/20 border border-[#2FE3AC]/80 flex items-center justify-center text-[9px] shadow-sm" title="Pump.fun Curve">
                 💊
               </span>
             ) : currentToken.hasGraduated ? (
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border border-emerald-300 flex items-center justify-center text-[9px] shadow-sm" title="Graduated">
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[#2FE3AC] border border-[#6FF3C8] flex items-center justify-center text-[9px] shadow-sm" title="Graduated">
                 🎓
               </span>
             ) : (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-sentinel-900 animate-pulse" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#2FE3AC] border-2 border-[#0D1015] animate-pulse" />
             )}
           </div>
 
@@ -478,18 +507,18 @@ export function TradeView({
           <div className="flex flex-col gap-0.5 shrink-0 min-w-0">
             {/* Row 1: Symbol, Name, Copy, Fee %, Share, Star */}
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-extrabold text-white tracking-tight">{currentToken.symbol}</span>
-              <span className="text-xs text-slate-400 truncate max-w-[110px]" title={currentToken.name}>{currentToken.name}</span>
+              <span className="text-[15px] font-bold text-[#F7F8F9] tracking-tight">{currentToken.symbol}</span>
+              <span className="text-xs text-[#828598] truncate max-w-[110px]" title={currentToken.name}>{currentToken.name}</span>
               <button
                 onClick={handleCopyAddress}
-                className="p-0.5 rounded hover:bg-slate-700/60 transition-colors group"
+                className="p-0.5 rounded hover:bg-[#1C202B] transition-colors group"
                 title={copied ? 'Copied!' : `Copy: ${activeMint}`}
               >
-                <Copy className={`h-3 w-3 ${copied ? 'text-emerald-400' : 'text-slate-500 group-hover:text-white'} transition-colors`} />
+                <Copy className={`h-3 w-3 ${copied ? 'text-[#2FE3AC]' : 'text-[#828598] group-hover:text-[#F7F8F9]'} transition-colors`} />
               </button>
               {/* Fee / Dev % Badge */}
               <span
-                className="text-[11px] font-mono font-semibold text-slate-300 bg-slate-800/90 border border-slate-700/60 rounded px-1.5 py-px flex items-center gap-0.5"
+                className="text-[11px] font-mono font-semibold text-[#C8C9D1] bg-[#141821] border border-[#222634] rounded px-1.5 py-px flex items-center gap-0.5"
                 title={currentToken.devHoldingPct !== undefined ? `Dev Holding: ${currentToken.devHoldingPct}%` : `Pool Fee: ${currentToken.poolFeePct || 0.1}%`}
               >
                 <span>%</span>
@@ -505,25 +534,25 @@ export function TradeView({
               {/* Share Button */}
               <button
                 onClick={handleShare}
-                className="p-0.5 rounded hover:bg-slate-700/60 text-slate-500 hover:text-white transition-colors"
+                className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#F7F8F9] transition-colors"
                 title={shared ? 'Link Copied!' : 'Share Token'}
               >
-                <Share2 className={`h-3 w-3 ${shared ? 'text-emerald-400' : ''}`} />
+                <Share2 className={`h-3 w-3 ${shared ? 'text-[#2FE3AC]' : ''}`} />
               </button>
               {/* Watchlist Bookmark */}
               <button
                 onClick={handleToggleBookmark}
-                className="p-0.5 rounded hover:bg-slate-700/60 transition-colors"
+                className="p-0.5 rounded hover:bg-[#1C202B] transition-colors"
                 title={isBookmarked ? 'Remove from Watchlist' : 'Add to Watchlist'}
               >
-                <Star className={`h-3 w-3 transition-colors ${isBookmarked ? 'text-amber-400 fill-amber-400' : 'text-slate-500 hover:text-amber-300'}`} />
+                <Star className={`h-3 w-3 transition-colors ${isBookmarked ? 'text-[#FFB224] fill-[#FFB224]' : 'text-[#828598] hover:text-[#FFC453]'}`} />
               </button>
             </div>
 
             {/* Row 2: Age, Twitter/X, Explorer/Solscan */}
             <div className="flex items-center gap-2">
               {/* Age */}
-              <span className="text-[11px] font-bold font-mono text-emerald-400" title={`Age: ${currentToken.ageMinutes?.toFixed(0) || '0'}m`}>
+              <span className="text-[11px] font-semibold font-mono text-[#12AF80]" title={`Age: ${currentToken.ageMinutes?.toFixed(0) || '0'}m`}>
                 {currentToken.ageMinutes !== undefined ? formatAge(currentToken.ageMinutes) : '—'}
               </span>
               {/* Twitter / X */}
@@ -531,18 +560,18 @@ export function TradeView({
                 href={currentToken.twitterUrl || `https://x.com/search?q=${encodeURIComponent(currentToken.symbol)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#F7F8F9] transition-colors"
                 title="Twitter / X"
               >
                 <svg className="h-3 w-3 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
               </a>
-              {/* Explorer / Solscan */}
+              {/* Explorer */}
               <a
-                href={`https://solscan.io/token/${activeMint}`}
+                href={getExplorerTokenUrl(activeChain, activeMint)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-sky-400 transition-colors"
-                title="View on Solscan"
+                className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#6683FF] transition-colors"
+                title={isRobinhood ? 'View on Robinhood Chain Explorer' : 'View on Solscan'}
               >
                 <Search className="h-3 w-3" />
               </a>
@@ -552,99 +581,102 @@ export function TradeView({
                   href={currentToken.websiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition-colors"
+                  className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#2FE3AC] transition-colors"
                   title="Official Website"
                 >
                   <Globe className="h-3 w-3" />
                 </a>
               )}
-              {/* Optional RugCheck */}
-              <a
-                href={`https://rugcheck.xyz/tokens/${activeMint}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-0.5 rounded hover:bg-slate-800 text-slate-400 hover:text-violet-400 transition-colors"
-                title="RugCheck Audit"
-              >
-                <Shield className="h-3 w-3" />
-              </a>
+              {/* Optional RugCheck (Solana only) */}
+              {!isRobinhood && (
+                <a
+                  href={`https://rugcheck.xyz/tokens/${activeMint}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#AC68FF] transition-colors"
+                  title="RugCheck Audit"
+                >
+                  <Shield className="h-3 w-3" />
+                </a>
+              )}
             </div>
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/60 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 5. Market Cap */}
           <div className="flex flex-col items-start gap-0.5 shrink-0">
-            <span className="text-base font-extrabold text-white font-numeric tracking-tight">
+            <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">MCap</span>
+            <span className="text-base font-bold text-[#52C5FF] font-numeric tracking-tight">
               {currentToken.marketCapUsd !== undefined ? `$${formatCompactUsd(currentToken.marketCapUsd)}` : dash}
             </span>
             <MCapBar value={currentToken.marketCapUsd} />
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/40 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 6. Price */}
           <div className="flex flex-col shrink-0">
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-slate-400 font-mono uppercase leading-none">Price</span>
+              <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">Price</span>
               {currentToken.priceChange24h !== undefined && (
-                <span className={`text-[10px] font-bold font-numeric ${currentToken.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <span className={`text-[10px] font-bold font-numeric ${currentToken.priceChange24h >= 0 ? 'text-[#2FE3AC]' : 'text-[#EC397A]'}`}>
                   {currentToken.priceChange24h >= 0 ? '+' : ''}{currentToken.priceChange24h.toFixed(1)}%
                 </span>
               )}
             </div>
-            <span className="text-sm font-bold text-white font-numeric">
+            <span className="text-sm font-semibold text-[#F7F8F9] font-numeric">
               {currentToken.priceUsd !== undefined ? `$${formatTokenPrice(currentToken.priceUsd)}` : dash}
             </span>
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/40 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 7. Liquidity with Water Drop Icon */}
           <div className="flex flex-col shrink-0">
-            <span className="text-[10px] text-slate-400 font-mono uppercase leading-none">Liquidity</span>
-            <span className="text-sm font-bold text-amber-400 font-numeric flex items-center gap-1">
+            <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">Liquidity</span>
+            <span className="text-sm font-semibold text-[#F7F8F9] font-numeric flex items-center gap-1">
               {currentToken.liquidityUsd !== undefined ? `$${formatCompactUsd(currentToken.liquidityUsd)}` : dash}
-              <Droplet className="h-3 w-3 text-amber-400 fill-amber-400 shrink-0" />
+              <Droplet className="h-3 w-3 text-[#FFB224] fill-[#FFB224] shrink-0" />
             </span>
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/40 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 8. Supply with Circulating Arrow Icon */}
           <div className="flex flex-col shrink-0">
-            <span className="text-[10px] text-slate-400 font-mono uppercase leading-none">Supply</span>
-            <span className="text-sm font-bold text-white font-numeric flex items-center gap-1">
+            <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">Supply</span>
+            <span className="text-sm font-semibold text-[#C8C9D1] font-numeric flex items-center gap-1">
               {fmtSupply(currentToken.supply)}
-              <RotateCcw className="h-3 w-3 text-slate-400 shrink-0" />
+              <RotateCcw className="h-3 w-3 text-[#828598] shrink-0" />
             </span>
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/40 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 9. Global Fees Paid with Solana Icon */}
           <div className="flex flex-col shrink-0">
-            <span className="text-[10px] text-slate-400 font-mono uppercase leading-none">Global Fees Paid</span>
+            <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">Global Fees Paid</span>
             <div className="flex items-center gap-1">
               <SolanaIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="text-sm font-bold text-white font-numeric">
+              <span className="text-sm font-semibold text-[#F7F8F9] font-numeric">
                 {currentToken.feesPaid !== undefined && currentToken.feesPaid > 0 ? formatSolFee(currentToken.feesPaid) : dash}
               </span>
             </div>
           </div>
 
           {/* Divider */}
-          <div className="w-px h-8 bg-slate-700/40 shrink-0 hidden sm:block" />
+          <div className="w-px h-7 bg-[#1E222D] shrink-0 hidden sm:block" />
 
           {/* 10. ATH */}
           <div className="flex flex-col shrink-0">
-            <span className="text-[10px] text-slate-400 font-mono uppercase leading-none">ATH</span>
-            <span className="text-sm font-bold text-slate-300 font-numeric">
+            <span className="text-[10px] text-[#828598] font-mono uppercase leading-none">ATH</span>
+            <span className="text-sm font-semibold text-[#C8C9D1] font-numeric">
               {currentToken.athPriceUsd !== undefined ? `$${formatTokenPrice(currentToken.athPriceUsd)}` : dash}
             </span>
           </div>
@@ -654,10 +686,10 @@ export function TradeView({
 
           {/* 11. Trending Rank / Crown (Far Right) */}
           <div
-            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 font-bold text-xs shrink-0 shadow-sm"
+            className="flex items-center gap-1 px-2 py-1 rounded-[6px] border border-[#FFB224]/30 bg-[#FFB224]/10 text-[#FFB224] font-semibold text-xs shrink-0"
             title={currentToken.trendingRank ? `Trending Rank #${currentToken.trendingRank}` : 'Top Rank'}
           >
-            <Crown className="h-3.5 w-3.5 text-amber-400 fill-amber-400/20 shrink-0" />
+            <Crown className="h-3.5 w-3.5 text-[#FFB224] fill-[#FFB224]/20 shrink-0" />
             <span>{currentToken.trendingRank ?? 1}</span>
           </div>
 
@@ -675,6 +707,7 @@ export function TradeView({
             timeframe={timeframe}
             symbol={currentToken.mint}
             tokenSymbol={currentToken.symbol}
+            chain={activeChain}
             supply={currentToken.supply ?? (currentToken.marketCapUsd && currentToken.priceUsd ? currentToken.marketCapUsd / currentToken.priceUsd : undefined)}
             livePrice={currentToken.priceUsd}
             liveMarketCap={currentToken.marketCapUsd}
@@ -687,6 +720,7 @@ export function TradeView({
             currentPrice={currentToken.priceUsd}
             tokenSymbol={currentToken.symbol}
             tokenMint={currentToken.mint}
+            chain={activeChain}
             onOpenLimitBuilder={() => setShowLimitBuilder(true)}
             onPriceUpdate={(p) => setLivePrice(p)}
             onQuickTrade={(type, amt) => {
@@ -694,7 +728,7 @@ export function TradeView({
               setSolAmount(amt.toString());
               addNotification({
                 title: `Instant ${type.toUpperCase()} Selected`,
-                message: `Set ${type.toUpperCase()} order size to ${amt} SOL on $${currentToken.symbol}.`,
+                message: `Set ${type.toUpperCase()} order size to ${amt} ${isRobinhood ? 'ETH' : 'SOL'} on $${currentToken.symbol}.`,
                 type: 'system',
               });
             }}
@@ -706,6 +740,7 @@ export function TradeView({
           <TradingPanel
             tokenSymbol={currentToken.symbol}
             tokenMint={currentToken.mint}
+            chain={activeChain}
             tokenPriceUsd={currentToken.priceUsd?.toString() || '0'}
             initialInputAmount={solAmount}
             initialSide={orderType}

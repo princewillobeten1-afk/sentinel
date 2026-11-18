@@ -8,16 +8,19 @@ import { Modal } from '@/components/ui/modal';
 import { useTradeSidebar } from '@/lib/hooks/use-trade-sidebar';
 import { summarizePosition, TRADE_PRESETS } from '@/lib/trading/sidebar-model';
 import { TradeActivityStrip, TradeSidebarInfo } from './trade-sidebar-info';
-import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState } from '@/lib/store';
+import { usePrimaryWallet, useConnectWallet, useNotificationsActions, useWalletState, useWalletActions } from '@/lib/store';
 import type { Quote } from '@/lib/quote/types';
 import { Decimal } from '@/lib/math/decimal';
 import { TransactionPreviewModal } from './transaction-preview-modal';
 import { useSwapExecution } from '@/lib/hooks/use-swap-execution';
+import { useEvmSwapExecution } from '@/lib/hooks/use-evm-swap-execution';
 import { formatDisplaySource } from '@/lib/discovery/format';
+import { ROBINHOOD_WETH_ADDRESS, getExplorerTxUrl } from '@/lib/chains/chain-config';
 
 interface TradingPanelProps {
   tokenSymbol: string;
   tokenMint: string;
+  chain?: string;
   tokenPriceUsd: string;
   initialInputAmount?: string;
   initialSlippage?: number;
@@ -27,15 +30,27 @@ interface TradingPanelProps {
 export function TradingPanel({
   tokenSymbol,
   tokenMint,
+  chain = 'solana',
   initialInputAmount = '0.5',
   initialSlippage = 0.5,
   initialSide = 'buy',
 }: TradingPanelProps) {
+  const isRobinhood = chain?.toLowerCase() === 'robinhood';
+  const nativeSymbol = isRobinhood ? 'ETH' : 'SOL';
+  const normalizedChain = isRobinhood ? 'robinhood' : 'solana';
+
   const { primaryWallet, address } = usePrimaryWallet();
-  const { selectedAdapter } = useWalletState();
+  const { selectedAdapter, evmAddress, evmBalanceEth, isWrongEvmNetwork } = useWalletState();
+  const { switchToRobinhoodChain, refreshEvmBalance } = useWalletActions();
   const { openModal: openWalletModal } = useConnectWallet();
   const { addExecutionLog } = useNotificationsActions();
-  const execution = useSwapExecution(address || primaryWallet?.address || null, tokenMint, selectedAdapter);
+  const activeChainWallet = isRobinhood ? evmAddress : (address || primaryWallet?.address || null);
+  const solanaExecution = useSwapExecution(address || primaryWallet?.address || null, tokenMint, selectedAdapter);
+  const evmExecution = useEvmSwapExecution(evmAddress, tokenMint, {
+    switchToRobinhoodChain,
+    refreshEvmBalance,
+  });
+  const execution = isRobinhood ? evmExecution : solanaExecution;
   const [reviewQuote, setReviewQuote] = useState<Quote | null>(null);
   const [reviewSlippage, setReviewSlippage] = useState(initialSlippage);
 
@@ -44,9 +59,10 @@ export function TradingPanel({
   const [slippage, setSlippage] = useState(initialSlippage);
   const [customSlippage, setCustomSlippage] = useState('');
   const [isCustomSlippage, setIsCustomSlippage] = useState(false);
-  const sidebar = useTradeSidebar(tokenMint, address || primaryWallet?.address || null);
+  const sidebar = useTradeSidebar(tokenMint, activeChainWallet, normalizedChain);
   const position = summarizePosition(sidebar.position);
-  const walletBalanceSol = sidebar.position?.balanceSol ?? null;
+  const walletBalanceSol = isRobinhood ? evmBalanceEth : (sidebar.position?.balanceSol ?? null);
+  const isWalletConnected = isRobinhood ? Boolean(evmAddress) : Boolean(primaryWallet);
   const [showSettings, setShowSettings] = useState(false);
   const [activePreset, setActivePreset] = useState(0);
   const [presets, setPresets] = useState(TRADE_PRESETS);
@@ -107,19 +123,21 @@ export function TradingPanel({
       // Mints, not symbols. The previous call passed 'SOL' and a symbol into a
       // client-side router that applied one hardcoded rate to every pair, which
       // is how the panel came to offer SOL in exchange for SOL.
-      const SOL_MINT = 'So11111111111111111111111111111111111111112';
+      const NATIVE_MINT = isRobinhood ? ROBINHOOD_WETH_ADDRESS : 'So11111111111111111111111111111111111111112';
       const res = await fetch('/api/v1/trading/quote', {
         signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          inputMint: side === 'buy' ? SOL_MINT : tokenMint,
-          outputMint: side === 'buy' ? tokenMint : SOL_MINT,
-          inputSymbol: side === 'buy' ? 'SOL' : tokenSymbol,
-          outputSymbol: side === 'buy' ? tokenSymbol : 'SOL',
+          chain: normalizedChain,
+          inputMint: side === 'buy' ? NATIVE_MINT : tokenMint,
+          outputMint: side === 'buy' ? tokenMint : NATIVE_MINT,
+          inputSymbol: side === 'buy' ? nativeSymbol : tokenSymbol,
+          outputSymbol: side === 'buy' ? tokenSymbol : nativeSymbol,
           amount: inputAmount,
           slippage: effectiveSlippage,
+          walletAddress: isRobinhood ? (evmAddress ?? undefined) : undefined,
         }),
       });
 
@@ -138,7 +156,7 @@ export function TradingPanel({
     } finally {
       if (requestId === quoteRequest.current && !signal.aborted) setIsQuoteLoading(false);
     }
-  }, [inputAmount, side, effectiveSlippage, validSlippage, tokenSymbol, tokenMint]);
+  }, [inputAmount, side, effectiveSlippage, validSlippage, tokenSymbol, tokenMint, isRobinhood, normalizedChain, nativeSymbol, evmAddress]);
 
   useEffect(() => {
     const requestId = ++quoteRequest.current;
@@ -154,7 +172,7 @@ export function TradingPanel({
 
   // Quick Percentage Amount Handlers (25%, 50%, 75%, MAX)
   const handleQuickPercent = (percent: number) => {
-    if (!primaryWallet) return;
+    if (!isWalletConnected) return;
     const maxAvailable = side === 'buy' ? walletBalanceSol : position.quantity;
     if (maxAvailable === null) return;
     const portion = String(maxAvailable * (percent / 100));
@@ -162,13 +180,19 @@ export function TradingPanel({
   };
 
   const handleOpenPreview = () => {
-    if (!primaryWallet) { openWalletModal(); return; }
+    if (!isWalletConnected) { openWalletModal(); return; }
+    if (isRobinhood && (isWrongEvmNetwork || quote?.executionSupported === false)) return;
     if (!quote || execution.pending || execution.busy) return;
     if (quoteExpired) { setQuoteError('Quote expired. Refresh it before reviewing a trade.'); return; }
     setReviewQuote(quote);
     setReviewSlippage(effectiveSlippage);
     setIsPreviewOpen(true);
-    addExecutionLog({ text: '[TRADE] Review Solana mainnet swap before wallet approval.', level: 'info' });
+    addExecutionLog({
+      text: isRobinhood
+        ? '[TRADE] Review Robinhood Chain swap before EVM wallet approval.'
+        : '[TRADE] Review Solana mainnet swap before wallet approval.',
+      level: 'info',
+    });
   };
   const handleConfirmTrade = () => {
     if (!reviewQuote) return;
@@ -188,7 +212,7 @@ export function TradingPanel({
   const savePreset = () => {
     const amounts = presetDraft.split(',').map(value => Number(value.trim()));
     if (amounts.length !== 4 || amounts.some(value => !Number.isFinite(value) || value <= 0) || !validSlippage) {
-      setPresetError('Enter four positive SOL amounts, separated by commas, and valid slippage.');
+      setPresetError(`Enter four positive ${nativeSymbol} amounts, separated by commas, and valid slippage.`);
       return;
     }
     const next = presets.map((preset, index) => index === activePreset ? { amounts, slippage: effectiveSlippage } : preset);
@@ -197,12 +221,12 @@ export function TradingPanel({
     setEditingPreset(false);
   };
   const usd = (value: number | null) => value === null ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2, notation: 'compact' }).format(value);
-  const available = primaryWallet ? (side === 'buy' ? walletBalanceSol : position.quantity) : null;
+  const available = isWalletConnected ? (side === 'buy' ? walletBalanceSol : position.quantity) : null;
 
   return (
-    <section aria-label="Token order panel" className="trade-execution-panel min-w-0 rounded-md border border-sentinel-800 bg-sentinel-950 p-3 text-xs">
+    <section aria-label="Token order panel" className="trade-execution-panel min-w-0 rounded-[8px] border border-[#1E222D] bg-[#0D1015] p-3 text-xs">
       <TradeActivityStrip data={sidebar.data} />
-      <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg border border-sentinel-800 bg-sentinel-950 p-1" aria-label="Trade direction">
+      <div className="mt-3 grid grid-cols-2 gap-1 rounded-[8px] border border-[#1E222D] bg-[#080A0F] p-1" aria-label="Trade direction">
         {(['buy', 'sell'] as const).map(direction => (
           <button
             type="button"
@@ -212,36 +236,36 @@ export function TradingPanel({
               setSide(direction);
               setInputAmount(direction === 'buy' ? String(presets[activePreset].amounts[0]) : '');
             }}
-            className={`min-h-8 rounded-md font-bold text-xs transition-all ${
+            className={`min-h-8 rounded-[6px] font-bold text-xs transition-all ${
               side === direction
                 ? direction === 'buy'
-                  ? 'bg-emerald-400 text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
-                  : 'bg-rose-500 text-white shadow-[0_0_12px_rgba(244,63,94,0.25)]'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-sentinel-850'
+                  ? 'bg-[#2FE3AC] text-[#04130E] shadow-[0_0_14px_rgba(47,227,172,0.28)]'
+                  : 'bg-[#EC397A] text-white shadow-[0_0_14px_rgba(236,57,122,0.28)]'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-[#151821]'
             }`}
           >
             {direction === 'buy' ? 'Buy' : 'Sell'}
           </button>
         ))}
       </div>
-      <div className="flex items-center justify-between gap-1 border-b border-sentinel-800">
+      <div className="flex items-center justify-between gap-1 border-b border-[#1E222D]">
         <div className="flex items-center gap-3" aria-label="Order type">
           {([{mode: 'market', label: 'Market'}, {mode: 'simple', label: 'Limit'}, {mode: 'advanced', label: 'Adv.'}] as const).map(item =>
             <button type="button" key={item.mode} aria-pressed={item.mode === 'market'} disabled={item.mode !== 'market'}
               title={item.mode !== 'market' ? 'Automated orders require a separate wallet-authorized execution path.' : undefined}
-              className={`min-h-9 border-b text-[11px] font-semibold ${item.mode === 'market' ? 'border-sky-400 text-slate-100' : 'border-transparent text-slate-500 opacity-50'}`}>{item.label}</button>)}
+              className={`min-h-9 border-b-2 text-[11px] font-semibold ${item.mode === 'market' ? 'border-[#526FFF] text-[#F7F8F9]' : 'border-transparent text-[#525866] opacity-60'}`}>{item.label}</button>)}
         </div>
-        <button type="button" onClick={openWalletModal} className="flex min-w-0 items-center gap-1 text-[11px] text-slate-400" aria-label={primaryWallet ? 'Manage trading wallet' : 'Connect trading wallet'}
-          title={address || primaryWallet?.address || 'No wallet connected'}><Wallet className="h-3 w-3 shrink-0" /><span className="truncate">{primaryWallet ? walletBalanceSol === null ? 'Balance —' : `${walletBalanceSol.toFixed(3)} SOL` : 'Connect'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
+        <button type="button" onClick={openWalletModal} className="flex min-w-0 items-center gap-1 text-[11px] text-[#828598] hover:text-[#F7F8F9] transition-colors" aria-label={isWalletConnected ? 'Manage trading wallet' : 'Connect trading wallet'}
+          title={activeChainWallet || 'No wallet connected'}><Wallet className="h-3 w-3 shrink-0" /><span className="truncate">{isWalletConnected ? walletBalanceSol === null ? 'Balance —' : `${walletBalanceSol.toFixed(3)} ${nativeSymbol}` : 'Connect'}</span><ChevronDown className="h-3 w-3 shrink-0" /></button>
       </div>
-      <div className="mt-3 rounded-md border border-sentinel-800 bg-sentinel-900/40">
-        <div className="flex items-center gap-2 px-2">
-          <label htmlFor="trade-amount" className="text-[11px] uppercase text-slate-500">Amount</label>
+      <div className="mt-3 rounded-[8px] border border-[#1E222D] focus-within:border-[#526FFF]/60 bg-[#080A0F] overflow-hidden transition-colors">
+        <div className="flex items-center gap-2 px-2.5">
+          <label htmlFor="trade-amount" className="text-[11px] uppercase text-[#828598]">Amount</label>
           <input id="trade-amount" type="number" min="0" step="any" inputMode="decimal" value={inputAmount} onChange={e => setInputAmount(e.target.value)}
-            className="h-9 min-w-0 flex-1 bg-transparent text-right font-numeric text-slate-100" placeholder="0.0" />
-          <span title={side === 'buy' ? 'SOL' : tokenSymbol} className="max-w-16 truncate text-[11px] text-slate-400">{side === 'buy' ? 'SOL' : tokenSymbol}</span>
+            className="h-9 min-w-0 flex-1 bg-transparent text-right font-numeric text-[#F7F8F9] outline-none" placeholder="0.0" />
+          <span title={side === 'buy' ? nativeSymbol : tokenSymbol} className="max-w-16 truncate text-[11px] text-[#828598]">{side === 'buy' ? nativeSymbol : tokenSymbol}</span>
         </div>
-        <div className="flex border-t border-sentinel-800">
+        <div className="flex border-t border-[#1E222D]">
           {(side === 'buy' ? presets[activePreset].amounts : [25, 50, 75, 100]).map((amount, index) => {
             const isAmountActive = side === 'buy' && String(amount) === inputAmount;
             return (
@@ -250,17 +274,17 @@ export function TradingPanel({
                 key={index}
                 disabled={side === 'sell' && (available === null || available <= 0)}
                 onClick={() => (side === 'buy' ? setInputAmount(String(amount)) : handleQuickPercent(amount))}
-                className={`min-h-7 min-w-0 flex-1 border-r border-sentinel-800 font-numeric text-[11px] transition-colors disabled:opacity-40 ${
+                className={`min-h-7 min-w-0 flex-1 border-r border-[#1E222D] font-numeric text-[11px] transition-colors disabled:opacity-40 ${
                   isAmountActive
-                    ? 'bg-sky-500/20 text-sky-300 font-bold'
-                    : 'text-slate-300 hover:bg-sentinel-800'
+                    ? 'bg-[#526FFF]/20 text-[#8EA2FF] font-semibold'
+                    : 'bg-[#11141B] text-[#C8C9D1] hover:bg-[#1C202B]'
                 }`}
               >
                 {side === 'buy' ? amount : `${amount}%`}
               </button>
             );
           })}
-          <button type="button" onClick={editPreset} aria-label="Edit amount presets" className="px-2 text-slate-400 hover:text-sky-400"><Pencil className="h-3 w-3" /></button>
+          <button type="button" onClick={editPreset} aria-label="Edit amount presets" className="px-2 bg-[#11141B] text-[#828598] hover:text-[#8EA2FF] hover:bg-[#1C202B] transition-colors"><Pencil className="h-3 w-3" /></button>
         </div>
       </div>
       <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
@@ -270,10 +294,10 @@ export function TradingPanel({
         </button>
       </div>
       <div className="flex flex-wrap gap-x-2 text-[11px] text-slate-500">
-        <span title="Network fee from the current quote">Fee {quote?.networkFeeSol != null ? `${new Decimal(quote.networkFeeSol).formatToken(6)} SOL` : '—'}</span>
-        <span title="Priority fees are calculated automatically">Priority: auto</span>
-        <span title="Jito tip configuration is not connected">Tip: —</span>
-        <span title="MEV protection status is not available for this route">MEV: —</span>
+        <span title="Network fee from the current quote">Fee {quote?.networkFeeSol != null ? `${new Decimal(quote.networkFeeSol).formatToken(6)} ${nativeSymbol}` : '—'}</span>
+        <span title="Priority fees are calculated automatically">{isRobinhood ? 'Gas: EIP-1559' : 'Priority: auto'}</span>
+        {!isRobinhood && <span title="Jito tip configuration is not connected">Tip: —</span>}
+        {!isRobinhood && <span title="MEV protection status is not available for this route">MEV: —</span>}
       </div>
       {showSettings && <div className="mt-2 space-y-2 rounded-md border border-sentinel-800 p-2">
         <span className="text-[11px] text-slate-400">Slippage tolerance</span>
@@ -291,18 +315,46 @@ export function TradingPanel({
       <p className="mt-3 text-[11px] text-slate-500">Limit and advanced orders are unavailable until a wallet-authorized trigger path is configured.</p>
       <div className="my-2 break-words text-[11px] text-slate-400" aria-live="polite">
         {isQuoteLoading ? 'Fetching quote…' : quoteExpired ? 'Quote expired — refresh for a new estimate'
-          : quote ? `Est. receive ${new Decimal(quote.outputAmount).formatToken(4)} ${side === 'buy' ? tokenSymbol : 'SOL'}` : 'Est. receive —'}
+          : quote ? `Est. receive ${new Decimal(quote.outputAmount).formatToken(4)} ${side === 'buy' ? tokenSymbol : nativeSymbol}` : 'Est. receive —'}
       </div>
-      <p className="mb-2 text-[11px] text-amber-300">Solana mainnet · real funds · wallet approval required</p>
+      <p className="mb-2 text-[11px] text-amber-300">
+        {isRobinhood ? 'Robinhood Chain mainnet (ID 4663) · EVM wallet required' : 'Solana mainnet · real funds · wallet approval required'}
+      </p>
       <button type="button" disabled={isQuoteLoading || execution.busy || execution.pending} className="mb-2 min-h-8 text-[11px] text-sky-300 disabled:opacity-50"
         onClick={() => { const requestId = ++quoteRequest.current; void updateQuote(requestId, new AbortController().signal); }}>Refresh quote</button>
       {(execution.error || execution.receipt || execution.pending) && <div role="status" className="mb-2 space-y-1 break-words text-[11px] text-slate-300">
         <p>{execution.state === 'confirmed' ? 'Swap confirmed on-chain.' : execution.error || 'Transaction submitted; awaiting confirmation.'}</p>
-        {execution.receipt?.txSignature && <a className="text-sky-300 underline" href={`https://solscan.io/tx/${execution.receipt.txSignature}`} target="_blank" rel="noreferrer">View transaction</a>}
+        {execution.receipt?.txSignature && <a className="text-sky-300 underline" href={getExplorerTxUrl(normalizedChain, execution.receipt.txSignature)} target="_blank" rel="noreferrer">View transaction</a>}
         {execution.pending && <button type="button" className="block min-h-8 text-sky-300" onClick={() => void execution.checkStatus()}>Check existing transaction</button>}
       </div>}
       {quoteError && <p role="alert" className="mb-2 break-words text-[11px] text-amber-400">{quoteError}</p>}
-      {!primaryWallet ? <Button variant="buy" className="min-h-10 w-full font-bold" onClick={openWalletModal}>Connect Wallet to Trade</Button> :
+      {isRobinhood && quote?.executionSupported === false && (
+        <p role="status" className="mb-2 rounded-md border border-amber-500/40 bg-amber-950/30 p-2 text-[11px] text-amber-300">
+          {quote.unavailableReason || 'Direct swap execution is not yet verified for this Robinhood Chain DEX router. Live pool price quote is shown above.'}
+        </p>
+      )}
+      {isRobinhood ? (
+        !evmAddress ? (
+          <Button variant="buy" className="min-h-10 w-full font-bold" onClick={openWalletModal}>Connect EVM Wallet to Trade</Button>
+        ) : isWrongEvmNetwork ? (
+          <Button
+            variant="outline"
+            className="min-h-10 w-full font-bold border-amber-500/50 text-amber-300 hover:bg-amber-950/30"
+            onClick={() => void switchToRobinhoodChain()}
+          >
+            Switch to Robinhood Chain (4663)
+          </Button>
+        ) : quote?.executionSupported === false ? (
+          <Button variant="outline" className="min-h-10 w-full font-bold opacity-70" disabled>
+            Swap Unavailable on This DEX Router
+          </Button>
+        ) : (
+          <Button variant={side === 'buy' ? 'buy' : 'sell'} className="min-h-10 w-full truncate font-bold shadow-sm" title={tokenSymbol} onClick={handleOpenPreview}
+            disabled={!quote || quoteExpired || isQuoteLoading || !validSlippage || quote.isValid === false || execution.pending || execution.busy}>
+            {isQuoteLoading ? 'Fetching Quote…' : `Preview ${side === 'buy' ? 'Buy' : 'Sell'} ${tokenSymbol}`}
+          </Button>
+        )
+      ) : !primaryWallet ? <Button variant="buy" className="min-h-10 w-full font-bold" onClick={openWalletModal}>Connect Wallet to Trade</Button> :
         <Button variant={side === 'buy' ? 'buy' : 'sell'} className="min-h-10 w-full truncate font-bold shadow-sm" title={tokenSymbol} onClick={handleOpenPreview}
           disabled={!quote || quoteExpired || isQuoteLoading || !validSlippage || quote.isValid === false || execution.pending || execution.busy}>
           {isQuoteLoading ? 'Fetching Quote…' : `Preview ${side === 'buy' ? 'Buy' : 'Sell'} ${tokenSymbol}`}
@@ -317,29 +369,30 @@ export function TradingPanel({
           <dt>Price impact</dt><dd className="text-right">{quote.priceImpactMeasured === false ? 'Unavailable' : `${quote.priceImpact}%`}</dd>
         </dl>}
       </div>}
-      <button type="button" onClick={() => { setCallout(`${tokenSymbol} on Phivex\n${window.location.origin}/trade/solana/${tokenMint}`); setCopyStatus(''); setCalloutOpen(true); }}
-        className="my-3 flex w-full items-center gap-2 rounded-md border border-sentinel-800 bg-sentinel-900/40 p-2 text-left">
-        <Megaphone className="h-4 w-4 shrink-0 text-sky-400" /><span className="min-w-0"><span className="block text-[11px] font-semibold text-slate-200">Make a callout</span><span className="block text-[11px] text-slate-500">Draft a post to copy and share</span></span>
+      <button type="button" onClick={() => { setCallout(`${tokenSymbol} on Phivex\n${window.location.origin}/trade/${normalizedChain}/${tokenMint}`); setCopyStatus(''); setCalloutOpen(true); }}
+        className="my-3 flex w-full items-center gap-2 rounded-[8px] border border-[#1E222D] bg-[#11141B] hover:border-[#32374A] hover:bg-[#151821] p-2.5 text-left transition-colors">
+        <Megaphone className="h-4 w-4 shrink-0 text-[#526FFF]" /><span className="min-w-0"><span className="block text-[11px] font-semibold text-[#F7F8F9]">Make a callout</span><span className="block text-[11px] text-[#828598]">Draft a post to copy and share</span></span>
       </button>
-      <div className="grid grid-cols-4 divide-x divide-sentinel-800 border-y border-sentinel-800 py-2 text-[11px]" aria-label="Wallet position">
+      <div className="grid grid-cols-4 divide-x divide-[#1E222D] border-y border-[#1E222D] bg-[#0A0D12] py-2 text-[11px]" aria-label="Wallet position">
         {[['Bought', position.boughtUsd], ['Sold', position.soldUsd], ['Holding', position.holdingUsd], ['PnL', position.pnlUsd]].map(([label, value]) =>
-          <div key={String(label)} className="min-w-0 px-1" title={`${label}: wallet position in USD. ${label === 'Holding' && sidebar.position?.holdingEvidence ? `${formatDisplaySource(sidebar.position.holdingEvidence.source)}; ${sidebar.position.holdingEvidence.status}.` : sidebar.position?.pnlEvidence ? `${formatDisplaySource(sidebar.position.pnlEvidence.source)}; ${sidebar.position.pnlEvidence.status}.` : sidebar.positionError || 'Connect a linked wallet to load its position.'}`}>
-            <span className="text-slate-500">{label}</span><span className={`block truncate font-numeric ${label === 'PnL' && typeof value === 'number' ? value < 0 ? 'text-rose-400' : 'text-emerald-400' : 'text-slate-300'}`}>{usd(value as number | null)}</span>
+          <div key={String(label)} className="min-w-0 px-1.5" title={`${label}: wallet position in USD. ${label === 'Holding' && sidebar.position?.holdingEvidence ? `${formatDisplaySource(sidebar.position.holdingEvidence.source)}; ${sidebar.position.holdingEvidence.status}.` : sidebar.position?.pnlEvidence ? `${formatDisplaySource(sidebar.position.pnlEvidence.source)}; ${sidebar.position.pnlEvidence.status}.` : sidebar.positionError || 'Connect a linked wallet to load its position.'}`}>
+            <span className="text-[#828598]">{label}</span><span className={`block truncate font-numeric font-medium ${label === 'PnL' && typeof value === 'number' ? value < 0 ? 'text-[#EC397A]' : 'text-[#2FE3AC]' : 'text-[#F7F8F9]'}`}>{usd(value as number | null)}</span>
           </div>)}
       </div>
-      {!address && !primaryWallet?.address ? <p className="mt-1 text-[11px] text-slate-500" role="status">Connect a wallet to see its position.</p>
-        : sidebar.positionLoading ? <p className="mt-1 text-[11px] text-slate-500" role="status">Loading wallet position…</p>
-          : sidebar.positionError ? <p className="mt-1 text-[11px] text-amber-400" role="status">{sidebar.positionError}</p>
-            : sidebar.position?.pnlEvidence?.status === 'unavailable' ? <p className="mt-1 text-[11px] text-slate-500" role="status">Bought, sold and PnL are not yet available for this token.</p> : null}
+      {!activeChainWallet ? <p className="mt-1 text-[11px] text-[#828598]" role="status">Connect a wallet to see its position.</p>
+        : isRobinhood ? <p className="mt-1 text-[11px] text-[#828598]" role="status">Per-token EVM PnL history is unavailable; native balance shown above.</p>
+        : sidebar.positionLoading ? <p className="mt-1 text-[11px] text-[#828598]" role="status">Loading wallet position…</p>
+          : sidebar.positionError ? <p className="mt-1 text-[11px] text-[#FFB224]" role="status">{sidebar.positionError}</p>
+            : sidebar.position?.pnlEvidence?.status === 'unavailable' ? <p className="mt-1 text-[11px] text-[#828598]" role="status">Bought, sold and PnL are not yet available for this token.</p> : null}
       <div className="my-2 flex items-center gap-1" aria-label="Trading presets">
         {presets.map((preset, index) => <button type="button" key={index} aria-pressed={activePreset === index}
           onClick={() => { setActivePreset(index); setSlippage(preset.slippage); setIsCustomSlippage(false); if (side === 'buy') setInputAmount(String(preset.amounts[0])); }}
-          className={`min-h-7 flex-1 rounded text-[11px] ${activePreset === index ? 'bg-sky-500/10 text-sky-400' : 'text-slate-400 hover:bg-sentinel-800'}`}>PRESET {index + 1}</button>)}
-        <button type="button" onClick={editPreset} aria-label="Configure selected preset" className="p-1 text-sky-400"><Settings2 className="h-3.5 w-3.5" /></button>
+          className={`min-h-7 flex-1 rounded-[6px] border text-[11px] font-mono transition-colors ${activePreset === index ? 'bg-[#526FFF]/15 border-[#526FFF]/35 text-[#8EA2FF] font-semibold' : 'bg-[#11141B] border-[#1E222D] text-[#828598] hover:text-[#F7F8F9] hover:bg-[#1C202B]'}`}>PRESET {index + 1}</button>)}
+        <button type="button" onClick={editPreset} aria-label="Configure selected preset" className="p-1.5 rounded-[6px] hover:bg-[#1C202B] text-[#8EA2FF] transition-colors"><Settings2 className="h-3.5 w-3.5" /></button>
       </div>
-      <TradeSidebarInfo data={sidebar.data} loading={sidebar.loading} error={sidebar.error} refresh={sidebar.refresh} />
+      <TradeSidebarInfo data={sidebar.data} loading={sidebar.loading} error={sidebar.error} refresh={sidebar.refresh} chain={normalizedChain} />
       <Modal isOpen={editingPreset} onClose={() => setEditingPreset(false)} title={`Configure preset ${activePreset + 1}`} size="sm">
-        <label className="block space-y-2 text-xs text-slate-300">Four buy amounts (SOL)
+        <label className="block space-y-2 text-xs text-slate-300">Four buy amounts ({nativeSymbol})
           <Input value={presetDraft} onChange={e => setPresetDraft(e.target.value)} placeholder="0.01, 0.1, 1, 10" />
         </label>
         <p className="my-3 text-xs text-slate-500">Also saves the current slippage setting. Sell shortcuts use percentages of your recorded token holding.</p>

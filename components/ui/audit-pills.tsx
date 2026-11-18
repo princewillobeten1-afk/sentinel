@@ -69,10 +69,10 @@ interface PillSpec {
   warn: number;
 }
 
-const NEUTRAL = 'bg-slate-900/80 border-slate-800 text-slate-400';
-const DANGER = 'bg-rose-950/60 border-rose-800/80 text-rose-400';
-const WARN = 'bg-amber-950/50 border-amber-800/70 text-amber-400';
-const SAFE = 'bg-emerald-950/60 border-emerald-800/80 text-emerald-400';
+const NEUTRAL = 'bg-[#141821] border-[#222634] text-[#828598]';
+const DANGER = 'bg-[#EC397A]/12 border-[#EC397A]/35 text-[#FF6166]';
+const WARN = 'bg-[#FFB224]/12 border-[#FFB224]/35 text-[#FFB224]';
+const SAFE = 'bg-[#12AF80]/12 border-[#12AF80]/30 text-[#12AF80]';
 
 export function AuditPills({
   top10HoldingsPct,
@@ -159,7 +159,7 @@ export function AuditPills({
   if (!anyKnown && !pending && !alwaysShow) return null;
 
   return (
-    <div className={`flex items-center gap-1 flex-wrap text-2xs font-mono ${className}`}>
+    <div className={`flex items-center gap-1 flex-nowrap overflow-hidden text-2xs font-mono ${className}`}>
       {pills.map((pill) => {
         const resolvedEvidence = currentEvidence(evidenceByMetric?.[pill.key as 'top10' | 'dev'] ?? evidence, now);
         const evidenceAge = ageOf(resolvedEvidence);
@@ -241,7 +241,7 @@ export function AuditPills({
             }
           >
             <span
-              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border font-bold leading-none tabular-nums ${tone} ${resolvedEvidence?.status === 'stale' ? 'border-dashed opacity-80' : ''}`}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-[5px] border font-semibold leading-none tabular-nums ${tone} ${resolvedEvidence?.status === 'stale' ? 'border-dashed opacity-80' : ''}`}
             >
               <Icon className="w-2.5 h-2.5" />
               <MetricValue

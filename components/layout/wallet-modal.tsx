@@ -33,9 +33,10 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { useWalletState, useWalletActions, useNotificationsActions } from '@/lib/store';
+import { useWalletState, useWalletActions, useNotificationsActions, useAppState } from '@/lib/store';
 import { WalletProviderId } from '@/lib/wallet/types';
 import { INSTALL_URLS } from '@/lib/wallet/solana-adapter';
+import { getExplorerAddressUrl, ROBINHOOD_CHAIN_ID } from '@/lib/chains/chain-config';
 import { DepositTab } from '@/components/wallet/deposit-tab';
 import { WithdrawTab } from '@/components/wallet/withdraw-tab';
 import { WalletHistoryTab } from '@/components/wallet/wallet-history-tab';
@@ -50,6 +51,7 @@ const WALLET_CATALOG: Array<{ id: WalletProviderId; name: string; desc: string }
 ];
 
 export function WalletModal() {
+  const { activeChain } = useAppState();
   const {
     isWalletModalOpen,
     status,
@@ -64,6 +66,13 @@ export function WalletModal() {
     activeWalletTab,
     isRefreshingBalance,
     lastBalanceRefreshedAt,
+    evmAddress,
+    evmChainId,
+    evmBalanceEth,
+    evmConnecting,
+    evmError,
+    hasEvmProvider,
+    isWrongEvmNetwork,
   } = useWalletState();
 
   const {
@@ -81,6 +90,10 @@ export function WalletModal() {
     resetAuthError,
     refreshWalletBalance,
     checkExtensionAvailability,
+    connectEvmWallet,
+    switchToRobinhoodChain,
+    refreshEvmBalance,
+    disconnectEvmWallet,
   } = useWalletActions();
 
   const { addNotification } = useNotificationsActions();
@@ -234,6 +247,118 @@ export function WalletModal() {
           <button onClick={resetAuthError} className="text-slate-400 hover:text-white transition">
             ✕
           </button>
+        </div>
+      )}
+
+      {/* EVM Wallet Panel for Robinhood Chain (Chain ID 4663) */}
+      {(activeChain === 'robinhood' || Boolean(evmAddress)) && (
+        <div className="mb-4 rounded-2xl border border-lime-500/35 bg-gradient-to-br from-lime-950/25 via-sentinel-900/90 to-sentinel-950 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-lime-400" />
+              <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                Robinhood Chain (EVM • 4663)
+              </span>
+            </div>
+            {evmAddress ? (
+              isWrongEvmNetwork ? (
+                <Badge variant="warning" size="sm">Wrong Network (ID: {evmChainId ?? '?'})</Badge>
+              ) : (
+                <Badge variant="success" size="sm">Chain {ROBINHOOD_CHAIN_ID} Active</Badge>
+              )
+            ) : (
+              <Badge variant="neutral" size="sm">Disconnected</Badge>
+            )}
+          </div>
+
+          {evmError && (
+            <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-2xs text-rose-300">
+              {evmError}
+            </div>
+          )}
+
+          {evmAddress ? (
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-sentinel-800 bg-sentinel-950/90 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-2xs text-slate-400 font-mono">Connected EVM Address</p>
+                  <p className="text-xs font-mono font-bold text-lime-300 truncate">{evmAddress}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => handleCopyAddress(evmAddress)}
+                    leftIcon={<Copy className="h-3 w-3" />}
+                  >
+                    Copy
+                  </Button>
+                  <a
+                    href={getExplorerAddressUrl('robinhood', evmAddress)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-sentinel-800 transition"
+                    title="View on Robinhood Chain Blockscout"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sentinel-800 bg-sentinel-950/80 px-3 py-2">
+                <div>
+                  <p className="text-2xs text-slate-400 font-mono">Native Balance</p>
+                  <p className="text-base font-bold font-numeric text-lime-300">
+                    {evmBalanceEth === null ? '— ETH' : `${evmBalanceEth.toFixed(5)} ETH`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isWrongEvmNetwork && (
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      onClick={() => void switchToRobinhoodChain()}
+                    >
+                      Switch to Robinhood Chain
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => void refreshEvmBalance(evmAddress)}
+                    leftIcon={<RefreshCw className="h-3 w-3" />}
+                  >
+                    Sync
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={disconnectEvmWallet}
+                    leftIcon={<LogOut className="h-3 w-3 text-rose-400" />}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <p className="text-xs text-slate-300">
+                {hasEvmProvider
+                  ? 'Connect MetaMask, Rabby, Coinbase, or any EIP-1193 EVM wallet to interact with Robinhood Chain.'
+                  : 'No EIP-1193 browser wallet detected. Install MetaMask, Rabby, or Coinbase Wallet.'}
+              </p>
+              <Button
+                variant="buy"
+                size="sm"
+                onClick={() => void connectEvmWallet()}
+                disabled={evmConnecting}
+                className="shrink-0 font-bold"
+              >
+                {evmConnecting ? 'Connecting...' : 'Connect EVM Wallet'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

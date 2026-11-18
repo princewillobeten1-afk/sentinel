@@ -5,6 +5,7 @@ import { X, ArrowDown, Route, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Quote } from '@/lib/quote/types';
 import { Decimal } from '@/lib/math/decimal';
+import { getExplorerTxUrl } from '@/lib/chains/chain-config';
 
 export interface TransactionPreviewModalProps {
   isOpen?: boolean;
@@ -55,6 +56,7 @@ export function TransactionPreviewModal({
   const handleConfirm = onConfirm || onConfirmExecute || (() => {});
   const handleCancel = onCancel || onClose || (() => {});
   const actualLoading = isLoading || isExecuting;
+  const isRobinhood = quote.chainId === 'robinhood';
   const isHighImpact = quote.priceImpactRating === 'HIGH' || quote.priceImpactRating === 'EXTREME';
   const stateLabel: Record<string, string> = {
     preparing: 'Preparing simulation…',
@@ -163,16 +165,33 @@ export function TransactionPreviewModal({
           <div className="flex justify-between">
             <span className="text-slate-400">Estimated network fee:</span>
             <span className="font-bold text-slate-200">
-              {mainnetSwap ? feeLamports == null ? 'Available after preflight' : `${feeLamports / 1e9} SOL` : `$${quote.fees.totalFeeUsd.toFixed(4)}`}
+              {isRobinhood
+                ? 'EIP-1559 · Prompted in EVM wallet'
+                : mainnetSwap
+                  ? feeLamports == null
+                    ? 'Available after preflight'
+                    : `${feeLamports / 1e9} SOL`
+                  : `$${quote.fees.totalFeeUsd.toFixed(4)}`}
             </span>
           </div>
         </div>
 
         {mainnetSwap && <label className="flex min-h-11 items-center gap-2 rounded-md border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
           <input type="checkbox" checked={acknowledgedMainnet} disabled={actualLoading || pending} onChange={event => setAcknowledgedMainnet(event.target.checked)} />
-          I understand this is a Solana mainnet swap using real funds. Priority fee is capped at 0.00005 SOL; account rent may apply. No private MEV relay is configured.
+          {isRobinhood
+            ? 'I understand this is a Robinhood Chain mainnet (ID 4663) swap using real funds. Token/Permit2 approval may be prompted first.'
+            : 'I understand this is a Solana mainnet swap using real funds. Priority fee is capped at 0.00005 SOL; account rent may apply. No private MEV relay is configured.'}
         </label>}
-        {txSignature && <a className="block break-all text-xs text-sky-300 underline" href={`https://solscan.io/tx/${txSignature}`} target="_blank" rel="noreferrer">View transaction on Solscan</a>}
+        {txSignature && (
+          <a
+            className="block break-all text-xs text-sky-300 underline"
+            href={getExplorerTxUrl(isRobinhood ? 'robinhood' : 'solana', txSignature)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {isRobinhood ? 'View transaction on Robinhood Explorer' : 'View transaction on Solscan'}
+          </a>
+        )}
         {/* High Price Impact Acknowledgment Checkbox */}
         {isHighImpact && (
           <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 space-y-2">

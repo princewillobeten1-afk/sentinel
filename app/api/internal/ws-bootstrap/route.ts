@@ -41,6 +41,10 @@ export async function POST() {
   const { dexScreenerBoostsService } = await import('@/lib/discovery/dexscreener-boosts');
   dexScreenerBoostsService.start();
 
+  // Streams real-time Robinhood Chain DEX / Pons V2 launchpad events
+  const { startRobinhoodEventStream } = await import('@/lib/market/live/robinhood-event-stream');
+  startRobinhoodEventStream();
+
   if (!wss) {
     return jsonResponse({ webSocketAttached: false, reason: 'No WebSocketServer published on globalThis (not running under server.js).' });
   }

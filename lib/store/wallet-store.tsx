@@ -12,6 +12,12 @@ import {
 } from '@/lib/wallet/types';
 import { getAvailableSolanaAdapters } from '@/lib/wallet/solana-adapter';
 import { formatSIWSMessage, signatureToBase58 } from '@/lib/wallet/siws';
+import {
+  getInjectedEvmProvider,
+  parseEvmChainId,
+  switchOrAddRobinhoodChain,
+} from '@/lib/wallet/evm-wallet-adapter';
+import { ROBINHOOD_CHAIN_ID, isEvmAddress } from '@/lib/chains/chain-config';
 
 export interface QuickBuyTokenData {
   name: string;
@@ -64,6 +70,13 @@ interface WalletState {
   walletTransactions: WalletTransactionRecord[];
   isRefreshingBalance: boolean;
   lastBalanceRefreshedAt: string | null;
+  evmAddress: string | null;
+  evmChainId: number | null;
+  evmBalanceEth: number | null;
+  evmConnecting: boolean;
+  evmError: string | null;
+  hasEvmProvider: boolean;
+  isWrongEvmNetwork: boolean;
 }
 
 interface WalletActions {
@@ -112,6 +125,10 @@ interface WalletActions {
     txHash?: string;
     network?: string;
   }) => void;
+  connectEvmWallet: () => Promise<string | null>;
+  switchToRobinhoodChain: () => Promise<boolean>;
+  refreshEvmBalance: (address?: string) => Promise<number | null>;
+  disconnectEvmWallet: () => void;
 }
 
 const WalletStateContext = createContext<WalletState | undefined>(undefined);
@@ -170,6 +187,17 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
   const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
   const [quickBuyToken, setQuickBuyToken] = useState<QuickBuyTokenData | null>(null);
 
+  // EVM (Robinhood Chain) wallet state — completely separate from Solana adapters
+  const [evmAddress, setEvmAddress] = useState<string | null>(null);
+  const [evmChainId, setEvmChainId] = useState<number | null>(null);
+  const [evmBalanceEth, setEvmBalanceEth] = useState<number | null>(null);
+  const [evmConnecting, setEvmConnecting] = useState(false);
+  const [evmError, setEvmError] = useState<string | null>(null);
+  const [hasEvmProvider, setHasEvmProvider] = useState(false);
+  const isWrongEvmNetwork = Boolean(
+    evmAddress && evmChainId !== null && evmChainId !== ROBINHOOD_CHAIN_ID,
+  );
+
   const primaryWallet = linkedWallets.find((w) => w.isPrimary) || linkedWallets[0] || null;
 
   const activePublicKeyRef = React.useRef(activePublicKey);
@@ -202,6 +230,163 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
       clearTimeout(timer1);
       clearTimeout(timer2);
     };
+  }, []);
+
+  const refreshEvmBalance = useCallback(
+    async (targetAddress?: string): Promise<number | null> => {
+      const addr = targetAddress ?? evmAddress;
+      if (!addr || !isEvmAddress(addr)) return null;
+      try {
+        const res = await fetch(
+          `/api/v1/wallet/balance?chain=robinhood&address=${encodeURIComponent(addr)}`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok) return null;
+        const json = (await res.json()) as { balanceEth?: number; balanceSol?: number };
+        const ethVal =
+          typeof json.balanceEth === 'number'
+            ? json.balanceEth
+            : typeof json.balanceSol === 'number'
+              ? json.balanceSol
+              : null;
+        if (ethVal !== null) {
+          setEvmBalanceEth(ethVal);
+          setLastBalanceRefreshedAt(new Date().toISOString());
+        }
+        return ethVal;
+      } catch {
+        return null;
+      }
+    },
+    [evmAddress],
+  );
+
+  // Silent EVM detection + EIP-1193 listeners (accountsChanged / chainChanged)
+  useEffect(() => {
+    const provider = getInjectedEvmProvider();
+    setHasEvmProvider(Boolean(provider));
+    if (!provider) return;
+
+    let cancelled = false;
+    const syncSilent = async () => {
+      try {
+        const savedDisconnected = window.localStorage.getItem('sentinel_evm_disconnected') === 'true';
+        if (savedDisconnected) return;
+        const [accounts, rawChainId] = await Promise.all([
+          provider.request({ method: 'eth_accounts' }) as Promise<string[]>,
+          provider.request({ method: 'eth_chainId' }),
+        ]);
+        if (cancelled) return;
+        const parsedChain = parseEvmChainId(rawChainId);
+        if (parsedChain !== null) setEvmChainId(parsedChain);
+        if (Array.isArray(accounts) && accounts[0] && isEvmAddress(accounts[0])) {
+          setEvmAddress(accounts[0]);
+          void refreshEvmBalance(accounts[0]);
+        }
+      } catch {
+        // Provider unavailable or locked
+      }
+    };
+    void syncSilent();
+
+    const handleAccountsChanged = (accounts: unknown) => {
+      const list = Array.isArray(accounts) ? (accounts as string[]) : [];
+      const first = list[0];
+      if (first && isEvmAddress(first)) {
+        setEvmAddress(first);
+        setEvmError(null);
+        void refreshEvmBalance(first);
+      } else {
+        setEvmAddress(null);
+        setEvmBalanceEth(null);
+      }
+    };
+
+    const handleChainChanged = (rawChain: unknown) => {
+      const parsed = parseEvmChainId(rawChain);
+      setEvmChainId(parsed);
+      setEvmError(null);
+    };
+
+    provider.on?.('accountsChanged', handleAccountsChanged);
+    provider.on?.('chainChanged', handleChainChanged);
+    return () => {
+      cancelled = true;
+      provider.removeListener?.('accountsChanged', handleAccountsChanged);
+      provider.removeListener?.('chainChanged', handleChainChanged);
+    };
+  }, [refreshEvmBalance]);
+
+  const connectEvmWallet = useCallback(async (): Promise<string | null> => {
+    const provider = getInjectedEvmProvider();
+    setHasEvmProvider(Boolean(provider));
+    if (!provider) {
+      setEvmError('No EVM wallet detected. Install MetaMask, Rabby, or Coinbase Wallet.');
+      return null;
+    }
+
+    setEvmConnecting(true);
+    setEvmError(null);
+    try {
+      const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+      const addr = accounts?.[0];
+      if (!addr || !isEvmAddress(addr)) {
+        throw new Error('Wallet returned no valid EVM address.');
+      }
+      const rawChain = await provider.request({ method: 'eth_chainId' });
+      const parsedChain = parseEvmChainId(rawChain);
+      setEvmAddress(addr);
+      setEvmChainId(parsedChain);
+      try {
+        window.localStorage.removeItem('sentinel_evm_disconnected');
+      } catch {}
+
+      if (parsedChain !== ROBINHOOD_CHAIN_ID) {
+        try {
+          await switchOrAddRobinhoodChain(provider, ROBINHOOD_CHAIN_ID);
+          setEvmChainId(ROBINHOOD_CHAIN_ID);
+        } catch {
+          // Non-fatal: surface wrong-network indicator so the user can switch when ready
+        }
+      }
+
+      await refreshEvmBalance(addr);
+      return addr;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to connect EVM wallet.';
+      setEvmError(msg);
+      return null;
+    } finally {
+      setEvmConnecting(false);
+    }
+  }, [refreshEvmBalance]);
+
+  const switchToRobinhoodChain = useCallback(async (): Promise<boolean> => {
+    const provider = getInjectedEvmProvider();
+    if (!provider) {
+      setEvmError('No EVM wallet extension detected.');
+      return false;
+    }
+    setEvmError(null);
+    try {
+      await switchOrAddRobinhoodChain(provider, ROBINHOOD_CHAIN_ID);
+      setEvmChainId(ROBINHOOD_CHAIN_ID);
+      if (evmAddress) void refreshEvmBalance(evmAddress);
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to switch network to Robinhood Chain.';
+      setEvmError(msg);
+      return false;
+    }
+  }, [evmAddress, refreshEvmBalance]);
+
+  const disconnectEvmWallet = useCallback(() => {
+    setEvmAddress(null);
+    setEvmBalanceEth(null);
+    setEvmError(null);
+    try {
+      window.localStorage.setItem('sentinel_evm_disconnected', 'true');
+    } catch {}
   }, []);
 
   // Real-time on-chain balance query via Solana RPC
@@ -1239,7 +1424,7 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         userId: 'user_001',
         walletId: primaryWallet?.id || 'w_001',
         direction: params.side === 'buy' ? 'SEND' : 'RECEIVE',
-        asset: params.side === 'buy' ? 'SOL' : params.tokenSymbol,
+        asset: params.side === 'buy' ? (params.network === 'robinhood' ? 'ETH' : 'SOL') : params.tokenSymbol,
         amount: params.amountSol,
         destinationAddress: params.tokenMint,
         signature: txHash,
@@ -1282,6 +1467,13 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
         walletTransactions,
         isRefreshingBalance,
         lastBalanceRefreshedAt,
+        evmAddress,
+        evmChainId,
+        evmBalanceEth,
+        evmConnecting,
+        evmError,
+        hasEvmProvider,
+        isWrongEvmNetwork,
       }}
     >
       <WalletActionsContext.Provider
@@ -1306,6 +1498,10 @@ export function WalletStoreProvider({ children }: { children: React.ReactNode })
           withdrawCrypto,
           fetchWalletTransactions,
           recordTradeExecution,
+          connectEvmWallet,
+          switchToRobinhoodChain,
+          refreshEvmBalance,
+          disconnectEvmWallet,
         }}
       >
         {children}

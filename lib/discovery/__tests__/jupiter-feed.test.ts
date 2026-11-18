@@ -292,13 +292,17 @@ describe('creator facts — carried from Jupiter, not derived', () => {
     expect(mapped?.devAddress).toBe('Dev1111111111111111111111111111111111111111');
   });
 
-  it('never fabricates holder concentration', () => {
-    // top10 needs getTokenLargestAccounts, which no free RPC serves. It stays
-    // undefined here so the card shows "not measured" rather than a number.
+  it('never fabricates holder concentration and maps topHoldersPercentage when Jupiter supplies it', () => {
     const mapped = mapJupiterToken(token({ holderCount: 190 }));
     expect(mapped?.holdersCount).toBe(190);
     expect(mapped?.top10HoldingsPct).toBeUndefined();
     expect(mapped?.sniperPercentage).toBeUndefined();
     expect(mapped?.bundlerPercentage).toBeUndefined();
+
+    const audited = mapJupiterToken(
+      token({ holderCount: 190, audit: { topHoldersPercentage: 27.436 } }),
+    );
+    expect(audited?.top10HoldingsPct).toBe(27.44);
+    expect(audited?.ownershipEvidence?.status).toBe('measured');
   });
 });

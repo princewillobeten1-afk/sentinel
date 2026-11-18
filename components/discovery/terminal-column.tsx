@@ -89,9 +89,13 @@ export function TerminalColumn({
   const [unreadNewCount, setUnreadNewCount] = useState(0);
   const [isScrolledDown, setIsScrolledDown] = useState(false);
   const [visibleMintSet, setVisibleMintSet] = useState<Set<string>>(() => new Set());
+  const [isHovered, setIsHovered] = useState(false);
+  const [frozenSnapshot, setFrozenSnapshot] = useState<DiscoveryToken[] | null>(null);
+  const [renderLimit, setRenderLimit] = useState(18);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousTokenCountRef = useRef<number>(0);
+  const displayTokensLengthRef = useRef<number>(0);
 
   // Combine column filters with global filters
   const combinedFilters: Partial<DiscoveryFilter> = {
@@ -154,6 +158,9 @@ export function TerminalColumn({
     setIsScrolledDown(isDown);
     if (!isDown) {
       setUnreadNewCount(0);
+      setRenderLimit(18);
+    } else if (el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
+      setRenderLimit((prev) => (prev < displayTokensLengthRef.current ? prev + 16 : prev));
     }
   }, []);
 
@@ -206,7 +213,10 @@ export function TerminalColumn({
       default:
         return list.sort((a, b) => {
           if (config.type === 'graduated') {
-            return (b.migratedAt ?? 0) - (a.migratedAt ?? 0);
+            if ((b.migratedAt ?? 0) !== (a.migratedAt ?? 0)) {
+              return (b.migratedAt ?? 0) - (a.migratedAt ?? 0);
+            }
+            return (a.ageMinutes ?? 0) - (b.ageMinutes ?? 0);
           }
           if (config.type === 'migrating') {
             // The lifecycle feed already orders the rolling 20 by entry time.
@@ -216,6 +226,45 @@ export function TerminalColumn({
         });
     }
   }, [tokens, sortBy, timeWindow, config.type]);
+
+  useEffect(() => {
+    setIsHovered(false);
+    setFrozenSnapshot(null);
+    setRenderLimit(18);
+  }, [chain]);
+
+  useEffect(() => {
+    if (isHovered) {
+      setFrozenSnapshot((prev) => prev ?? sortedTokens);
+    } else {
+      setFrozenSnapshot(null);
+    }
+  }, [isHovered, sortedTokens]);
+
+  const { displayTokens, hoveredNewCount } = useMemo(() => {
+    if (!isHovered || !frozenSnapshot) {
+      return { displayTokens: sortedTokens, hoveredNewCount: 0 };
+    }
+    const liveByMint = new Map(sortedTokens.map((t) => [t.mint.toLowerCase(), t]));
+    const frozenMints = new Set<string>();
+    const merged = frozenSnapshot.map((oldToken) => {
+      const key = oldToken.mint.toLowerCase();
+      frozenMints.add(key);
+      return liveByMint.get(key) ?? oldToken;
+    });
+    let unseenCount = 0;
+    for (const t of sortedTokens) {
+      if (!frozenMints.has(t.mint.toLowerCase())) unseenCount += 1;
+    }
+    return { displayTokens: merged, hoveredNewCount: unseenCount };
+  }, [isHovered, frozenSnapshot, sortedTokens]);
+
+  displayTokensLengthRef.current = displayTokens.length;
+
+  const visibleTokens = useMemo(
+    () => displayTokens.slice(0, renderLimit),
+    [displayTokens, renderLimit],
+  );
 
   const handleCardVisibility = useCallback((mint: string, visible: boolean) => {
     setVisibleMintSet((previous) => {
@@ -306,25 +355,35 @@ export function TerminalColumn({
   return (
     <div
       onWheel={handleColumnWheel}
-      className="discovery-column flex flex-col h-full min-h-0 bg-[#000000] md:bg-slate-900 border-0 md:border md:border-slate-700 md:rounded-md overflow-hidden min-w-0 md:min-w-[290px]"
+      className="discovery-column flex flex-col h-full min-h-0 bg-[#0B0E14] border-0 md:border-r md:border-[#1E222D] last:md:border-r-0 rounded-none overflow-hidden min-w-0 md:min-w-[310px]"
     >
-      {/* Sticky Column Header (Desktop only - mobile uses Axiom segmented pill tabs) */}
-      <div className="hidden md:flex sticky top-0 z-10 shrink-0 items-center justify-between px-3 h-10 bg-slate-850 border-b border-slate-700 text-xs">
+      {/* Sticky Column Header (42px Axiom Pulse header) */}
+      <div className="hidden md:flex sticky top-0 z-10 shrink-0 items-center justify-between px-3 h-[42px] bg-[#10131A]/95 backdrop-blur-md border-b border-[#1E222D] text-xs">
         {/* Title + Icon + Count */}
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">
-            {SECTION_ICONS[config.type] || <Sparkles className="w-3.5 h-3.5 text-sky-400" />}
+            {SECTION_ICONS[config.type] || <Sparkles className="w-3.5 h-3.5 text-[#526FFF]" />}
           </span>
-          <span className="font-bold text-slate-100 uppercase tracking-wide text-xs truncate">
+          <span className="font-semibold text-[#F7F8F9] tracking-[-0.01em] text-[13px] truncate">
             {config.title}
           </span>
-          <span className="px-1.5 py-px rounded-full bg-slate-800 border border-slate-700 font-numeric text-2xs text-slate-400 shrink-0">
+          <span className="px-1.5 py-px rounded bg-[#171B24] border border-[#222634] font-numeric text-[11px] text-[#C8C9D1] shrink-0">
             {sortedTokens.length}
           </span>
+          {isHovered && (
+            <span
+              data-testid="column-hover-pause"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#FFB224]/15 border border-[#FFB224]/30 text-[10px] font-mono font-semibold text-[#FFB224] shrink-0"
+              title="Column paused while hovering"
+            >
+              <span>||</span>
+              {hoveredNewCount > 0 && <span>+{hoveredNewCount}</span>}
+            </span>
+          )}
           {/* Says the rows are old rather than letting them pass as current. */}
           {staleForSec !== null && (
             <span
-              className="px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-900/50 text-2xs font-mono text-amber-400 shrink-0 whitespace-nowrap"
+              className="px-1.5 py-0.5 rounded bg-[#FFB224]/12 border border-[#FFB224]/30 text-[10px] font-mono text-[#FFB224] shrink-0 whitespace-nowrap"
               title={`This column's last successful update was ${staleForSec}s ago. Rows shown are from then.`}
             >
               {staleForSec < 60
@@ -340,28 +399,28 @@ export function TerminalColumn({
           <div className="relative">
             <button
               onClick={() => setShowSortMenu(!showSortMenu)}
-              className="flex items-center gap-1 px-1.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 text-2xs text-slate-300 font-medium transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-[5px] bg-[#151821] hover:bg-[#1C202B] border border-[#222634] text-[11px] text-[#C8C9D1] font-medium transition-colors"
               title="Sort this feed"
             >
               <span>{SORT_OPTIONS.find((s) => s.id === sortBy)?.label.split(' ')[0] || 'Sort'}</span>
-              <ChevronDown className="w-2.5 h-2.5 text-slate-500" />
+              <ChevronDown className="w-2.5 h-2.5 text-[#828598]" />
             </button>
 
             {showSortMenu && (
-              <div className="absolute right-0 mt-1 w-44 bg-slate-850 border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-[11px]">
-                <div className="px-2 py-1 text-2xs font-bold uppercase text-slate-500 border-b border-slate-800">
+              <div className="absolute right-0 mt-1 w-44 bg-[#11141B] border border-[#222634] rounded-[8px] shadow-xl py-1 z-30 text-[11px]">
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase text-[#828598] border-b border-[#1E222D]">
                   Sort Column By
                 </div>
                 {SORT_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => handleSelectSort(opt.id)}
-                    className={`w-full text-left px-2.5 py-1.5 hover:bg-sky-500/10 flex items-center justify-between transition-colors ${
-                      sortBy === opt.id ? 'text-sky-400 font-bold bg-sky-500/5' : 'text-slate-300'
+                    className={`w-full text-left px-2.5 py-1.5 hover:bg-[#526FFF]/10 flex items-center justify-between transition-colors ${
+                      sortBy === opt.id ? 'text-[#8EA2FF] font-semibold bg-[#526FFF]/15' : 'text-[#C8C9D1]'
                     }`}
                   >
                     <span>{opt.label}</span>
-                    {sortBy === opt.id && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                    {sortBy === opt.id && <span className="w-1.5 h-1.5 rounded-full bg-[#526FFF]" />}
                   </button>
                 ))}
               </div>
@@ -371,17 +430,17 @@ export function TerminalColumn({
           {/* Refresh Button */}
           <button
             onClick={() => void refresh()}
-            className="p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors"
+            className="p-1 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#F7F8F9] transition-colors"
             title="Refresh Column"
           >
-            <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+            <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin text-[#526FFF]' : ''}`} />
           </button>
 
           {/* Remove Column Button (if removable) */}
           {onRemoveColumn && (
             <button
               onClick={() => onRemoveColumn(config.id)}
-              className="p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-rose-400 transition-colors"
+              className="p-1 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#FF6166] transition-colors"
               title="Remove Column"
             >
               <X className="w-3 h-3" />
@@ -395,7 +454,7 @@ export function TerminalColumn({
         <div className="relative z-20 flex justify-center -mb-7 pointer-events-none">
           <button
             onClick={scrollToTop}
-            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500 text-slate-950 font-bold text-2xs shadow-lg hover:bg-sky-400 transition-all transform hover:scale-105 animate-bounce"
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#526FFF] text-white font-semibold text-[11px] shadow-[0_0_14px_rgba(82,111,255,0.45)] hover:bg-[#6683FF] transition-all transform hover:scale-105 animate-bounce"
           >
             <ArrowUp className="w-3 h-3" />
             <span>{unreadNewCount} new tokens</span>
@@ -408,54 +467,57 @@ export function TerminalColumn({
         ref={scrollContainerRef}
         data-discovery-scroll
         onScroll={handleScroll}
+        onMouseEnter={() => {
+          setIsHovered(true);
+          setFrozenSnapshot((prev) => prev ?? sortedTokens);
+        }}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          setFrozenSnapshot(null);
+        }}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y"
       >
         {error ? (
           /* Independent Error State */
-          <div className="p-4 rounded-xl border border-dashed border-rose-900/50 bg-rose-950/20 text-center space-y-2">
-            <AlertCircle className="w-6 h-6 text-rose-400 mx-auto" />
-            <p className="text-xs font-bold text-rose-300">Feed Unavailable</p>
-            <p className="text-2xs text-slate-400">Token data could not be loaded. Please try again.</p>
+          <div className="p-4 m-3 rounded-[8px] border border-dashed border-[#EC397A]/40 bg-[#EC397A]/8 text-center space-y-2">
+            <AlertCircle className="w-6 h-6 text-[#FF6166] mx-auto" />
+            <p className="text-xs font-semibold text-[#FF6166]">Feed Unavailable</p>
+            <p className="text-[11px] text-[#828598]">Token data could not be loaded. Please try again.</p>
             <button
               onClick={() => void refresh()}
-              className="min-h-11 sm:min-h-8 px-3 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 mt-2"
+              className="min-h-11 sm:min-h-8 px-3 py-1 rounded-[6px] bg-[#151821] hover:bg-[#1C202B] border border-[#222634] text-xs font-semibold text-[#F7F8F9] mt-2"
             >
               Retry
             </button>
           </div>
         ) : isLoading && sortedTokens.length === 0 ? (
           /* Skeletons Matching Exact Card Dimensions */
-          <div className="space-y-2">
+          <div>
             {[1, 2, 3, 4, 5].map((idx) => (
               <div
                 key={idx}
-                  className="h-[192px] bg-slate-950 border-b border-slate-800/60 p-3 animate-pulse flex flex-col justify-between"
+                className="h-[116px] bg-[#0B0E14] border-b border-[#181C26] px-2.5 py-2 animate-pulse flex gap-2.5"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-[72px] h-[72px] rounded-md bg-slate-800" />
-                    <div className="space-y-1">
-                      <div className="w-16 h-3 bg-slate-800 rounded" />
-                      <div className="w-24 h-2.5 bg-slate-800/60 rounded" />
-                    </div>
+                <div className="w-[68px] h-[68px] rounded-[6px] bg-[#151821] shrink-0" />
+                <div className="flex-1 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <div className="w-24 h-3.5 bg-[#151821] rounded" />
+                    <div className="w-20 h-3.5 bg-[#151821] rounded" />
                   </div>
-                  <div className="w-12 h-3.5 bg-slate-800 rounded" />
+                  <div className="w-2/3 h-3 bg-[#151821]/80 rounded" />
+                  <div className="flex items-center justify-between">
+                    <div className="w-40 h-4 bg-[#151821]/70 rounded" />
+                    <div className="w-16 h-[22px] bg-[#415CF2]/20 rounded-full" />
+                  </div>
                 </div>
-                <div className="w-full h-8 bg-slate-950/60 rounded border border-slate-800/40" />
-                <div className="w-full h-4 bg-slate-900/60 rounded" />
               </div>
             ))}
           </div>
         ) : sortedTokens.length === 0 ? (
-          /* Empty state, saying which case this is.
-             It always blamed filters — "Try loosening your filter parameters" —
-             even with no filter set, which sent a reader hunting through a
-             panel of empty fields for something that was never the cause. The
-             common reason is simply that nothing currently qualifies. */
-          <div className="p-6 text-center border border-dashed border-slate-800 rounded-xl space-y-2">
-            <Sparkles className="w-6 h-6 text-slate-600 mx-auto" />
-            <p className="text-xs font-bold text-slate-300">{emptyState.title}</p>
-            <p className="text-2xs text-slate-500">{emptyState.detail}</p>
+          <div className="p-6 m-3 text-center border border-dashed border-[#1E222D] bg-[#090B10] rounded-[8px] space-y-2">
+            <Sparkles className="w-6 h-6 text-[#525866] mx-auto" />
+            <p className="text-xs font-semibold text-[#C8C9D1]">{emptyState.title}</p>
+            <p className="text-[11px] text-[#828598]">{emptyState.detail}</p>
           </div>
         ) : (
           /* Dense Cards List.
@@ -466,7 +528,7 @@ export function TerminalColumn({
               feedState === 'stale' ? 'opacity-60 saturate-50 transition-opacity' : ''
             }`}
           >
-          {sortedTokens.map((token) => (
+          {visibleTokens.map((token) => (
             <TokenDiscoveryCard
               key={token.id || token.mint}
               token={token}

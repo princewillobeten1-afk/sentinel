@@ -2,6 +2,8 @@ import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
 import { fetchHolderConcentration } from '@/lib/tokens/holder-analysis';
 import { getTokenCardPatch } from '@/lib/market/live/card-cache';
+import { getRobinhoodTokenHolders } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,19 @@ export async function GET(
 ) {
   try {
     const { chain, address } = await Promise.resolve(context.params);
+    if (chain.toLowerCase() === 'robinhood') {
+      if (!isEvmAddress(address)) {
+        throw new ApiError('A valid Robinhood Chain token address is required', 400);
+      }
+      const cacheKey = `rh:${address.toLowerCase()}`;
+      const cached = cache.get(cacheKey);
+      if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+        return jsonResponse(cached.payload as Record<string, unknown>);
+      }
+      const payload = await getRobinhoodTokenHolders(address);
+      cache.set(cacheKey, { at: Date.now(), payload });
+      return jsonResponse(payload);
+    }
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }

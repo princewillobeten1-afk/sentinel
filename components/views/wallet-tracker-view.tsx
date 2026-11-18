@@ -172,22 +172,22 @@ export function WalletTrackerView() {
   }, [trackedWallets]);
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-sentinel-950 text-slate-100">
-      <div className="shrink-0 border-b border-sentinel-800/80 bg-sentinel-950 px-5 py-4 sm:px-6">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-[#06070B] text-[#F7F8F9]">
+      <div className="shrink-0 border-b border-[#1E222D] bg-[#06070B] px-5 py-4 sm:px-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
           <div className="flex min-w-0 items-center gap-3.5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sky-400/25 bg-sky-400/10 text-sky-300">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#526FFF]/30 bg-[#526FFF]/12 text-[#8EA2FF]">
             <Users className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h1 className="text-lg font-semibold leading-tight text-white sm:text-xl">Smart Money & Wallet Tracker</h1>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/[0.08] px-2 py-1 text-[10px] font-semibold tracking-wide text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <h1 className="text-lg font-semibold leading-tight text-[#F7F8F9] sm:text-xl">Smart Money & Wallet Tracker</h1>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[#2FE3AC]/30 bg-[#2FE3AC]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#2FE3AC]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#2FE3AC] animate-pulse" />
                 LIVE
               </span>
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-slate-400 sm:text-sm">
+            <p className="mt-1 text-xs leading-relaxed text-[#828598] sm:text-sm">
               Wallet performance, trading activity, and copy-trade research
             </p>
           </div>
@@ -195,15 +195,15 @@ export function WalletTrackerView() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex min-h-9 items-center gap-2 rounded-lg border border-sentinel-800 bg-sentinel-900/70 px-3 text-xs">
-            <span className="text-slate-400">Tracked wallets</span>
-            <span className="font-semibold tabular-nums text-white">{trackedWallets.length}</span>
+          <div className="flex min-h-9 items-center gap-2 rounded-[8px] border border-[#1E222D] bg-[#0D1015] px-3 text-xs">
+            <span className="text-[#828598]">Tracked wallets</span>
+            <span className="font-semibold tabular-nums text-[#F7F8F9]">{trackedWallets.length}</span>
           </div>
 
-          <div className="flex min-h-9 items-center gap-2 rounded-lg border border-sentinel-800 bg-sentinel-900/70 px-3 text-xs">
-            <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="text-slate-400">Realized P&L</span>
-            <span className="font-semibold tabular-nums text-emerald-300">+${formatCompactUsd(totalTrackedProfit)}</span>
+          <div className="flex min-h-9 items-center gap-2 rounded-[8px] border border-[#1E222D] bg-[#0D1015] px-3 text-xs">
+            <TrendingUp className="h-3.5 w-3.5 text-[#2FE3AC]" />
+            <span className="text-[#828598]">Realized P&L</span>
+            <span className="font-semibold tabular-nums text-[#2FE3AC]">+${formatCompactUsd(totalTrackedProfit)}</span>
           </div>
 
           <Button
@@ -211,19 +211,19 @@ export function WalletTrackerView() {
             variant="primary"
             onClick={() => setIsAddModalOpen(true)}
             leftIcon={<Plus className="w-3.5 h-3.5" />}
-            className="min-h-9 text-xs"
+            className="min-h-9 text-xs rounded-full"
           >
             Track Wallet
           </Button>
         </div>
       </div>
 
-      <div className="shrink-0 border-b border-sentinel-800/70 bg-sentinel-900/20 px-5 py-4 sm:px-6">
+      <div className="shrink-0 border-b border-[#1E222D] bg-[#090B10] px-5 py-4 sm:px-6">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {/* Card 1: Top Alpha Leader */}
           <div
             onClick={() => topAlphaLeader && handleOpenDetail(topAlphaLeader)}
-            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-xl border border-sentinel-800 bg-sentinel-900/55 p-4 transition-colors hover:border-amber-400/40 hover:bg-sentinel-900/80"
+            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-4 transition-colors hover:border-[#FFB224]/45 hover:bg-[#131720]"
           >
             <div className="mb-3 flex items-center justify-between gap-2 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-amber-300">
@@ -248,57 +248,57 @@ export function WalletTrackerView() {
           {/* Card 2: Highest Win Rate */}
           <div
             onClick={() => topWinRateTrader && handleOpenDetail(topWinRateTrader)}
-            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-xl border border-sentinel-800 bg-sentinel-900/55 p-4 transition-colors hover:border-emerald-400/40 hover:bg-sentinel-900/80"
+            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-4 transition-colors hover:border-[#2FE3AC]/45 hover:bg-[#131720]"
           >
             <div className="mb-3 flex items-center justify-between gap-2 text-xs">
-              <span className="flex items-center gap-1.5 font-medium text-emerald-300">
+              <span className="flex items-center gap-1.5 font-medium text-[#2FE3AC]">
                 <Target className="w-3.5 h-3.5" /> Highest Accuracy
               </span>
-              <span className="text-xs tabular-nums text-slate-500">{topWinRateTrader?.tradeCount ?? 420} trades</span>
+              <span className="text-xs tabular-nums text-[#828598]">{topWinRateTrader?.tradeCount ?? 420} trades</span>
             </div>
             <div>
-              <div className="truncate text-sm font-semibold text-white transition-colors group-hover:text-emerald-200">
+              <div className="truncate text-sm font-semibold text-[#F7F8F9] transition-colors group-hover:text-[#2FE3AC]">
                 {topWinRateTrader?.label ?? 'Trench Alpha Caller'}
               </div>
-              <div className="mt-1 truncate text-xs text-slate-500">
+              <div className="mt-1 truncate text-xs text-[#828598]">
                 {topWinRateTrader?.address ?? '9WzD...AWWM'} • {topWinRateTrader?.avgHoldingTime ?? '28m'} avg hold
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between border-t border-sentinel-800 pt-3 text-xs">
-              <span className="text-slate-400">Win rate</span>
-              <span className="text-sm font-semibold tabular-nums text-emerald-300">{topWinRateTrader?.winRate ?? 82.4}%</span>
+            <div className="mt-3 flex items-center justify-between border-t border-[#1E222D] pt-3 text-xs">
+              <span className="text-[#828598]">Win rate</span>
+              <span className="text-sm font-semibold tabular-nums text-[#2FE3AC]">{topWinRateTrader?.winRate ?? 82.4}%</span>
             </div>
           </div>
 
           {/* Card 3: Top Realized Whale */}
           <div
             onClick={() => topPnlWhale && handleOpenDetail(topPnlWhale)}
-            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-xl border border-sentinel-800 bg-sentinel-900/55 p-4 transition-colors hover:border-sky-400/40 hover:bg-sentinel-900/80"
+            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-[10px] border border-[#1E222D] bg-[#0D1015] p-4 transition-colors hover:border-[#52C5FF]/45 hover:bg-[#131720]"
           >
             <div className="mb-3 flex items-center justify-between gap-2 text-xs">
-              <span className="flex items-center gap-1.5 font-medium text-sky-300">
+              <span className="flex items-center gap-1.5 font-medium text-[#52C5FF]">
                 <TrendingUp className="w-3.5 h-3.5" /> Top Net Profit
               </span>
-              <span className="text-xs text-slate-500">{topPnlWhale?.category ?? 'WHALE'}</span>
+              <span className="text-xs text-[#828598]">{topPnlWhale?.category ?? 'WHALE'}</span>
             </div>
             <div>
-              <div className="truncate text-sm font-semibold text-white transition-colors group-hover:text-sky-200">
+              <div className="truncate text-sm font-semibold text-[#F7F8F9] transition-colors group-hover:text-[#52C5FF]">
                 {topPnlWhale?.label ?? 'Whale Multi-Pool Lead'}
               </div>
-              <div className="mt-1 truncate text-xs text-slate-500">
+              <div className="mt-1 truncate text-xs text-[#828598]">
                 {topPnlWhale?.address ?? '4k3D...X6R'} • 7D: +${formatCompactUsd(topPnlWhale?.pnl7d ?? 184000)}
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between border-t border-sentinel-800 pt-3 text-xs">
-              <span className="text-slate-400">All-time P&L</span>
-              <span className="text-sm font-semibold tabular-nums text-emerald-300">+${formatCompactUsd(topPnlWhale?.totalRealizedPnl ?? 1250000)}</span>
+            <div className="mt-3 flex items-center justify-between border-t border-[#1E222D] pt-3 text-xs">
+              <span className="text-[#828598]">All-time P&L</span>
+              <span className="text-sm font-semibold tabular-nums text-[#2FE3AC]">+${formatCompactUsd(topPnlWhale?.totalRealizedPnl ?? 1250000)}</span>
             </div>
           </div>
 
           {/* Card 4: Automated Copy Trading Quick Action */}
           <div
             onClick={() => setActiveTab('copy-trading')}
-            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-xl border border-sky-400/25 bg-sky-400/[0.04] p-4 transition-colors hover:border-sky-400/50 hover:bg-sky-400/[0.07]"
+            className="group flex min-h-[154px] cursor-pointer flex-col justify-between rounded-[10px] border border-[#526FFF]/35 bg-[#526FFF]/8 p-4 transition-colors hover:border-[#526FFF]/65 hover:bg-[#526FFF]/14"
           >
             <div className="mb-3 flex items-center justify-between gap-2 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-sky-200">

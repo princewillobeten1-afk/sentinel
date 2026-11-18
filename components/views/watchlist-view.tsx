@@ -19,6 +19,7 @@ interface WatchlistDiscoveryToken {
   mint: string;
   name: string;
   symbol: string;
+  chain?: string;
   priceUsd?: string;
   priceChange24h?: number;
   marketCapUsd?: string;
@@ -27,12 +28,13 @@ interface WatchlistDiscoveryToken {
 }
 
 function toWatchlistResult(token: WatchlistDiscoveryToken): NormalizedSearchResult {
+  const chain = token.chain || (token.mint.startsWith('0x') ? 'robinhood' : 'solana');
   return {
-    id: `watchlist_${token.mint}`,
+    id: `watchlist_${chain}_${token.mint}`,
     mint: token.mint,
     name: token.name,
     symbol: token.symbol.replace(/^\$/, ''),
-    chain: 'solana',
+    chain,
     priceUsd: token.priceUsd ?? '—',
     priceChange24h: token.priceChange24h ?? 0,
     marketCapUsd: token.marketCapUsd ?? '—',
@@ -70,7 +72,12 @@ export function WatchlistView() {
     return () => { disposed = true; };
   }, []);
 
-  const watchlistTokens = discoveryTokens.length > 0 ? discoveryTokens : cachedTokens;
+  const watchlistTokens = (() => {
+    if (discoveryTokens.length === 0) return cachedTokens;
+    const seen = new Set(discoveryTokens.map((t) => t.mint.toLowerCase()));
+    const missingCached = cachedTokens.filter((t) => !seen.has(t.mint.toLowerCase()));
+    return [...missingCached, ...discoveryTokens];
+  })();
   const liveWatchlistTokens = watchlistTokens.map((item) => {
     const update = live.updates.get(item.mint);
     if (!update) return item;
@@ -87,33 +94,48 @@ export function WatchlistView() {
     {
       key: 'token',
       header: 'Token',
-      accessor: (item) => (
-        <div className="flex items-center gap-2.5 font-mono">
-          <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
-          <div className="min-w-0">
-            <Link
-              href={`/trade/solana/${item.mint}`}
-              onClick={() => {
-                setSelectedToken({
-                  mint: item.mint,
-                  symbol: item.symbol,
-                  name: item.name,
-                  priceUsd: String(item.priceUsd),
-                  marketCapUsd: String(item.marketCapUsd),
-                  liquidityUsd: String(item.liquidityUsd),
-                  chain: 'solana',
-                });
-                setActiveView('trade');
-              }}
-              className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors"
-            >
-              {item.name} <span className="text-slate-400 text-xs">${item.symbol}</span>
-              <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100" />
-            </Link>
-            <p className="text-2xs text-slate-500">Mint: {item.mint.slice(0, 6)}...{item.mint.slice(-6)}</p>
+      accessor: (item) => {
+        const itemChain = (item.chain || (item.mint.startsWith('0x') ? 'robinhood' : 'solana')).toLowerCase();
+        const isRobinhood = itemChain === 'robinhood';
+        return (
+          <div className="flex items-center gap-2.5 font-mono">
+            <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
+            <div className="min-w-0">
+              <Link
+                href={`/trade/${itemChain}/${item.mint}`}
+                onClick={() => {
+                  setSelectedToken({
+                    mint: item.mint,
+                    symbol: item.symbol,
+                    name: item.name,
+                    priceUsd: String(item.priceUsd),
+                    marketCapUsd: String(item.marketCapUsd),
+                    liquidityUsd: String(item.liquidityUsd),
+                    chain: itemChain,
+                  });
+                  setActiveView('trade');
+                }}
+                className="font-bold text-slate-100 hover:text-sky-300 flex items-center gap-1.5 transition-colors"
+              >
+                {item.name} <span className="text-slate-400 text-xs">${item.symbol}</span>
+                <span
+                  className={`rounded px-1 py-0.2 text-[9px] font-bold uppercase ${
+                    isRobinhood
+                      ? 'bg-lime-500/15 text-lime-300 border border-lime-500/30'
+                      : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                  }`}
+                >
+                  {isRobinhood ? 'RH' : 'SOL'}
+                </span>
+                <ArrowUpRight className="h-3 w-3 opacity-60 group-hover:opacity-100" />
+              </Link>
+              <p className="text-2xs text-slate-500">
+                {isRobinhood ? 'Contract' : 'Mint'}: {item.mint.slice(0, 6)}...{item.mint.slice(-6)}
+              </p>
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       key: 'price',
@@ -181,43 +203,76 @@ export function WatchlistView() {
     <div className="space-y-4 max-w-[1400px] mx-auto select-none">
       <div data-page-header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-            <Bookmark className="h-5 w-5 sm:h-6 sm:w-6 text-sky-400" /> Watchlist
+          <h1 className="text-xl sm:text-2xl font-bold text-[#F7F8F9] flex items-center gap-2">
+            <Bookmark className="h-5 w-5 sm:h-6 sm:w-6 text-[#526FFF]" /> Watchlist
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-[#828598] mt-0.5">
             Your saved tokens, market activity, and risk signals.
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-md border border-slate-800 p-1" aria-label="Watchlist view">
-          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')} className={`min-h-8 min-w-8 rounded p-1.5 ${view === 'table' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-slate-100'}`} title="Table view"><List className="h-4 w-4" /></button>
-          <button type="button" aria-pressed={view === 'grid'} onClick={() => setView('grid')} className={`min-h-8 min-w-8 rounded p-1.5 ${view === 'grid' ? 'bg-sky-500 text-slate-950' : 'text-slate-400 hover:text-slate-100'}`} title="Grid view"><Grid2X2 className="h-4 w-4" /></button>
+        <div className="flex items-center gap-1 rounded-[8px] border border-[#1E222D] bg-[#0D1015] p-1" aria-label="Watchlist view">
+          <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')} className={`min-h-8 min-w-8 rounded-[6px] p-1.5 transition-colors ${view === 'table' ? 'bg-[#526FFF] text-white' : 'text-[#828598] hover:text-[#F7F8F9]'}`} title="Table view"><List className="h-4 w-4" /></button>
+          <button type="button" aria-pressed={view === 'grid'} onClick={() => setView('grid')} className={`min-h-8 min-w-8 rounded-[6px] p-1.5 transition-colors ${view === 'grid' ? 'bg-[#526FFF] text-white' : 'text-[#828598] hover:text-[#F7F8F9]'}`} title="Grid view"><Grid2X2 className="h-4 w-4" /></button>
         </div>
       </div>
 
       <Panel padding="none">
-        {feedError && <p role="status" className="border-b border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">{feedError}</p>}
+        {feedError && <p role="status" className="border-b border-[#FFB224]/30 bg-[#FFB224]/10 px-3 py-2 text-xs text-[#FFB224]">{feedError}</p>}
         {liveWatchlistTokens.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-400 space-y-2">
-            <p className="font-semibold text-slate-300">Your watchlist is currently empty.</p>
-            <p className="text-slate-500">Search for any token or visit a token page to add it to your watchlist.</p>
+          <div className="py-12 text-center text-xs text-[#828598] space-y-2">
+            <p className="font-semibold text-[#C8C9D1]">Your watchlist is currently empty.</p>
+            <p className="text-[#525866]">Search for any token or visit a token page to add it to your watchlist.</p>
           </div>
         ) : view === 'table' ? (
           <DataTable columns={columns} data={liveWatchlistTokens} keyExtractor={(w) => w.id} />
         ) : (
           <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
-            {liveWatchlistTokens.map((item) => (
-              <article key={item.id} className="rounded-md border border-slate-800 bg-slate-950 p-3">
+            {liveWatchlistTokens.map((item) => {
+              const itemChain = (item.chain || (item.mint.startsWith('0x') ? 'robinhood' : 'solana')).toLowerCase();
+              const isRobinhood = itemChain === 'robinhood';
+              return (
+              <article key={item.id} className="rounded-[8px] border border-[#1E222D] hover:border-[#32374A] bg-[#080A0F] p-3 transition-colors">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
+                  <Link
+                    href={`/trade/${itemChain}/${item.mint}`}
+                    onClick={() => {
+                      setSelectedToken({
+                        mint: item.mint,
+                        symbol: item.symbol,
+                        name: item.name,
+                        priceUsd: String(item.priceUsd),
+                        marketCapUsd: String(item.marketCapUsd),
+                        liquidityUsd: String(item.liquidityUsd),
+                        chain: itemChain,
+                      });
+                      setActiveView('trade');
+                    }}
+                    className="flex min-w-0 items-center gap-2 hover:text-sky-300 transition-colors"
+                  >
                     <TokenAvatar symbol={item.symbol} name={item.name} mint={item.mint} size="sm" />
-                    <div className="min-w-0"><p className="truncate font-bold text-slate-100">{item.name}</p><p className="text-2xs text-slate-500">${item.symbol}</p></div>
-                  </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-slate-100 flex items-center gap-1.5">
+                        {item.name}
+                        <span
+                          className={`rounded px-1 py-0.2 text-[9px] font-bold uppercase ${
+                            isRobinhood
+                              ? 'bg-lime-500/15 text-lime-300 border border-lime-500/30'
+                              : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                        >
+                          {isRobinhood ? 'RH' : 'SOL'}
+                        </span>
+                      </p>
+                      <p className="text-2xs text-slate-500">${item.symbol}</p>
+                    </div>
+                  </Link>
                   <Badge variant={item.riskRating === 'unknown' ? 'neutral' : item.riskRating === 'low' ? 'risk-low' : item.riskRating === 'critical' ? 'risk-critical' : item.riskRating === 'high' ? 'risk-high' : 'risk-med'}>{item.riskRating}</Badge>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span className="text-slate-500">Price <strong className="block text-slate-200">${item.priceUsd}</strong></span><span className="text-slate-500">24h <strong className={`block ${item.priceChange24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{item.priceChange24h.toFixed(2)}%</strong></span><span className="text-slate-500">Market cap <strong className="block text-slate-200">{item.marketCapUsd}</strong></span><span className="text-slate-500">Liquidity <strong className="block text-slate-200">{item.liquidityUsd}</strong></span></div>
                 <div className="mt-3 flex items-center gap-2"><Button onClick={() => setQuickBuyOpen(true, { name: item.name, symbol: item.symbol, mint: item.mint, price: item.priceUsd, mcap: item.marketCapUsd })} variant="buy" size="xs" leftIcon={<Zap className="h-3 w-3 fill-current" />}>Quick Trade</Button><button onClick={() => removeFromWatchlist(item.mint)} className="p-1 text-slate-500 hover:text-rose-400" title="Remove from Watchlist"><Trash2 className="h-3.5 w-3.5" /></button></div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </Panel>

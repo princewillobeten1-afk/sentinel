@@ -59,8 +59,8 @@ import { IntelligenceTimeline } from './intelligence-timeline';
 import { TrendIntelligenceTab } from '@/components/trends/trend-intelligence-tab';
 
 const control =
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-sentinel-700 bg-sentinel-900 px-3.5 text-xs font-semibold text-slate-200 hover:bg-sentinel-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-wait disabled:opacity-60 transition-all';
-const panel = 'min-w-0 rounded-2xl border border-sentinel-700/70 bg-sentinel-900/95 shadow-xl backdrop-blur-md';
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-[8px] border border-[#1E222D] bg-[#11141B] px-3.5 text-xs font-semibold text-[#C8C9D1] hover:bg-[#1C202B] hover:border-[#32374A] hover:text-[#F7F8F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#526FFF] disabled:cursor-wait disabled:opacity-60 transition-all';
+const panel = 'min-w-0 rounded-[10px] border border-[#1E222D] bg-[#0D1015]/95 shadow-xl backdrop-blur-md';
 
 function useEvidenceResource<T>(url: string | null, valid: (value: unknown) => value is T, interval = 30_000) {
   const [data, setData] = useState<T | null>(null);
@@ -926,7 +926,7 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
               <span>{watched ? 'Watchlisted' : 'Watchlist'}</span>
             </button>
             <Link
-              className={`${control} border-sky-500/40 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 font-bold`}
+              className={`${control} border-[#526FFF]/40 bg-[#526FFF]/15 text-[#8EA2FF] hover:bg-[#526FFF]/25 font-semibold`}
               href={`/trade/solana/${mint}`}
             >
               <span>Open Pro Terminal</span>
@@ -936,29 +936,29 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
         </div>
 
         {/* Quick Execution Bar: Price, Stats & Fast Snipe Chips */}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-sentinel-800/80 pt-4">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-[#1E222D] pt-4">
           <div className="flex flex-wrap items-center gap-6 font-mono text-xs">
             <div>
-              <span className="text-2xs text-slate-400 uppercase block">Price</span>
-              <span className="text-sm font-bold text-white">
+              <span className="text-2xs text-[#828598] uppercase block">Price</span>
+              <span className="text-sm font-bold text-[#F7F8F9]">
                 {report?.metrics.find((m) => m.id === 'price') ? formatIntelligenceValue(report.metrics.find((m) => m.id === 'price')!) : '—'}
               </span>
             </div>
             <div>
-              <span className="text-2xs text-slate-400 uppercase block">Market Cap</span>
-              <span className="text-sm font-bold text-slate-200">
+              <span className="text-2xs text-[#828598] uppercase block">Market Cap</span>
+              <span className="text-sm font-bold text-[#52C5FF]">
                 {report?.metrics.find((m) => m.id === 'marketCap') ? formatIntelligenceValue(report.metrics.find((m) => m.id === 'marketCap')!) : '—'}
               </span>
             </div>
             <div>
-              <span className="text-2xs text-slate-400 uppercase block">Liquidity</span>
-              <span className="text-sm font-bold text-emerald-400">
+              <span className="text-2xs text-[#828598] uppercase block">Liquidity</span>
+              <span className="text-sm font-bold text-[#2FE3AC]">
                 {report?.metrics.find((m) => m.id === 'liquidity') ? formatIntelligenceValue(report.metrics.find((m) => m.id === 'liquidity')!) : '—'}
               </span>
             </div>
             <div>
-              <span className="text-2xs text-slate-400 uppercase block">24h Volume</span>
-              <span className="text-sm font-bold text-slate-200">
+              <span className="text-2xs text-[#828598] uppercase block">24h Volume</span>
+              <span className="text-sm font-bold text-[#F7F8F9]">
                 {report?.metrics.find((m) => m.id === 'volume24h') ? formatIntelligenceValue(report.metrics.find((m) => m.id === 'volume24h')!) : '—'}
               </span>
             </div>
@@ -966,15 +966,15 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
 
           {/* Instant Buy Chips */}
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1 font-mono text-2xs text-slate-400 font-semibold">
-              <Zap className="h-3 w-3 text-emerald-400" /> Fast Snipe:
+            <span className="hidden sm:inline-flex items-center gap-1 font-mono text-2xs text-[#828598] font-semibold">
+              <Zap className="h-3 w-3 text-[#2FE3AC]" /> Fast Snipe:
             </span>
             {[0.1, 0.5, 1.0, 2.0].map((amt) => (
               <button
                 key={amt}
                 type="button"
                 onClick={() => handleQuickBuy(amt)}
-                className="rounded-lg border border-sentinel-700 bg-sentinel-950 px-2.5 py-1 font-mono text-xs font-bold text-slate-200 hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-300 transition"
+                className="rounded-[6px] border border-[#1E222D] bg-[#080A0F] px-2.5 py-1 font-mono text-xs font-semibold text-[#C8C9D1] hover:border-[#2FE3AC]/50 hover:bg-[#2FE3AC]/10 hover:text-[#2FE3AC] transition"
               >
                 +{amt} SOL
               </button>

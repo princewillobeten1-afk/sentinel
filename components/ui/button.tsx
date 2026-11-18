@@ -33,33 +33,33 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 export const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    'bg-sky-400 text-slate-950 font-semibold border border-sky-400 hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
+    'bg-[#415CF2] text-white font-semibold border border-[#6683FF]/50 hover:bg-[#526FFF] hover:border-[#8EA2FF]/60 active:bg-[#364FD9] shadow-[0_0_12px_rgba(65,92,242,0.32)]',
   default:
-    'bg-sky-400 text-slate-950 font-semibold border border-sky-400 hover:bg-sky-300 hover:border-sky-300 active:bg-sky-500',
+    'bg-[#415CF2] text-white font-semibold border border-[#6683FF]/50 hover:bg-[#526FFF] hover:border-[#8EA2FF]/60 active:bg-[#364FD9]',
 
   secondary:
-    'bg-sentinel-800 text-slate-200 border border-sentinel-700/80 hover:bg-sentinel-750 hover:border-sentinel-600 hover:text-white active:bg-sentinel-850',
+    'bg-[#151821] text-[#F7F8F9] border border-[#222634] hover:bg-[#1C202B] hover:border-[#32374A] active:bg-[#11141B]',
 
   buy:
-    'bg-emerald-400 text-slate-950 font-semibold border border-emerald-400 hover:bg-emerald-300 hover:border-emerald-300 active:bg-emerald-500',
+    'bg-[#2FE3AC] text-[#04130E] font-bold border border-[#2FE3AC] hover:bg-[#6FF3C8] hover:border-[#6FF3C8] active:bg-[#12AF80] shadow-[0_0_12px_rgba(47,227,172,0.24)]',
   sell:
-    'bg-rose-400 text-slate-950 font-semibold border border-rose-400 hover:bg-rose-300 hover:border-rose-300 active:bg-rose-500',
+    'bg-[#EC397A] text-white font-bold border border-[#EC397A] hover:bg-[#FF6166] hover:border-[#FF6166] active:bg-[#D12665] shadow-[0_0_12px_rgba(236,57,122,0.24)]',
 
   outline:
-    'bg-transparent text-slate-200 border border-sentinel-700 hover:border-sky-500/50 hover:bg-sentinel-800 hover:text-white active:bg-sentinel-750',
+    'bg-[#11141B] text-[#C8C9D1] border border-[#1E222D] hover:border-[#526FFF]/50 hover:bg-[#151821] hover:text-[#F7F8F9] active:bg-[#1C202B]',
   ghost:
-    'bg-transparent text-slate-400 border border-transparent hover:bg-sentinel-800/80 hover:text-slate-100 active:bg-sentinel-750',
+    'bg-transparent text-[#828598] border border-transparent hover:bg-white/[0.04] hover:text-[#F7F8F9] active:bg-[#1C202B]',
 
   glass:
-    'bg-sentinel-900/60 backdrop-blur-md text-slate-200 border border-white/[0.08] hover:bg-sentinel-800/80 hover:border-sky-500/40 hover:text-white shadow-glass',
+    'bg-[#0D1015]/80 backdrop-blur-md text-[#F7F8F9] border border-[#222634] hover:bg-[#151821] hover:border-[#526FFF]/40 shadow-glass',
 
   destructive:
-    'bg-rose-500 text-white font-bold border border-rose-500 hover:bg-rose-400',
+    'bg-[#EC397A] text-white font-bold border border-[#EC397A] hover:bg-[#FF6166]',
   danger:
-    'bg-rose-500 text-white font-bold border border-rose-500 hover:bg-rose-400',
+    'bg-[#EC397A] text-white font-bold border border-[#EC397A] hover:bg-[#FF6166]',
 
   cyber:
-    'bg-sky-500/10 text-sky-300 font-semibold border border-sky-500/30 hover:border-sky-400 hover:bg-sky-500/20 hover:text-white shadow-[0_0_10px_rgba(0,240,255,0.2)]',
+    'bg-[#526FFF]/15 text-[#8EA2FF] font-semibold border border-[#526FFF]/35 hover:border-[#6683FF] hover:bg-[#526FFF]/25 hover:text-white shadow-[0_0_12px_rgba(82,111,255,0.22)]',
 };
 
 export const sizeStyles: Record<ButtonSize, string> = {

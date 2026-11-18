@@ -11,7 +11,7 @@ import { ApiError } from '@/lib/server/errors';
  */
 
 export const timeWindowSchema = z.enum(['1m', '5m', '15m', '1h', '4h', '24h']).default('15m');
-export const chainSchema = z.enum(['solana']).default('solana');
+export const chainSchema = z.enum(['solana', 'robinhood']).default('solana');
 export const sortSchema = z.enum([
   'score',
   'trending',

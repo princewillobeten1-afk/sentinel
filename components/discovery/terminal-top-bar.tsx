@@ -120,19 +120,19 @@ export function TerminalTopBar({
   };
 
   return (
-    <div className="discovery-toolbar relative shrink-0 z-20 bg-sentinel-950 border-b border-slate-700 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+    <div className="discovery-toolbar relative shrink-0 z-20 bg-[#0A0D12] border-b border-[#1E222D] py-2 px-1 flex flex-wrap items-center justify-between gap-2 text-xs">
       {/* Left Section: Search & Chain & Time Window */}
       <div className="discovery-toolbar-search flex flex-wrap items-center gap-2 flex-1 min-w-0 basis-full xl:basis-auto">
         {/* Global Search Input */}
-        <div className="relative flex-1 min-w-[160px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <div className="relative flex-1 min-w-[170px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#828598]" />
           <input
             type="text"
             aria-label="Filter discovery tokens"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search token, symbol, CA..."
-            className="w-full h-7 pl-8 pr-2.5 rounded-lg bg-slate-900/90 border border-slate-800 focus:border-sky-500/80 focus:ring-1 focus:ring-sky-500/50 text-slate-100 placeholder-slate-500 text-xs font-mono transition-all"
+            placeholder="Search token, ticker, or CA..."
+            className="w-full h-7 pl-8 pr-2.5 rounded-[6px] bg-[#11141B] border border-[#1E222D] focus:border-[#526FFF]/70 focus:ring-1 focus:ring-[#526FFF]/40 text-[#F7F8F9] placeholder-[#525866] text-xs font-mono transition-all outline-none"
           />
         </div>
 
@@ -141,43 +141,54 @@ export function TerminalTopBar({
           <button
             onClick={() => setShowChainMenu(!showChainMenu)}
             aria-expanded={showChainMenu}
-            className="h-7 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-colors"
+            className="h-7 px-2.5 rounded-[6px] bg-[#11141B] hover:bg-[#1C202B] border border-[#1E222D] hover:border-[#32374A] text-[#F7F8F9] font-semibold text-xs flex items-center gap-1.5 transition-colors"
           >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Solana</span>
-            <ChevronDown className="w-3 h-3 text-slate-500" />
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${selectedChain === 'robinhood' ? 'bg-[#2FE3AC]' : 'bg-[#526FFF]'}`} />
+            <span>{selectedChain === 'robinhood' ? 'Robinhood' : 'Solana'}</span>
+            <ChevronDown className="w-3 h-3 text-[#828598]" />
           </button>
 
           {showChainMenu && (
-            <div className="absolute left-0 mt-1 w-44 bg-[#121212] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-[11px]">
+            <div className="absolute left-0 mt-1 w-48 bg-[#11141B] border border-[#222634] rounded-[8px] shadow-xl py-1 z-30 text-[11px]">
               <button
                 onClick={() => { onChainChange('solana'); setShowChainMenu(false); }}
-                className="w-full text-left px-3 py-1.5 hover:bg-sky-500/10 flex items-center justify-between text-sky-400 font-bold"
+                className={`w-full text-left px-3 py-1.5 hover:bg-[#526FFF]/10 flex items-center justify-between font-semibold ${
+                  selectedChain === 'solana' ? 'text-[#8EA2FF]' : 'text-[#C8C9D1]'
+                }`}
               >
-                <span>Solana (Active)</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>Solana</span>
+                {selectedChain === 'solana' && <span className="w-1.5 h-1.5 rounded-full bg-[#2FE3AC]" />}
               </button>
-              <div className="px-3 py-1 text-2xs text-slate-500 border-t border-slate-800 mt-1">
+              <button
+                onClick={() => { onChainChange('robinhood'); setShowChainMenu(false); }}
+                className={`w-full text-left px-3 py-1.5 hover:bg-[#2FE3AC]/10 flex items-center justify-between font-semibold ${
+                  selectedChain === 'robinhood' ? 'text-[#2FE3AC]' : 'text-[#C8C9D1]'
+                }`}
+              >
+                <span>Robinhood Chain (4663)</span>
+                {selectedChain === 'robinhood' && <span className="w-1.5 h-1.5 rounded-full bg-[#2FE3AC]" />}
+              </button>
+              <div className="px-3 py-1 text-[10px] text-[#525866] border-t border-[#1E222D] mt-1">
                 Coming Soon:
               </div>
-              <div className="px-3 py-1 text-slate-500 cursor-not-allowed">Ethereum</div>
-              <div className="px-3 py-1 text-slate-500 cursor-not-allowed">Base</div>
-              <div className="px-3 py-1 text-slate-500 cursor-not-allowed">BNB Chain</div>
+              <div className="px-3 py-1 text-[#525866] cursor-not-allowed">Ethereum</div>
+              <div className="px-3 py-1 text-[#525866] cursor-not-allowed">Base</div>
+              <div className="px-3 py-1 text-[#525866] cursor-not-allowed">BNB Chain</div>
             </div>
           )}
         </div>
 
         {/* Time Window Buttons */}
-        <div aria-label="Time window" className="flex items-center bg-slate-950 p-1 rounded-md border border-slate-700 text-2xs">
+        <div aria-label="Time window" className="flex items-center bg-[#0D1015] p-0.5 rounded-[6px] border border-[#1E222D] text-[11px]">
           {(['5m', '1h', '24h'] as TimeWindow[]).map((w) => (
             <button
               key={w}
               aria-pressed={timeWindow === w}
               onClick={() => onTimeWindowChange(w)}
-              className={`px-2 py-0.5 rounded-md font-bold transition-all ${
+              className={`px-2.5 py-0.5 rounded-[4px] font-semibold transition-all ${
                 timeWindow === w
-                  ? 'bg-sky-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-[#526FFF]/20 text-[#8EA2FF] border border-[#526FFF]/35'
+                  : 'text-[#828598] hover:text-[#F7F8F9] border border-transparent'
               }`}
             >
               {w}
@@ -191,16 +202,16 @@ export function TerminalTopBar({
         {/* Advanced Filters Trigger Button */}
         <button
           onClick={onOpenFilterDrawer}
-          className={`h-7 px-2.5 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
+          className={`h-7 px-2.5 rounded-[6px] border flex items-center gap-1.5 text-xs font-semibold transition-all ${
             activeFilterCount > 0
-              ? 'bg-sky-500/10 border-sky-500/60 text-sky-300'
-              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200'
+              ? 'bg-[#526FFF]/15 border-[#526FFF]/40 text-[#8EA2FF]'
+              : 'bg-[#11141B] hover:bg-[#1C202B] border-[#1E222D] text-[#C8C9D1]'
           }`}
         >
-          <SlidersHorizontal className="w-3 h-3 text-sky-400" />
+          <SlidersHorizontal className="w-3 h-3 text-[#526FFF]" />
           <span>Filters</span>
           {activeFilterCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-sky-500 text-slate-950 text-2xs font-black">
+            <span className="px-1.5 py-px rounded-full bg-[#526FFF] text-white text-[10px] font-bold">
               {activeFilterCount}
             </span>
           )}
@@ -210,67 +221,68 @@ export function TerminalTopBar({
         <button
           onClick={onTogglePause}
           aria-pressed={paused}
-          className={`h-7 px-2 rounded-lg border flex items-center gap-1.5 text-2xs font-bold transition-colors ${
-            paused ? 'bg-amber-950/50 border-amber-800/60 text-amber-300' : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+          className={`h-7 px-2.5 rounded-[6px] border flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${
+            paused ? 'bg-[#FFB224]/15 border-[#FFB224]/40 text-[#FFB224]' : 'bg-[#11141B] hover:bg-[#1C202B] border-[#1E222D] text-[#C8C9D1]'
           }`}
           title={paused ? 'Resume live updates' : 'Freeze the board for inspection'}
         >
           {paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
           <span>{paused ? 'Resume' : 'Freeze'}</span>
-          {paused && pendingRefresh && <span className="text-amber-400">•</span>}
+          {paused && pendingRefresh && <span className="text-[#FFB224]">•</span>}
         </button>
-        {/* Interactive Quick Buy Toggle & Presets */}
-        <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900 overflow-hidden text-xs">
+
+        {/* Interactive Quick Buy Toggle & Presets (Axiom Unified Pill Bar) */}
+        <div className="flex items-center rounded-full border border-[#222634] bg-[#11141B] overflow-hidden text-xs">
           {/* Main Toggle Button */}
           <button
             type="button"
             onClick={onToggleQuickBuy}
             aria-pressed={quickBuyEnabled}
-            className={`h-7 px-2 flex items-center gap-1.5 font-bold transition-all ${
+            className={`h-7 px-2.5 flex items-center gap-1.5 font-semibold transition-all ${
               quickBuyEnabled
-                ? 'bg-emerald-950/70 border-r border-emerald-800/60 text-emerald-400 shadow-sm'
-                : 'bg-slate-900 text-slate-500 hover:text-slate-300 border-r border-slate-800'
+                ? 'bg-[#526FFF]/15 border-r border-[#526FFF]/30 text-[#8EA2FF]'
+                : 'bg-[#11141B] text-[#828598] hover:text-[#F7F8F9] border-r border-[#1E222D]'
             }`}
             title={quickBuyEnabled ? 'Quick Buy is ACTIVE (click to toggle off)' : 'Quick Buy is OFF (click to toggle on)'}
           >
-            <Zap className={`w-3 h-3 ${quickBuyEnabled ? 'text-emerald-400 fill-current animate-pulse' : 'text-slate-500'}`} />
-            <span className="text-2xs font-semibold">Quick Buy:</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${quickBuyEnabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+            <Zap className={`w-3 h-3 ${quickBuyEnabled ? 'text-[#526FFF] fill-current' : 'text-[#525866]'}`} />
+            <span className="text-[11px] font-semibold">Quick Buy</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${quickBuyEnabled ? 'bg-[#2FE3AC]' : 'bg-[#525866]'}`} />
           </button>
 
           {/* Quick Preset Amount Selector: Click to cycle presets */}
           <button
             type="button"
             onClick={onCycleQuickBuyPreset}
-            className="h-7 px-2 hover:bg-slate-800 text-slate-200 hover:text-white font-mono font-bold transition-colors border-r border-slate-800 flex items-center gap-0.5"
-            title="Click to cycle quick buy amount (0.05, 0.1, 0.5, 1.0 SOL)"
+            className="h-7 px-2.5 hover:bg-[#1C202B] text-[#F7F8F9] font-mono font-semibold transition-colors border-r border-[#1E222D] flex items-center gap-1"
+            title={`Click to cycle quick buy amount (0.05, 0.1, 0.5, 1.0 ${selectedChain === 'robinhood' ? 'ETH' : 'SOL'})`}
           >
-            <span>{quickBuyMode === 'sol' ? `≡${quickBuyPresets[0]}` : `$${quickBuyPresets[0]}`}</span>
+            <span>
+              {quickBuyMode === 'sol'
+                ? `${selectedChain === 'robinhood' ? 'Ξ' : '≡'}${quickBuyPresets[0]}`
+                : `$${quickBuyPresets[0]}`}
+            </span>
           </button>
 
           {/* Settings Gear to open modal */}
           <button
             type="button"
             onClick={() => setShowQuickBuyModal(true)}
-            className="h-7 px-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="h-7 px-2 text-[#828598] hover:text-[#F7F8F9] hover:bg-[#1C202B] transition-colors"
             title="Configure custom Quick Buy amounts"
           >
-            <Settings className="w-2.5 h-2.5" />
+            <Settings className="w-3 h-3" />
           </button>
         </div>
 
-        {/* Dead-row toggle.
-            Twelve of thirty rows in a measured response had no pool at all —
-            they cannot be traded, so they are hidden by default rather than
-            occupying the feed. The toggle is visible so the filtering is a
-            stated choice, not a silent one. */}
+        {/* Dead-row toggle */}
         <button
           onClick={() => onToggleZeroLiquidity?.(!showZeroLiquidity)}
           aria-pressed={showZeroLiquidity}
-          className={`h-7 px-2.5 rounded-lg border font-bold text-2xs flex items-center gap-1 transition-colors ${
+          className={`h-7 px-2.5 rounded-[6px] border font-semibold text-[11px] flex items-center gap-1.5 transition-colors ${
             showZeroLiquidity
-              ? 'bg-amber-950/50 border-amber-900/60 text-amber-300'
-              : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400'
+              ? 'bg-[#FFB224]/15 border-[#FFB224]/35 text-[#FFB224]'
+              : 'bg-[#11141B] hover:bg-[#1C202B] border-[#1E222D] text-[#828598] hover:text-[#C8C9D1]'
           }`}
           title={
             showZeroLiquidity
@@ -278,7 +290,7 @@ export function TerminalTopBar({
               : 'Launches with no liquidity pool are hidden. They cannot be traded.'
           }
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${showZeroLiquidity ? 'bg-amber-400' : 'bg-slate-600'}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${showZeroLiquidity ? 'bg-[#FFB224]' : 'bg-[#525866]'}`} />
           <span>No-liquidity</span>
         </button>
 
@@ -287,17 +299,17 @@ export function TerminalTopBar({
           <button
             onClick={() => setShowAddMenu(!showAddMenu)}
             aria-expanded={showAddMenu}
-            className="h-7 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors"
+            className="h-7 px-2.5 rounded-[6px] bg-[#11141B] hover:bg-[#1C202B] border border-[#1E222D] text-[#C8C9D1] font-semibold text-xs flex items-center gap-1 transition-colors"
             title="Add another column feed"
           >
-            <Plus className="w-3 h-3 text-sky-400" />
+            <Plus className="w-3 h-3 text-[#526FFF]" />
             <span>Add Column</span>
-            <span className="text-2xs text-slate-500 font-normal">({columns.length})</span>
+            <span className="text-[10px] text-[#828598] font-normal">({columns.length})</span>
           </button>
 
           {showAddMenu && (
-            <div className="discovery-add-menu absolute right-0 mt-1 w-64 bg-[#121212] border border-slate-700/80 rounded-lg shadow-xl py-1 z-30 text-xs">
-              <div className="px-3 py-1.5 text-2xs font-bold uppercase text-slate-400 border-b border-slate-800">
+            <div className="discovery-add-menu absolute right-0 mt-1 w-64 bg-[#11141B] border border-[#222634] rounded-[8px] shadow-xl py-1 z-30 text-xs">
+              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase text-[#828598] border-b border-[#1E222D]">
                 Add Feed Column
               </div>
               {AVAILABLE_NEW_COLUMNS.map((col) => (
@@ -307,19 +319,19 @@ export function TerminalTopBar({
                     onAddColumn(col.type, col.title);
                     setShowAddMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-sky-500/10 flex flex-col gap-0.5 transition-colors border-b border-slate-800/40 last:border-0"
+                  className="w-full text-left px-3 py-2 hover:bg-[#526FFF]/10 flex flex-col gap-0.5 transition-colors border-b border-[#1E222D]/60 last:border-0"
                 >
-                  <span className="font-bold text-slate-200">{col.title}</span>
-                  <span className="text-2xs text-slate-500 leading-tight">{col.desc}</span>
+                  <span className="font-semibold text-[#F7F8F9]">{col.title}</span>
+                  <span className="text-[11px] text-[#828598] leading-tight">{col.desc}</span>
                 </button>
               ))}
-              <div className="p-1.5 bg-slate-950/60 border-t border-slate-800 text-center">
+              <div className="p-1.5 bg-[#090B10] border-t border-[#1E222D] text-center">
                 <button
                   onClick={() => {
                     onResetLayout();
                     setShowAddMenu(false);
                   }}
-                  className="text-2xs text-slate-400 hover:text-sky-400 font-bold flex items-center justify-center gap-1 mx-auto"
+                  className="text-[11px] text-[#828598] hover:text-[#8EA2FF] font-semibold flex items-center justify-center gap-1 mx-auto"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
                   <span>Reset Default Columns</span>
@@ -330,18 +342,18 @@ export function TerminalTopBar({
         </div>
 
         <div
-          className={`flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-bold border ${
+          className={`flex items-center gap-1.5 px-2.5 h-7 rounded-[6px] text-[11px] font-semibold border ${
             health === 'live'
-              ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
+              ? 'bg-[#12AF80]/12 border-[#12AF80]/30 text-[#2FE3AC]'
               : health === 'degraded'
-                ? 'bg-sky-950/40 border-sky-800/50 text-sky-400'
+                ? 'bg-[#526FFF]/12 border-[#526FFF]/30 text-[#8EA2FF]'
                 : health === 'stale'
-                  ? 'bg-orange-950/40 border-orange-800/50 text-orange-300'
-                  : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
+                  ? 'bg-[#FFB224]/12 border-[#FFB224]/30 text-[#FFB224]'
+                  : 'bg-[#EC397A]/12 border-[#EC397A]/30 text-[#FF6166]'
           }`}
           title={`Discovery feed: ${health === 'degraded' ? 'polling (REST active)' : health}${freshnessAt ? `; last update ${new Date(freshnessAt).toLocaleTimeString()}` : ''}`}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${health === 'live' ? 'bg-emerald-400 animate-pulse' : health === 'degraded' ? 'bg-sky-400' : 'bg-rose-400'}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${health === 'live' ? 'bg-[#2FE3AC] animate-pulse' : health === 'degraded' ? 'bg-[#526FFF]' : 'bg-[#EC397A]'}`} />
           <span>{health === 'degraded' ? 'POLLING' : health.toUpperCase()}</span>
         </div>
       </div>
@@ -361,13 +373,13 @@ export function TerminalTopBar({
                         : 'bg-slate-900 border-slate-800 text-slate-300'
                     }`}
                   >
-                    SOL (≡)
+                    {selectedChain === 'robinhood' ? 'ETH (Ξ)' : 'SOL (≡)'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setEditMode('usd')}
                     disabled
-                    title="The connected-wallet execution flow is SOL-funded"
+                    title={`The connected-wallet execution flow is ${selectedChain === 'robinhood' ? 'ETH' : 'SOL'}-funded`}
                     className={`py-1.5 rounded-lg font-bold border text-xs ${
                       editMode === 'usd'
                         ? 'bg-sky-500 text-slate-950 border-sky-400'

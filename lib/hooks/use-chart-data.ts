@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSentinelWS, type SentinelWSEventHandler } from './use-sentinel-ws';
-import { CHART_SECONDS, isSolanaMint, mergeChartCandles, parseChartFrame, parseChartSnapshot,
+import { CHART_SECONDS, isEvmTokenAddress, isSolanaMint, mergeChartCandles, parseChartFrame, parseChartSnapshot,
   type ChartCandle, type ChartSnapshot, type ChartTimeframe } from '@/lib/market/chart-model';
 import { parsePublicChartFrame, parsePublicChartSnapshot } from '@/lib/market/public-chart';
 
@@ -29,7 +29,10 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
   const [streamAt, setStreamAt] = useState(0);
   const [liveSource, setLiveSource] = useState<'quicknode' | 'birdeye' | null>(null);
   const [now, setNow] = useState(Date.now());
-  const valid = chain === 'solana' && isSolanaMint(address);
+  const normalizedChain = (chain || 'solana').toLowerCase();
+  const valid =
+    (normalizedChain === 'solana' && isSolanaMint(address)) ||
+    (normalizedChain === 'robinhood' && isEvmTokenAddress(address));
   const receive = useRef<SentinelWSEventHandler>(() => {});
   const refresh = useRef<() => void>(() => {});
   const older = useRef<() => void>(() => {});
@@ -44,7 +47,11 @@ export function useChartData(address: string, chain: string, timeframe: ChartTim
   useEffect(() => { sequence.current = 0; if (isConnected) refresh.current(); }, [isConnected]);
 
   useEffect(() => {
-    if (!valid) { setLoading(false); setError('A valid Solana token mint is required for this chart.'); return; }
+    if (!valid) {
+      setLoading(false);
+      setError(`A valid ${normalizedChain === 'robinhood' ? 'Robinhood Chain contract address' : 'Solana token mint'} is required for this chart.`);
+      return;
+    }
     let active = true;
     let rows: ChartCandle[] = [];
     const revisions = new Map<number, number>();

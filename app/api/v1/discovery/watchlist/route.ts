@@ -21,12 +21,30 @@ export const GET = withApiGateway(
     // entries regardless of what they had saved.
     const userWatchlistMints = (await pgWatchlistRepository.list(user.userId)).map((row) => row.mint);
 
+    const solanaMints = userWatchlistMints.filter((m) => !m.startsWith('0x'));
+    const robinhoodMints = userWatchlistMints.filter((m) => m.startsWith('0x'));
+
     const personalizedList = await rankingCache.getPersonalizedRanking(
       user.userId,
       userWatchlistMints,
       params.chain,
       params.timeWindow
     );
+
+    // Hydrate saved Robinhood EVM tokens alongside Solana when present in the user's watchlist
+    if (params.chain !== 'robinhood' && robinhoodMints.length > 0) {
+      const rhList = await rankingCache.getPersonalizedRanking(
+        user.userId,
+        robinhoodMints,
+        'robinhood',
+        params.timeWindow,
+      );
+      const rhSet = new Set(robinhoodMints.map((m) => m.toLowerCase()));
+      const matchingRh = rhList.filter((t) => rhSet.has(t.mint.toLowerCase()));
+      personalizedList.unshift(...matchingRh);
+    } else if (params.chain === 'robinhood' && solanaMints.length > 0 && robinhoodMints.length === 0) {
+      // Keep purely chain-scoped when user explicitly requests robinhood
+    }
 
     const fingerprint = computeFilterFingerprint({ section: 'watchlist', userId: user.userId, chain: params.chain, timeWindow: params.timeWindow });
     const offset = resolveOffset(params.offset, params.cursor, fingerprint);

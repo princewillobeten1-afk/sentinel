@@ -14,6 +14,7 @@ import {
 import { AdminRole, TradingEmergencyMode } from '@/lib/admin/types';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 
 interface AdminHeaderProps {
   currentRole: AdminRole;
@@ -56,9 +57,7 @@ export function AdminHeader({
     <div data-page-header className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/5">
       {/* Title & Badge */}
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500/20 to-indigo-500/20 text-sky-400 border border-sky-500/30 shadow-[0_0_20px_rgba(56,189,248,0.2)]">
-          <ShieldCheck className="h-6 w-6" />
-        </div>
+        <PhivexLogoMark size="lg" />
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-white">Operations</h1>

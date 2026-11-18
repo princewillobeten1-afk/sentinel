@@ -14,7 +14,7 @@ export interface ChartCandle {
 }
 export interface ChartSnapshot {
   address: string;
-  chain: 'solana';
+  chain: 'solana' | 'robinhood';
   timeframe: ChartTimeframe;
   currency: 'usd';
   market: 'token-aggregate' | 'pool';
@@ -24,7 +24,7 @@ export interface ChartSnapshot {
   hasMore: boolean;
   oldestTime: number | null;
   observedAt: number;
-  source: 'birdeye-ohlcv-v3' | 'geckoterminal-pool-ohlcv';
+  source: 'birdeye-ohlcv-v3' | 'geckoterminal-pool-ohlcv' | 'robinhood-rpc-logs';
   status: 'measured' | 'stale';
   reason?: string;
 }
@@ -41,6 +41,10 @@ export interface ChartFrame {
 }
 export const isChartTimeframe = (value: unknown): value is ChartTimeframe => CHART_TIMEFRAMES.includes(value as ChartTimeframe);
 export const isSolanaMint = (value: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+export const isEvmTokenAddress = (value: string) => /^0x[a-fA-F0-9]{40}$/.test(value);
+export const isEvmPoolAddress = (value: string) => /^0x[a-fA-F0-9]{40,64}$/.test(value);
+export const isValidChartAddress = (chain: string, value: string) =>
+  chain.toLowerCase() === 'robinhood' ? isEvmTokenAddress(value) : isSolanaMint(value);
 const numeric = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 
 export function parseProviderCandle(row: any, timeframe: ChartTimeframe): ChartCandle | null {
@@ -67,10 +71,10 @@ export function mergeChartCandles(current: ChartCandle[], incoming: ChartCandle[
 
 export function parseChartFrame(value: unknown): ChartFrame | null {
   const frame = value as ChartFrame | null;
-  if (!frame || typeof frame.address !== 'string' || !isSolanaMint(frame.address) || !isChartTimeframe(frame.timeframe)
+  if (!frame || typeof frame.address !== 'string' || (!isSolanaMint(frame.address) && !isEvmTokenAddress(frame.address)) || !isChartTimeframe(frame.timeframe)
     || !['birdeye-price-ws', 'birdeye-ohlcv-rest', 'geckoterminal-pool-rest', 'quicknode-pool-ws'].includes(frame.source)
     || ((frame.source === 'quicknode-pool-ws' || frame.source === 'geckoterminal-pool-rest')
-      ? frame.market !== 'pool' || !isSolanaMint(frame.poolAddress ?? '')
+      ? frame.market !== 'pool' || (!isSolanaMint(frame.poolAddress ?? '') && !isEvmPoolAddress(frame.poolAddress ?? ''))
       : frame.market === 'pool')
     || !Number.isFinite(frame.observedAt) || frame.observedAt <= 0) return null;
   const c = frame.candle;
@@ -87,9 +91,10 @@ export function chartPrecision(price: number): { precision: number; minMove: num
 
 export function parseChartSnapshot(value: unknown, address: string, timeframe: ChartTimeframe): ChartSnapshot | null {
   const s = value as (Partial<ChartSnapshot> & Record<string, unknown>) | null;
-  if (!s || s.address !== address || s.timeframe !== timeframe || s.chain !== 'solana' || s.currency !== 'usd'
+  const snapChain = s?.chain === 'robinhood' ? 'robinhood' : s?.chain === 'solana' ? 'solana' : null;
+  if (!s || s.address?.toLowerCase() !== address.toLowerCase() || s.timeframe !== timeframe || !snapChain || s.currency !== 'usd'
     || !((s.market === 'token-aggregate' && (!s.source || String(s.source).startsWith('birdeye')))
-      || (s.market === 'pool' && (!s.source || String(s.source).startsWith('geckoterminal')) && isSolanaMint(String(s.poolAddress ?? ''))))
+      || (s.market === 'pool' && (!s.source || String(s.source).startsWith('geckoterminal')) && (isSolanaMint(String(s.poolAddress ?? '')) || isEvmPoolAddress(String(s.poolAddress ?? '')))))
     || !Number.isFinite(s.observedAt)
     || Number(s.observedAt) <= 0 || !['measured', 'stale'].includes(String(s.status)) || !Array.isArray(s.candles)
     || typeof s.hasMore !== 'boolean') return null;
@@ -99,7 +104,7 @@ export function parseChartSnapshot(value: unknown, address: string, timeframe: C
   const resolvedSource = s.source === 'geckoterminal-pool-ohlcv' ? 'geckoterminal-pool-ohlcv' : 'birdeye-ohlcv-v3';
   return {
     address: s.address as string,
-    chain: 'solana',
+    chain: snapChain,
     timeframe,
     currency: 'usd',
     market: s.market as 'token-aggregate' | 'pool',

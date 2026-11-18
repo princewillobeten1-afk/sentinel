@@ -1,6 +1,8 @@
 import { jsonResponse, errorResponse } from '@/lib/server/api';
 import { ApiError } from '@/lib/server/errors';
 import { getTokenPriceUsd } from '@/lib/market/canonical-price';
+import { getRobinhoodTokenLiquidity } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +43,19 @@ export async function GET(
 ) {
   try {
     const { chain, address } = await Promise.resolve(context.params);
+    if (chain.toLowerCase() === 'robinhood') {
+      if (!isEvmAddress(address)) {
+        throw new ApiError('A valid Robinhood Chain contract address is required', 400);
+      }
+      const cacheKey = `rh:${address.toLowerCase()}`;
+      const cached = cache.get(cacheKey);
+      if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+        return jsonResponse(cached.payload as Record<string, unknown>);
+      }
+      const payload = await getRobinhoodTokenLiquidity(address);
+      cache.set(cacheKey, { at: Date.now(), payload });
+      return jsonResponse(payload);
+    }
     if (!address || address.length < 32) {
       throw new ApiError('A token mint address is required', 400);
     }

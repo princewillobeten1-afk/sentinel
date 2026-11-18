@@ -11,11 +11,12 @@ const evidenceKeys = ['marketEvidence', 'ownershipEvidence', 'securityEvidence',
   'liquidityEvidence', 'top10Evidence', 'devBalanceEvidence', 'mintAuthorityEvidence', 'freezeAuthorityEvidence',
   'organicEvidence', 'historyEvidence'] as const;
 
-export function useTokenAudit(mint: string, active: boolean) {
-  const [snapshot, setSnapshot] = useState<{ mint: string; data: TokenAudit | null; error: string | null; refreshing: boolean } | null>(null);
+export function useTokenAudit(mint: string, active: boolean, chain = 'solana') {
+  const normalizedChain = (chain || 'solana').toLowerCase();
+  const [snapshot, setSnapshot] = useState<{ mint: string; chain: string; data: TokenAudit | null; error: string | null; refreshing: boolean } | null>(null);
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
-  const current = snapshot?.mint === mint ? snapshot : null;
+  const current = snapshot?.mint === mint && snapshot?.chain === normalizedChain ? snapshot : null;
   const now = useEvidenceClock(...evidenceKeys.map(key => current?.data?.[key]));
 
   useEffect(() => {
@@ -30,11 +31,11 @@ export function useTokenAudit(mint: string, active: boolean) {
       controller = new AbortController();
       const request = controller;
       const timeout = setTimeout(() => request.abort(), 10_000);
-      setSnapshot(previous => ({ mint, data: previous?.mint === mint ? previous.data : null,
-        error: previous?.mint === mint ? previous.error : null, refreshing: true }));
+      setSnapshot(previous => ({ mint, chain: normalizedChain, data: previous?.mint === mint && previous?.chain === normalizedChain ? previous.data : null,
+        error: previous?.mint === mint && previous?.chain === normalizedChain ? previous.error : null, refreshing: true }));
       let delay = 15_000;
       try {
-        const response = await fetch(`/api/v1/tokens/solana/${encodeURIComponent(mint)}/audit`, {
+        const response = await fetch(`/api/v1/tokens/${encodeURIComponent(normalizedChain)}/${encodeURIComponent(mint)}/audit`, {
           signal: request.signal, cache: 'no-store',
         });
         if (!response.ok) throw new Error(`Audit refresh failed (HTTP ${response.status}).`);
@@ -43,10 +44,10 @@ export function useTokenAudit(mint: string, active: boolean) {
         if (!body?.success || !isTokenAudit(data, mint)) {
           throw new Error('Audit provider returned an invalid response.');
         }
-        if (!disposed) setSnapshot({ mint, data, error: null, refreshing: false });
+        if (!disposed) setSnapshot({ mint, chain: normalizedChain, data, error: null, refreshing: false });
         if (data.holderAuditPending) delay = 3_000;
       } catch (error) {
-        if (!disposed) setSnapshot(previous => ({ mint, data: previous?.mint === mint ? previous.data : null,
+        if (!disposed) setSnapshot(previous => ({ mint, chain: normalizedChain, data: previous?.mint === mint && previous?.chain === normalizedChain ? previous.data : null,
           error: request.signal.aborted ? 'Audit refresh timed out.' : error instanceof Error ? error.message : 'Audit refresh failed.', refreshing: false }));
       } finally {
         clearTimeout(timeout);
@@ -66,7 +67,7 @@ export function useTokenAudit(mint: string, active: boolean) {
       controller?.abort();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [mint, active, revision]);
+  }, [mint, active, revision, normalizedChain]);
 
   // Derive freshness; never mutate the measured snapshot or discard provenance.
   const data = current?.data ? { ...current.data } : null;

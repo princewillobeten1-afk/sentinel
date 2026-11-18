@@ -6,7 +6,7 @@ import type { TradeWalletPosition } from '@/lib/trading/sidebar-model';
 import type { DiscoveryToken } from '@/lib/discovery/types';
 import { mergeTokenCardSnapshot } from '@/lib/discovery/card-snapshot';
 
-export function useTradeSidebar(mint: string, wallet: string | null) {
+export function useTradeSidebar(mint: string, wallet: string | null, chain: string = 'solana') {
   const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<{ mint: string; data: TradeSidebarSnapshot; error?: string } | null>(null);
   const [positionState, setPosition] = useState<{ key: string; data: TradeWalletPosition | null; error?: string } | null>(null);
@@ -20,7 +20,8 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
       if (busy) return;
       busy = true;
       try {
-        const response = await fetch(`/api/v1/tokens/solana/${encodeURIComponent(mint)}/card`, {
+        const normalizedChain = chain?.toLowerCase() === 'robinhood' ? 'robinhood' : 'solana';
+        const response = await fetch(`/api/v1/tokens/${normalizedChain}/${encodeURIComponent(mint)}/card`, {
           cache: 'no-store',
           signal: controller.signal,
         });
@@ -34,10 +35,10 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
     void load();
     const timer = setInterval(load, 30_000);
     return () => { controller.abort(); clearInterval(timer); };
-  }, [mint, revision]);
+  }, [mint, chain, revision]);
 
   useEffect(() => {
-    if (!wallet || !mint) return;
+    if (!wallet || !mint || chain?.toLowerCase() === 'robinhood') return;
     const controller = new AbortController();
     let busy = false;
     const load = async () => {
@@ -68,12 +69,35 @@ export function useTradeSidebar(mint: string, wallet: string | null) {
     const live = updates.get(mint);
     if (!live) return rest;
     const { priceUsd, observedAt, updatedAt, fieldObservedAt, ...fields } = live;
-    return mergeTokenCardSnapshot(rest as DiscoveryToken, {
+    const merged = mergeTokenCardSnapshot(rest as DiscoveryToken, {
       mint, sequence: 0, source: 'token.card', freshness: 'fresh',
       observedAt: observedAt ?? new Date(updatedAt).toISOString(),
       changedFields: { ...fields, ...(priceUsd === undefined ? {} : { priceUsd: String(priceUsd) }) },
       fieldObservedAt,
     }) as TradeSidebarSnapshot;
+
+    // Enforce data consistency: classified wallet counts cannot exceed total holders
+    if (typeof merged.holdersCount === 'number' && merged.holdersCount >= 0) {
+      if (typeof merged.proTradersCount === 'number') {
+        merged.proTradersCount = Math.min(merged.proTradersCount, merged.holdersCount);
+      }
+      if (typeof merged.devCount === 'number') {
+        merged.devCount = Math.min(merged.devCount, merged.holdersCount);
+      }
+      if (typeof merged.sniperCount === 'number') {
+        merged.sniperCount = Math.min(merged.sniperCount, merged.holdersCount);
+      }
+      if (typeof merged.bundlerCount === 'number') {
+        merged.bundlerCount = Math.min(merged.bundlerCount, merged.holdersCount);
+      }
+      if (typeof merged.insiderCount === 'number') {
+        merged.insiderCount = Math.min(merged.insiderCount, merged.holdersCount);
+      }
+      if (typeof merged.kolsCount === 'number') {
+        merged.kolsCount = Math.min(merged.kolsCount, merged.holdersCount);
+      }
+    }
+    return merged;
   }, [snapshot, mint, updates]);
   return { data, loading: snapshot?.mint !== mint, error: snapshot?.mint === mint ? snapshot.error : undefined,
     position: wallet && positionState?.key === key ? positionState.data : null,

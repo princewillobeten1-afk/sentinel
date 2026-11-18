@@ -40,7 +40,7 @@ export function DataTable<T>({
   zebra = false,
 }: DataTableProps<T>) {
   return (
-    <div data-ui="table" aria-busy={isLoading} className={clsx('min-w-0 max-w-full w-full overflow-x-auto rounded-lg border border-sentinel-700/60 bg-sentinel-900', className)}>
+    <div data-ui="table" aria-busy={isLoading} className={clsx('min-w-0 max-w-full w-full overflow-x-auto rounded-[8px] border border-[#1E222D] bg-[#0D1015]', className)}>
       <table className="w-full text-left text-xs border-collapse">
         <thead className="sticky top-0 z-10 bg-sentinel-950/95 uppercase text-slate-400 font-mono text-2xs tracking-wider border-b border-white/[0.08] backdrop-blur-md">
           <tr>

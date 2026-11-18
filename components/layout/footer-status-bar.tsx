@@ -23,31 +23,35 @@ export interface FooterStatusBarProps {
 
 export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarProps) {
   const pathname = usePathname();
-  const { isConsoleOpen } = useAppState();
+  const { isConsoleOpen, activeChain } = useAppState();
   const { setHotkeysOpen, setConsoleOpen, setActiveView } = useAppActions();
 
   return (
     <footer
       className={clsx(
-        'terminal-footer z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-sentinel-800 bg-sentinel-950/95 backdrop-blur-md px-3 sm:px-4 py-1.5 sm:py-2 text-2xs font-numeric text-slate-400 select-none shadow-[0_-4px_20px_rgba(0,0,0,0.6)] transition-all',
+        'terminal-footer z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-[#1E222D] bg-[#06070B]/95 backdrop-blur-md px-3 sm:px-4 py-1 text-[11px] font-numeric text-[#828598] select-none shadow-[0_-6px_24px_rgba(0,0,0,0.7)] transition-all',
         layout === 'page' ? 'fixed bottom-0 inset-x-0' : 'shrink-0',
         className
       )}
     >
       {/* Left: Live Connection & Execution Telemetry */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <div className="flex items-center gap-1.5 text-slate-400 font-mono text-3xs">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-bold text-slate-200">SOLANA MAINNET</span>
-          <span className="text-slate-600 hidden sm:inline">•</span>
-          <span className="text-emerald-400 font-bold hidden sm:inline">18ms</span>
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 rounded-[4px] bg-[#12AF80]/12 border border-[#12AF80]/25 px-2 py-0.5 font-mono text-[10.5px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#2FE3AC] animate-pulse shadow-[0_0_6px_rgba(47,227,172,0.8)]" />
+          <span className="font-semibold text-[#2FE3AC] tracking-tight">
+            {activeChain === 'robinhood' ? 'GLOBAL · ROBINHOOD L2' : 'GLOBAL · SOLANA'}
+          </span>
+          <span className="text-[#2FE3AC]/50 hidden sm:inline">·</span>
+          <span className="text-[#2FE3AC] font-semibold hidden sm:inline">18ms</span>
         </div>
-        <span className="text-slate-700 hidden md:inline">|</span>
-        <span className="text-slate-500 font-mono text-3xs hidden md:inline">PHIVEX V2.4</span>
+        <span className="inline-flex items-center rounded-[4px] bg-[#526FFF]/15 border border-[#526FFF]/30 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-[#8EA2FF] tracking-wide">
+          PRESET 1
+        </span>
+        <span className="text-[#525866] font-mono text-[10.5px] hidden md:inline">PHIVEX V2.4</span>
       </div>
 
       {/* Right: Navigation Links & Actions */}
-      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5 flex-wrap">
         {/* Axiom-Style X Social Tracker Action */}
         <XTrackerButton variant="footer" />
 
@@ -57,7 +61,7 @@ export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarP
         {/* Live Pop-up Alerts On/Off Toggle */}
         <AlertsToggle variant="footer" />
 
-        <span className="hidden sm:inline-block h-3 w-px bg-sentinel-800 mx-0.5" aria-hidden="true" />
+        <span className="hidden sm:inline-block h-3 w-px bg-[#1E222D] mx-0.5" aria-hidden="true" />
 
         {/* Help Link */}
         <Link
@@ -65,14 +69,14 @@ export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarP
           prefetch={true}
           onClick={() => setActiveView('help')}
           className={clsx(
-            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            'flex items-center gap-1.5 h-[22px] px-2 rounded-[4px] transition border text-[11px] font-mono',
             pathname === '/help'
-              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+              ? 'bg-[#526FFF]/15 text-[#8EA2FF] border-[#526FFF]/35'
+              : 'bg-[#11141B] text-[#828598] border-[#1E222D] hover:text-[#F7F8F9] hover:border-[#32374A]'
           )}
           title="Help & documentation"
         >
-          <HelpCircle className="h-2.5 w-2.5 text-sky-400" />
+          <HelpCircle className="h-2.5 w-2.5 text-[#526FFF]" />
           <span>Help</span>
         </Link>
 
@@ -82,14 +86,14 @@ export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarP
           prefetch={true}
           onClick={() => setActiveView('developers')}
           className={clsx(
-            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            'flex items-center gap-1.5 h-[22px] px-2 rounded-[4px] transition border text-[11px] font-mono',
             pathname === '/docs' || pathname === '/developers'
-              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+              ? 'bg-[#526FFF]/15 text-[#8EA2FF] border-[#526FFF]/35'
+              : 'bg-[#11141B] text-[#828598] border-[#1E222D] hover:text-[#F7F8F9] hover:border-[#32374A]'
           )}
           title="Developer platform and API documentation"
         >
-          <BookOpen className="h-2.5 w-2.5 text-sky-400" />
+          <BookOpen className="h-2.5 w-2.5 text-[#526FFF]" />
           <span>Docs</span>
         </Link>
 
@@ -99,38 +103,38 @@ export function FooterStatusBar({ layout = 'page', className }: FooterStatusBarP
           prefetch={true}
           onClick={() => setActiveView('settings')}
           className={clsx(
-            'flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono',
+            'flex items-center gap-1.5 h-[22px] px-2 rounded-[4px] transition border text-[11px] font-mono',
             pathname === '/settings' || pathname?.startsWith('/settings/')
-              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+              ? 'bg-[#526FFF]/15 text-[#8EA2FF] border-[#526FFF]/35'
+              : 'bg-[#11141B] text-[#828598] border-[#1E222D] hover:text-[#F7F8F9] hover:border-[#32374A]'
           )}
           title="Terminal settings & preferences"
         >
-          <Settings className="h-2.5 w-2.5 text-sky-400" />
+          <Settings className="h-2.5 w-2.5 text-[#526FFF]" />
           <span>Settings</span>
         </Link>
 
-        <span className="hidden sm:inline-block h-3 w-px bg-sentinel-800 mx-0.5" aria-hidden="true" />
+        <span className="hidden sm:inline-block h-3 w-px bg-[#1E222D] mx-0.5" aria-hidden="true" />
 
         {/* Console Action */}
         <button
           onClick={() => setConsoleOpen(!isConsoleOpen)}
-          className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md transition border text-2xs font-mono font-bold ${
+          className={`flex items-center gap-1.5 h-[22px] px-2 rounded-[4px] transition border text-[11px] font-mono font-semibold ${
             isConsoleOpen
-              ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow-[0_0_8px_rgba(0,240,255,0.3)]'
-              : 'bg-sentinel-900/90 text-slate-400 border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700'
+              ? 'bg-[#526FFF]/15 text-[#8EA2FF] border-[#526FFF]/35'
+              : 'bg-[#11141B] text-[#828598] border-[#1E222D] hover:text-[#F7F8F9] hover:border-[#32374A]'
           }`}
         >
-          <Terminal className="h-2.5 w-2.5 text-sky-400" />
+          <Terminal className="h-2.5 w-2.5 text-[#526FFF]" />
           <span>Console</span>
         </button>
 
         {/* Hotkeys Action */}
         <button
           onClick={() => setHotkeysOpen(true)}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sentinel-900/90 text-slate-400 border border-sentinel-800 hover:text-slate-200 hover:border-sentinel-700 transition text-2xs font-mono"
+          className="flex items-center gap-1.5 h-[22px] px-2 rounded-[4px] bg-[#11141B] text-[#828598] border border-[#1E222D] hover:text-[#F7F8F9] hover:border-[#32374A] transition text-[11px] font-mono"
         >
-          <Command className="h-2.5 w-2.5 text-slate-400" />
+          <Command className="h-2.5 w-2.5 text-[#828598]" />
           <span>Hotkeys</span>
         </button>
       </div>

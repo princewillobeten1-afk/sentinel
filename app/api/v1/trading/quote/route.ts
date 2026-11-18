@@ -4,6 +4,8 @@ import { parseJsonBody, validateSchema } from '@/lib/server/validation';
 import { checkRateLimit } from '@/lib/server/rate-limit';
 import { ApiError } from '@/lib/server/errors';
 import { getSwapQuote } from '@/lib/trading/jupiter-quote';
+import { getRobinhoodSwapQuote } from '@/lib/market/robinhood-token-service';
+import { isEvmAddress } from '@/lib/chains/chain-config';
 import type { Quote, PriceImpactRating } from '@/lib/quote/types';
 
 export const dynamic = 'force-dynamic';
@@ -30,13 +32,16 @@ export const dynamic = 'force-dynamic';
  */
 
 const quoteRequestSchema = z.object({
-  /** Mint address. `inputSymbol`/`outputSymbol` are display labels only. */
-  inputMint: z.string().min(32, 'inputMint must be a mint address'),
-  outputMint: z.string().min(32, 'outputMint must be a mint address'),
+  /** Target blockchain: solana or robinhood. */
+  chain: z.enum(['solana', 'robinhood']).optional().default('solana'),
+  /** Mint or contract address. `inputSymbol`/`outputSymbol` are display labels only. */
+  inputMint: z.string().min(32, 'inputMint must be a mint or contract address'),
+  outputMint: z.string().min(32, 'outputMint must be a mint or contract address'),
   inputSymbol: z.string().optional(),
   outputSymbol: z.string().optional(),
   amount: z.string().min(1, 'Amount is required'),
   slippage: z.number().min(0.01).max(15),
+  walletAddress: z.string().optional(),
 });
 
 function ratingFor(impact: number | null): PriceImpactRating {
@@ -54,6 +59,69 @@ export async function POST(request: Request) {
     const data = validateSchema(quoteRequestSchema, payload);
 
     checkRateLimit(`quote_${data.inputMint}_${data.outputMint}`, 30, 60_000);
+
+    const isRobinhood =
+      data.chain === 'robinhood' ||
+      isEvmAddress(data.inputMint) ||
+      isEvmAddress(data.outputMint);
+
+    if (isRobinhood) {
+      const rhQuote = await getRobinhoodSwapQuote({
+        inputMint: data.inputMint,
+        outputMint: data.outputMint,
+        amount: data.amount,
+        slippageBps: Math.round(data.slippage * 100),
+        walletAddress: data.walletAddress,
+      });
+
+      const mapped: Quote = {
+        id: `q_rh_${Date.now()}_${data.inputMint.slice(2, 6)}${data.outputMint.slice(2, 6)}`,
+        chainId: 'robinhood',
+        inputMint: data.inputMint,
+        outputMint: data.outputMint,
+        inputToken: data.inputSymbol ?? data.inputMint,
+        outputToken: data.outputSymbol ?? data.outputMint,
+        inputAmount: rhQuote.inputAmount,
+        inputAmountRaw: rhQuote.inputAmountRaw,
+        outputAmount: rhQuote.outputAmount,
+        outputAmountRaw: rhQuote.outputAmountRaw,
+        minimumReceived: rhQuote.minimumReceived,
+        minimumReceivedRaw: rhQuote.minimumReceivedRaw,
+        priceImpact: rhQuote.priceImpactPct ?? 0,
+        priceImpactMeasured: rhQuote.priceImpactPct !== null,
+        priceImpactRating: ratingFor(rhQuote.priceImpactPct),
+        estimatedPriceUsd: rhQuote.estimatedRate,
+        route: [
+          {
+            poolName: `${rhQuote.dexName} (${rhQuote.poolAddress.slice(0, 8)}...)`,
+            dex: rhQuote.dexName,
+            inputSymbol: data.inputSymbol ?? '',
+            outputSymbol: data.outputSymbol ?? '',
+            feePercent: 0,
+            estimatedDepthUsd: String(Math.round(rhQuote.poolLiquidityUsd)),
+          },
+        ],
+        fees: {
+          networkFeeUsd: 0,
+          networkFeeNative: '0',
+          platformFeeUsd: 0,
+          dexFeeUsd: 0,
+          totalFeeUsd: 0,
+        },
+        expiresAt: new Date(Date.now() + 20_000).toISOString(),
+        provider: `${rhQuote.dexName} (${rhQuote.protocol})`,
+        isValid: true,
+        routerAddress: rhQuote.routerAddress,
+        executionSupported: rhQuote.executionSupported,
+        evmTx: rhQuote.evmTx,
+        unavailableReason: rhQuote.executionSupported
+          ? undefined
+          : rhQuote.unavailableReason ||
+            `Direct swap execution is not yet verified for ${rhQuote.dexName}. Live pool quote is shown above.`,
+      };
+
+      return jsonResponse({ quote: mapped });
+    }
 
     const quote = await getSwapQuote({
       inputMint: data.inputMint,

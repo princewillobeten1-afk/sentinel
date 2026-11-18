@@ -59,9 +59,13 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: 'Phivex Team' }],
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/icon.png', sizes: '48x48', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
   },
   openGraph: {
     type: 'website',
@@ -71,12 +75,14 @@ export const metadata: Metadata = {
     title: 'Phivex · Solana Intelligence & Trading Terminal',
     description:
       'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
+    images: [{ url: '/brand/phivex-og.png', width: 1024, height: 1024, alt: 'PHIVEX — Intelligence First' }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Phivex · Solana Intelligence & Trading Terminal',
     description:
       'Institutional-grade Solana token discovery screener, Cabal Radar™ insider tracking, and execution terminal.',
+    images: ['/brand/phivex-og.png'],
   },
   robots: {
     index: true,

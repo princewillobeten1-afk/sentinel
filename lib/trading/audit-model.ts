@@ -62,6 +62,18 @@ export interface TokenAudit {
   historyEvidence: MetricEvidence;
   coverage: string;
   lastAuditedAt: string | null;
+  // Optional EVM-specific security telemetry (Robinhood Chain)
+  isContractVerified?: boolean | null;
+  isProxy?: boolean | null;
+  ownerAddress?: string | null;
+  canTakeBackOwnership?: boolean | null;
+  isBlacklisted?: boolean | null;
+  transferPausable?: boolean | null;
+  isHoneypot?: boolean | null;
+  cannotBuy?: boolean | null;
+  cannotSellAll?: boolean | null;
+  buyTaxPct?: number | null;
+  sellTaxPct?: number | null;
 }
 
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -72,7 +84,11 @@ const boolean = (value: unknown) => typeof value === 'boolean' ? value : null;
 export function isTokenAudit(value: unknown, mint: string): value is TokenAudit {
   if (!value || typeof value !== 'object') return false;
   const data = value as Record<string, unknown>;
-  if (data.token !== mint || data.chain !== 'solana' || typeof data.holderAuditPending !== 'boolean') return false;
+  const tokenMatch =
+    typeof data.token === 'string' &&
+    data.token.toLowerCase() === mint.toLowerCase();
+  const chainMatch = data.chain === 'solana' || data.chain === 'robinhood';
+  if (!tokenMatch || !chainMatch || typeof data.holderAuditPending !== 'boolean') return false;
   const numeric = ['top10HoldersPct', 'devBalancePct', 'organicScore', 'devMints', 'devMigrations',
     'migrationRatePct', 'snipersPct', 'insidersPct', 'bundlersPct', 'sniperCount', 'bundlerCount',
     'insiderCount', 'devCount', 'holderTop10Pct', 'totalHolders'];

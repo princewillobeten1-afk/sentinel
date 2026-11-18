@@ -75,11 +75,12 @@ export class RankingCache {
   public async getPersonalizedRanking(userId: string, watchlistMints: string[], chain = 'solana', window: TimeWindow = '15m'): Promise<DiscoveryToken[]> {
     {
       const baseList = await getLiveDiscoveryTokens({ chain, timeWindow: window, section: 'trending' });
-      const watchlistSet = new Set(watchlistMints);
+      const normalizeAddr = (m: string) => (m.startsWith('0x') ? m.toLowerCase() : m);
+      const watchlistSet = new Set(watchlistMints.map(normalizeAddr));
 
       return [...baseList].sort((a, b) => {
-        const aWatch = watchlistSet.has(a.mint) ? 15 : 0;
-        const bWatch = watchlistSet.has(b.mint) ? 15 : 0;
+        const aWatch = watchlistSet.has(normalizeAddr(a.mint)) ? 15 : 0;
+        const bWatch = watchlistSet.has(normalizeAddr(b.mint)) ? 15 : 0;
         const scoreA = a.discoveryScore.totalScore + aWatch;
         const scoreB = b.discoveryScore.totalScore + bWatch;
         return scoreB - scoreA;

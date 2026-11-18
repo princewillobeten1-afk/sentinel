@@ -18,6 +18,7 @@ import { tokenSearchEngine } from '@/lib/market-data/rankings/search-engine';
 import { RankedTokenItem } from '@/lib/market-data/types';
 import { WalletConnectButton } from '../wallet/wallet-connect-button';
 import { PriceChange } from '../market/price-change';
+import { PhivexLogoMark } from '@/components/ui/phivex-logo';
 
 export function TradingHeader() {
   const router = useRouter();
@@ -85,12 +86,10 @@ export function TradingHeader() {
       {/* Brand & Quick Nav */}
       <div className="flex items-center gap-6">
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-600 flex items-center justify-center font-black text-white text-sm shadow-[0_0_20px_rgba(56,189,248,0.3)]">
-            ST
-          </div>
+          <PhivexLogoMark size="md" className="group-hover:scale-105" />
           <div className="hidden sm:block font-mono">
-            <span className="font-bold text-white tracking-tight text-sm block">SCALE TRADER</span>
-            <span className="text-2xs text-sky-400 font-semibold block">TERMINAL v2</span>
+            <span className="font-bold text-white tracking-[0.14em] text-sm block leading-tight">PHIVEX</span>
+            <span className="text-[9px] text-slate-400 font-semibold tracking-[0.22em] block">INTELLIGENCE FIRST</span>
           </div>
         </Link>
 

@@ -3,125 +3,99 @@ import type { Config } from 'tailwindcss';
 /**
  * Sentinel design tokens.
  *
- * Cool graphite grounds, one azure accent, and semantic buy/sell hues tuned for
- * long sessions on a dark screen. These values are the same ones already hard-set
- * in `app/globals.css` (page ground `#07090D`, focus ring `#3B8FF0`, scrollbars
- * `#1F2733`/`#2B3542`, `.label-micro` `#98A3B3`, `.delta-up/down`
- * `#12B574`/`#EC5A5F`) — the two files must agree, or components styled through
- * Tailwind classes drift away from the ones styled by the stylesheet.
- *
- * Two deliberate departures from the neon set this replaces:
- *
- *  - **The accent is not cyan.** Neon cyan (`#00F0FF`) and neon mint (`#00E599`)
- *    sit ~30° apart on a dark ground and both read as "highlighted", so an
- *    accent link and a rising price competed for the same meaning. Azure is far
- *    enough from the buy green that colour alone tells you which is which.
- *  - **Rungs 300/400 carry the hue, not just 500.** The rendered UI overwhelmingly
- *    uses `-300` and `-400` for text on dark surfaces; a palette change that only
- *    moved `-500` would be invisible on screen.
+ * Deep obsidian-slate grounds (L0 #06070B -> L4 #222634), electric cobalt-indigo
+ * interactive accent (#526FFF), and crisp semantic buy/sell hues (#2FE3AC / #EC397A).
  */
 
-// Cool graphite.
-//
-// The dark end of this ramp is spaced deliberately wide. It previously ran
-// #07090D → #0A0E14 → #0D1219 → #12171F — four "levels" separated by 3–5 RGB
-// points, which no monitor resolves, so ground, panel, card and sub-panel all
-// rendered as one flat black and the UI read as muddy rather than deep. Worse,
-// border-700 (#1F2733) was measured on screen as the *same* value as the card
-// it bounded, making borders invisible.
-//
-// Each step below is now 7–17 points, so surfaces stack visibly and a border
-// reads against the surface it sits on. Depth comes from these steps, not from
-// glows — which is what the neon theme was compensating for.
 const neutral = {
-  50: '#FFFFFF',  // pure white for high-contrast highlights
-  100: '#F5F5F5', // primary text
-  200: '#E5E5E5', // secondary-high text
-  300: '#D4D4D4', // standard readable text
-  400: '#A3A3A3', // muted text / .label-micro
-  500: '#737373', // faint decorative text / .delta-flat
-  600: '#383838', // elevated border / divider
-  700: '#262626', // standard border — crisp neutral boundary
-  750: '#1F1F1F', // card hover surface
-  800: '#141414', // standard card & panel surface
-  850: '#0F0F0F', // sub-panel & table header surface
-  900: '#0A0A0A', // app container ground
-  950: '#000000', // true pitch black page ground (Axiom style)
+  50: '#FFFFFF',  // pure white highlights
+  100: '#F7F8F9', // crisp primary text
+  200: '#E4E5EB', // high-contrast secondary text
+  300: '#C8C9D1', // secondary values
+  400: '#828598', // muted labels / secondary metadata
+  500: '#525866', // faint/disabled labels
+  600: '#32374A', // emphasized borders & hover outlines
+  700: '#222634', // active control surface & crisp hairline borders
+  750: '#1C202B', // interactive inputs, hover rows, preset pills (L3)
+  800: '#151821', // elevated cards, swap module shell, modal surface (L2)
+  850: '#11141B', // sub-panel & sticky column headers (L1.5)
+  900: '#0D1015', // structural panels, navbars, column shells, sidebar (L1)
+  950: '#06070B', // deep obsidian root canvas (L0)
 };
 
-// Azure accent — the one hue used for interactive/emphasis.
+// Axiom Electric Cobalt-Indigo accent — primary interactive & emphasis hue.
 const accent = {
-  50: '#EBF3FE',
-  100: '#D6E7FD',
-  200: '#ADCFFB',
-  300: '#7FB2F6',
-  400: '#5A9FF3',
-  500: '#3B8FF0', // azure — the single accent
-  600: '#2E72C4',
-  700: '#245A9B',
-  800: '#1B4373',
-  900: '#132F51',
-  950: '#0C1E34',
+  50: '#EEF1FF',
+  100: '#DCE3FF',
+  200: '#B8C6FF',
+  300: '#8EA2FF',
+  400: '#6683FF',
+  500: '#526FFF', // primary electric cobalt
+  600: '#3E58E8',
+  700: '#2E43C2',
+  800: '#243496',
+  900: '#1A256E',
+  950: '#0E1442',
 };
 
-// Buy / profit.
+// Buy / profit / safe emerald.
 const buy = {
-  50: '#E7F9F1',
-  100: '#C6F2E0',
-  200: '#92E5C4',
-  300: '#5AD3A4',
-  400: '#2CC189',
-  500: '#12B574', // buy / profit
-  600: '#0E9660',
-  700: '#0B764C',
-  800: '#08573A',
-  900: '#063E29',
-  950: '#04281B',
+  50: '#E9FDF7',
+  100: '#C5FAEA',
+  200: '#98F5DA',
+  300: '#6FF3C8',
+  400: '#2FE3AC', // luminous emerald delta / CTA
+  500: '#12AF80', // deep emerald fresh age / safe pill
+  600: '#0E916A',
+  700: '#0B7253',
+  800: '#08563F',
+  900: '#063F2E',
+  950: '#04261C',
 };
 
-// Sell / risk.
+// Sell / risk / negative rose.
 const sell = {
-  50: '#FDEDEE',
-  100: '#FBD9DB',
-  200: '#F7B4B7',
-  300: '#F28D92',
-  400: '#EF7176',
-  500: '#EC5A5F', // sell / risk
-  600: '#D93F45',
-  700: '#B62F35',
-  800: '#8C2429',
-  900: '#661B1F',
-  950: '#3D1013',
+  50: '#FFF0F4',
+  100: '#FFE0E8',
+  200: '#FFBACB',
+  300: '#FF8A8E',
+  400: '#FF6166', // alert crimson risk text
+  500: '#EC397A', // vibrant rose sell CTA / delta
+  600: '#D12665',
+  700: '#AC1D52',
+  800: '#881741',
+  900: '#681232',
+  950: '#2D0716',
 };
 
-// High-Vibrancy Warning / Fee Amber
+// High-Vibrancy Warning / Bonding / Fee Amber
 const warn = {
   50: '#FFFBEB',
   100: '#FEF3C7',
   200: '#FDE68A',
-  300: '#FCD34D',
-  400: '#FBBF24',
-  500: '#FFB800', // radiant gold
-  600: '#F59E0B',
-  700: '#D97706',
-  800: '#B45309',
-  900: '#78350F',
-  950: '#451A03',
+  300: '#FFD67A',
+  400: '#FFC453',
+  500: '#FFB224', // radiant amber
+  600: '#E59609',
+  700: '#B87505',
+  800: '#8F5904',
+  900: '#6B4203',
+  950: '#291A02',
 };
 
-// AI / Intelligence Purple
+// AI / Smart Wallet / Whale Purple
 const violet = {
   50: '#FAF5FF',
   100: '#F3E8FF',
   200: '#E9D5FF',
   300: '#D8B4FE',
-  400: '#C084FC',
-  500: '#A855F7',
-  600: '#9333EA',
-  700: '#7E22CE',
-  800: '#6B21A8',
-  900: '#581C87',
-  950: '#3B0764',
+  400: '#AC68FF',
+  500: '#984DF5',
+  600: '#7E35DB',
+  700: '#6526B8',
+  800: '#501F91',
+  900: '#3B166E',
+  950: '#240B47',
 };
 
 const config: Config = {
@@ -135,38 +109,38 @@ const config: Config = {
         card: { DEFAULT: neutral[900], foreground: neutral[100] },
         popover: { DEFAULT: neutral[900], foreground: neutral[200] },
         muted: { DEFAULT: neutral[850], foreground: neutral[400] },
-        primary: { DEFAULT: accent[400], foreground: neutral[950] },
+        primary: { DEFAULT: accent[500], foreground: neutral[50] },
         secondary: { DEFAULT: neutral[800], foreground: neutral[200] },
-        destructive: { DEFAULT: sell[600], foreground: neutral[100] },
-        border: neutral[700],
-        input: neutral[700],
-        ring: accent[400],
-        phivex: { ...neutral, 500: accent[500], 400: accent[300], 300: accent[200] },
-        sentinel: { ...neutral, 500: accent[500], 400: accent[300], 300: accent[200] },
+        destructive: { DEFAULT: sell[500], foreground: neutral[100] },
+        border: '#1E222D',
+        input: '#1E222D',
+        ring: accent[500],
+        phivex: { ...neutral, 500: accent[500], 400: accent[400], 300: accent[300], 700: '#1E222D', 600: '#2A3040' },
+        sentinel: { ...neutral, 500: accent[500], 400: accent[400], 300: accent[300], 700: '#1E222D', 600: '#2A3040' },
         surface: {
           DEFAULT: neutral[800],
           muted: neutral[850],
           subtle: neutral[750],
-          border: neutral[700],
+          border: '#1E222D',
         },
         accent,
         buy,
         sell,
         warn,
         trading: {
-          buy: buy[600],
+          buy: buy[400],
           'buy-hover': buy[500],
-          'buy-bg': 'rgba(18, 181, 116, 0.12)',
-          'buy-border': 'rgba(18, 181, 116, 0.35)',
-          sell: sell[600],
-          'sell-hover': sell[500],
-          'sell-bg': 'rgba(236, 90, 95, 0.12)',
-          'sell-border': 'rgba(236, 90, 95, 0.35)',
+          'buy-bg': 'rgba(47, 227, 172, 0.12)',
+          'buy-border': 'rgba(47, 227, 172, 0.35)',
+          sell: sell[500],
+          'sell-hover': sell[600],
+          'sell-bg': 'rgba(236, 57, 122, 0.12)',
+          'sell-border': 'rgba(236, 57, 122, 0.35)',
           warning: warn[500],
-          'warning-bg': 'rgba(255, 184, 0, 0.12)',
-          'warning-border': 'rgba(255, 184, 0, 0.35)',
-          info: accent[400],
-          'info-bg': 'rgba(59, 143, 240, 0.10)',
+          'warning-bg': 'rgba(255, 178, 36, 0.12)',
+          'warning-border': 'rgba(255, 178, 36, 0.35)',
+          info: '#52C5FF',
+          'info-bg': 'rgba(82, 111, 255, 0.14)',
         },
 
         slate: neutral,
@@ -206,23 +180,23 @@ const config: Config = {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-glass': 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)',
-        'gradient-glow': 'linear-gradient(to right, rgba(59,143,240,0.10), rgba(18,181,116,0.10))',
-        'gradient-header': 'linear-gradient(180deg, rgba(14,14,14,0.98) 0%, rgba(0,0,0,0.98) 100%)',
+        'gradient-glow': 'linear-gradient(to right, rgba(82,111,255,0.12), rgba(47,227,172,0.10))',
+        'gradient-header': 'linear-gradient(180deg, rgba(13,16,21,0.98) 0%, rgba(6,7,11,0.98) 100%)',
       },
 
       boxShadow: {
         card: '0 2px 8px 0 rgba(0,0,0,0.45), 0 8px 24px -4px rgba(0,0,0,0.65)',
         'card-lift': '0 4px 12px 0 rgba(0,0,0,0.5), 0 16px 36px -6px rgba(0,0,0,0.7)',
+        'card-highlight': 'inset 0 1px 0 0 rgba(255,255,255,0.06), 0 4px 16px -4px rgba(0,0,0,0.55)',
         glass: 'inset 0 1px 0 0 rgba(255,255,255,0.08)',
         'glass-lift': 'inset 0 1px 0 0 rgba(255,255,255,0.12), 0 8px 24px -4px rgba(0,0,0,0.5)',
-        // Rings, not halos. The previous values painted a 16px coloured bloom
-        // around any element using them, which on a dark ground bleeds into
-        // neighbouring rows in a dense table.
-        glow: '0 0 0 1px rgba(59,143,240,0.45)',
-        'glow-strong': '0 0 0 1px rgba(59,143,240,0.7), 0 2px 10px -2px rgba(0,0,0,0.6)',
-        'glow-buy': '0 0 0 1px rgba(18,181,116,0.5)',
-        'glow-sell': '0 0 0 1px rgba(236,90,95,0.5)',
-        'glow-amber': '0 0 0 1px rgba(255,184,0,0.5)',
+        glow: '0 0 0 1px rgba(82,111,255,0.45)',
+        'glow-strong': '0 0 0 1px rgba(82,111,255,0.7), 0 2px 12px -2px rgba(82,111,255,0.35)',
+        'glow-cobalt': '0 0 14px rgba(82, 111, 255, 0.35)',
+        'glow-emerald': '0 0 12px rgba(47, 227, 172, 0.25)',
+        'glow-buy': '0 0 0 1px rgba(47,227,172,0.45)',
+        'glow-sell': '0 0 0 1px rgba(236,57,122,0.45)',
+        'glow-amber': '0 0 0 1px rgba(255,178,36,0.45)',
       },
 
       fontFamily: {

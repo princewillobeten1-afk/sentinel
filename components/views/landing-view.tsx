@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PhivexLogoLockup } from '@/components/ui/phivex-logo';
 import dynamic from 'next/dynamic';
 
 // Modular Landing Sections
@@ -88,7 +89,12 @@ const fadeInUp: Variants = {
 
 export function LandingView() {
   return (
-    <div className="landing-page relative min-h-screen bg-[#070709] text-neutral-100 font-sans selection:bg-emerald-500/30 overflow-x-hidden">
+    <div className="landing-page relative min-h-screen bg-[#06070B] text-[#F7F8F9] font-sans selection:bg-[#526FFF]/35 overflow-x-hidden">
+      {/* Dual Atmospheric Radial Lighting (Electric Cobalt + Emerald) */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-x-0 top-0 h-[540px] bg-[radial-gradient(ellipse_55%_45%_at_50%_0%,rgba(82,111,255,0.14),transparent),radial-gradient(ellipse_40%_35%_at_75%_15%,rgba(47,227,172,0.08),transparent)] z-0"
+      />
       
       {/* 3D Instanced Candlestick Background Scene */}
       <HeroScene />
@@ -109,36 +115,47 @@ export function LandingView() {
             animate="show"
             className="text-center space-y-6 max-w-4xl mx-auto"
           >
+            {/* Official Brand Lockup */}
+            <motion.div variants={fadeInUp} className="flex justify-center">
+              <PhivexLogoLockup size="md" />
+            </motion.div>
+
             {/* Live Status Pill */}
-            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-neutral-900/80 px-3.5 py-1 text-2xs font-mono text-neutral-300 backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-white font-semibold">SOLANA MAINNET BETA</span>
-              <span className="text-neutral-600">|</span>
-              <span className="text-emerald-400 font-bold">MEV-PROTECTED JITO ROUTING</span>
+            <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 rounded-full border border-[#222634] bg-[#0D1015]/90 px-3.5 py-1 text-[11px] font-mono text-[#C8C9D1] backdrop-blur-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <span className="flex h-2 w-2 rounded-full bg-[#2FE3AC] animate-pulse shadow-[0_0_8px_#2FE3AC]" />
+              <span className="text-[#F7F8F9] font-semibold">SOLANA + ROBINHOOD L2</span>
+              <span className="text-[#32374A]">|</span>
+              <span className="text-[#2FE3AC] font-semibold">MEV-PROTECTED EXECUTION</span>
             </motion.div>
 
             {/* Main Headline */}
-            <motion.h1 variants={fadeInUp} className="font-heading text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.05]">
+            <motion.h1 variants={fadeInUp} className="font-heading text-4xl sm:text-6xl lg:text-7xl font-black text-[#F7F8F9] tracking-[-0.04em] leading-[1.03]">
               The High-Frequency Terminal <br className="hidden sm:block" />
-              <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-400 bg-clip-text text-transparent">
-                Built for Solana Truth.
+              <span className="bg-gradient-to-r from-[#52C5FF] via-[#526FFF] to-[#2FE3AC] bg-clip-text text-transparent">
+                Built for On-Chain Truth.
               </span>
             </motion.h1>
 
             {/* Subtitle */}
-            <motion.p variants={fadeInUp} className="max-w-2xl mx-auto text-sm sm:text-base lg:text-lg text-neutral-300 leading-relaxed font-sans drop-shadow-sm">
+            <motion.p variants={fadeInUp} className="max-w-2xl mx-auto text-sm sm:text-base lg:text-lg text-[#C8C9D1] leading-relaxed font-sans">
               Stop trading blind into fabricated volume and coordinated insider cabals. Phivex dissects holder funding genealogies, filters circular wash cycles, and routes private validator fills with zero toxic slippage.
             </motion.p>
 
-            {/* Single Action CTA: Enter Screener */}
-            <motion.div variants={fadeInUp} className="pt-2 flex items-center justify-center">
+            {/* Action CTAs: Enter Screener + Open Trade Terminal */}
+            <motion.div variants={fadeInUp} className="pt-2 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/discover"
                 id="hero-enter-screener-btn"
-                className="group inline-flex items-center gap-3 px-8 py-3.5 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-neutral-950 font-mono font-bold text-sm shadow-[0_0_25px_rgba(16,185,129,0.35)] hover:shadow-[0_0_35px_rgba(16,185,129,0.55)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                className="group inline-flex items-center gap-2.5 px-7 py-3 rounded-full bg-[#415CF2] hover:bg-[#526FFF] text-white font-semibold text-sm shadow-[0_0_24px_rgba(65,92,242,0.42)] border border-[#6683FF]/50 transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
               >
                 <span>Enter Screener</span>
-                <ArrowRight className="h-4 w-4 text-neutral-950 group-hover:translate-x-1 transition-transform duration-200" />
+                <ArrowRight className="h-4 w-4 text-white group-hover:translate-x-1 transition-transform duration-150" />
+              </Link>
+              <Link
+                href="/trade"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#0D1015]/90 hover:bg-[#151821] border border-[#222634] hover:border-[#32374A] text-[#F7F8F9] font-semibold text-sm backdrop-blur-md transition-all duration-150 active:scale-[0.98]"
+              >
+                <span>Open Pro Terminal</span>
               </Link>
             </motion.div>
 
@@ -147,40 +164,40 @@ export function LandingView() {
               variants={fadeInUp}
               className="pt-6 grid grid-cols-2 md:grid-cols-4 gap-3.5 max-w-4xl mx-auto font-mono text-left"
             >
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#526FFF]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Volume Integrity</p>
-                  <Activity className="h-3.5 w-3.5 text-warn-400" />
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Volume Integrity</p>
+                  <Activity className="h-3.5 w-3.5 text-[#FFB224]" />
                 </div>
-                <p className="text-base sm:text-lg font-black text-warn-400 tracking-tight">Wash Detection</p>
-                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Separates genuine liquidity from circular bot loops</p>
+                <p className="text-base sm:text-lg font-bold text-[#FFB224] tracking-tight">Wash Detection</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Separates genuine liquidity from circular bot loops</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#2FE3AC]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Execution Speed</p>
-                  <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Execution Speed</p>
+                  <Zap className="h-3.5 w-3.5 text-[#2FE3AC]" />
                 </div>
-                <p className="text-base sm:text-lg font-black text-emerald-400 tracking-tight">Sub-Second Fills</p>
-                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Local session keys and direct validator routing</p>
+                <p className="text-base sm:text-lg font-bold text-[#2FE3AC] tracking-tight">Sub-Second Fills</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Local session keys and direct validator routing</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#526FFF]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Holder Forensics</p>
-                  <Layers className="h-3.5 w-3.5 text-accent-300" />
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Holder Forensics</p>
+                  <Layers className="h-3.5 w-3.5 text-[#52C5FF]" />
                 </div>
-                <p className="text-base sm:text-lg font-black text-accent-300 tracking-tight">Cabal Mapping</p>
-                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Uncovers multi-hop wallet genealogies and insider rings</p>
+                <p className="text-base sm:text-lg font-bold text-[#52C5FF] tracking-tight">Cabal Mapping</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Uncovers multi-hop wallet genealogies and insider rings</p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-neutral-900/80 border border-white/[0.08] backdrop-blur-sm space-y-1 hover:border-emerald-500/30 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+              <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#2FE3AC]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-neutral-400 font-semibold tracking-wider">Mempool Defense</p>
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Mempool Defense</p>
+                  <ShieldCheck className="h-3.5 w-3.5 text-[#526FFF]" />
                 </div>
-                <p className="text-base sm:text-lg font-black text-emerald-400 tracking-tight">Zero Sandwiching</p>
-                <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">Direct private Jito bundles bypass public mempools</p>
+                <p className="text-base sm:text-lg font-bold text-[#8EA2FF] tracking-tight">Zero Sandwiching</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Direct private Jito bundles bypass public mempools</p>
               </div>
             </motion.div>
           </motion.div>
