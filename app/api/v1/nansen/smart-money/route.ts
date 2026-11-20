@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100) : 25;
 
     if (!VALID_VIEWS.has(rawView)) {
-      throw new ApiError('Invalid Nansen view parameter', 400);
+      throw new ApiError('Invalid Smart Money view parameter', 400);
     }
 
     const chain = toNansenChain(rawChain);
@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     return jsonResponse(base as unknown as Record<string, unknown>);
   } catch (error) {
     return errorResponse(
-      error instanceof Error ? error : new ApiError('Failed to fetch Nansen Smart Money data', 500),
+      error instanceof Error ? error : new ApiError('Failed to fetch Smart Money data', 500),
     );
   }
 }

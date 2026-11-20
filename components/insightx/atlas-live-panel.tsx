@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Network,
-  ExternalLink,
   RefreshCw,
   Maximize2,
   Minimize2,
@@ -144,7 +143,7 @@ export function AtlasLivePanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
             <Network className="h-3.5 w-3.5 text-sky-400" />
-            <span className="font-mono text-xs font-bold text-white">InsightX Atlas Live</span>
+            <span className="font-mono text-xs font-bold text-white">Holder Cluster Map</span>
           </div>
           <Badge variant="mono" size="sm">
             {network === 'sol' ? 'SOLANA' : network.toUpperCase()}
@@ -152,7 +151,7 @@ export function AtlasLivePanel({
           {intel?.configured ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-300">
               <Sparkles className="h-3 w-3" />
-              REST Telemetry Active
+              Live Telemetry
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 px-2 py-0.5 font-mono text-[11px] text-slate-400">
@@ -167,7 +166,7 @@ export function AtlasLivePanel({
               type="button"
               onClick={() => void fetchIntelligence('full')}
               disabled={loadingIntel}
-              title="Run full InsightX audit (Distribution, Scanner & Snipers)"
+              title="Run full cluster audit (Distribution, Scanner & Snipers)"
               className="inline-flex items-center gap-1 rounded-lg border border-sky-500/35 bg-sky-500/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-sky-300 hover:bg-sky-500/20 disabled:opacity-50 transition"
             >
               <Sparkles className="h-3 w-3" />
@@ -188,22 +187,11 @@ export function AtlasLivePanel({
             type="button"
             onClick={handleRefresh}
             disabled={loadingIntel}
-            title="Refresh InsightX graph & cluster metrics"
+            title="Refresh cluster map & metrics"
             className="inline-flex items-center gap-1 rounded-lg border border-sentinel-800 bg-sentinel-900 px-2 py-1 font-mono text-[11px] text-slate-300 hover:border-slate-700 hover:text-white disabled:opacity-50 transition"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loadingIntel ? 'animate-spin' : ''}`} />
           </button>
-
-          {atlasEmbedUrl && (
-            <a
-              href={atlasEmbedUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-lg border border-sentinel-800 bg-sentinel-900 px-2.5 py-1 font-mono text-[11px] text-slate-300 hover:border-slate-700 hover:text-white transition"
-            >
-              Open <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
         </div>
       </div>
 
@@ -397,13 +385,12 @@ export function AtlasLivePanel({
         </div>
       )}
 
-      {/* Main View: InsightX Atlas Live Embed */}
+      {/* Main View: Interactive Holder Cluster Map */}
       <div className="space-y-2">
         {intel && !intel.configured && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] px-3 py-2 font-mono text-[11px] text-slate-300">
             <span>
-              Atlas Live interactive graph is active. Add <code className="text-sky-300">INSIGHTX_API_KEY</code> to{' '}
-              <code className="text-sky-300">.env</code> to unlock cluster %, Gini/HHI distribution, sniper/bundler detection, and wallet labels.
+              Interactive cluster graph is active. Extended holder metrics are currently unavailable.
             </span>
           </div>
         )}
@@ -411,7 +398,7 @@ export function AtlasLivePanel({
         {intel?.configured && intel.rateLimit?.coolingDown && !metrics && !clustersSummary && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-mono text-[11px] text-amber-200">
             <span>
-              InsightX REST rate limit reached — Atlas Live interactive graph remains active; metrics retry automatically.
+              Cluster metrics are temporarily rate-limited — interactive graph remains active and metrics will retry automatically.
             </span>
           </div>
         )}
@@ -421,13 +408,13 @@ export function AtlasLivePanel({
             {!iframeLoaded && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#080b12]/90 font-mono text-xs text-slate-400">
                 <Network className="h-6 w-6 animate-pulse text-sky-400" />
-                <span>Loading InsightX Atlas Live ({symbol || formatShortAddress(address)})…</span>
+                <span>Loading Cluster Map ({symbol || formatShortAddress(address)})…</span>
               </div>
             )}
             <iframe
               key={`${atlasEmbedUrl}-${reloadNonce}`}
               src={atlasEmbedUrl}
-              title={`InsightX Atlas Live Cluster Map for ${symbol || address}`}
+              title={`Cluster Map for ${symbol || address}`}
               onLoad={() => setIframeLoaded(true)}
               loading="lazy"
               allow="clipboard-write"
@@ -437,7 +424,7 @@ export function AtlasLivePanel({
           </div>
         ) : (
           <div className="rounded-xl border border-sentinel-800 bg-sentinel-950/80 p-6 text-center font-mono text-xs text-slate-400">
-            Provide a valid token contract address to render InsightX Atlas Live.
+            Provide a valid token contract address to render the cluster map.
           </div>
         )}
       </div>

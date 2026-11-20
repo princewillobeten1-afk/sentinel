@@ -26,7 +26,7 @@ export async function GET(
       timestamp: new Date(Date.now() - 120000).toISOString(),
       networkFeeSol: '0.000005 SOL',
       route: 'Orca Whirlpools → Raydium CLMM',
-      provider: 'Jupiter Aggregator',
+      provider: 'Smart Router',
       explorerUrl: 'https://solscan.io/tx/8kL9z2mP1xQ5wN3a19TestSignature001',
     };
 

@@ -14,13 +14,15 @@ describe('trade sidebar evidence labels', () => {
     expect(screen.getByText('Dev H.')).toBeTruthy();
   });
 
-  it('credits the holder count to the DEX route when the ownership audit is unavailable', async () => {
+  it('credits the holder count to the market feed without exposing third-party provider names', async () => {
     render(<TradeSidebarInfo data={{ mint: 'mint', holdersCount: 1,
       marketEvidence: { status: 'measured', source: 'jupiter-token-api', observedAt: new Date().toISOString() },
       ownershipEvidence: { status: 'unavailable', source: 'birdeye-holder-profile', observedAt: new Date().toISOString() },
     }} loading={false} refresh={() => {}} />);
     fireEvent.focus(screen.getByLabelText('Holders', { exact: true }));
-    expect((await screen.findByRole('tooltip')).textContent).toContain('Jupiter');
+    const tooltip = (await screen.findByRole('tooltip')).textContent ?? '';
+    expect(tooltip).toContain('Market feed');
+    expect(tooltip).not.toMatch(/jupiter|birdeye/i);
   });
 
   it('qualifies an LP lock reading as the deepest reported pool', async () => {

@@ -19,7 +19,7 @@ export const narrativeSchema = z.object({
   })).min(1).max(5),
 });
 
-const PROVIDERS = /\b(?:birdeye|helius|quicknode|rugcheck|gemini|google|openai|anthropic|nvidia|nemotron|llama|gpt)\b/i;
+const PROVIDERS = /\b(?:nansen|insightx|geckoterminal|dexscreener|goplus|coingecko|solanatracker|jupiter|birdeye|helius|quicknode|rugcheck|gemini|google|openai|anthropic|claude|nvidia|nemotron|llama|gpt)\b/i;
 const ADVICE = /\b(?:guarantee[sd]?|risk[- ]free|is safe|totally safe|will (?:pump|rug|moon|rise|fall|crash|dump|go up|go down|recover|rebound)|(?:you|we) should (?:buy|sell|ape|enter|exit)|buy now|sell now|good (?:buy|entry)|price target|target price|financial advice|not financial advice|definitely|certainly|100x|same owner|insider (?:sold|bought)|honeypot|wash[- ]trad\w*|rug ?pull(?:ed)?)\b/i;
 const SECRETS = /(?:private\s*key|seed\s*phrase|mnemonic|api[ _-]?key|password|bearer\s+|-----BEGIN|AIza[\w-]{20}|sk-[\w-]{12}|[\w.+-]+@[\w.-]+\.[a-z]{2,})/i;
 const LONG_BASE58 = /\b[1-9A-HJ-NP-Za-km-z]{32,}\b/;

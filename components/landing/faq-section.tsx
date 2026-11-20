@@ -11,9 +11,9 @@ interface FaqItem {
 
 const FAQS: FaqItem[] = [
   {
-    question: 'How does Phivex map hidden holder funding clusters with InsightX?',
+    question: 'How does Phivex map hidden holder funding clusters?',
     answer:
-      'Phivex integrates InsightX Atlas Live and InsightX DEX Metrics directly across Solana and Robinhood Chain. Instead of inspecting top holders in isolation, InsightX maps co-funded wallet clusters, tags exchanges, volume bots, team wallets, and funding addresses, and computes Gini, HHI, Nakamoto, sniper, bundler, and insider supply shares in real time.',
+      'Phivex embeds interactive holder cluster graphs and DEX telemetry directly across Solana and Robinhood Chain. Instead of inspecting top holders in isolation, Phivex maps co-funded wallet clusters, tags exchanges, volume bots, team wallets, and funding addresses, and computes Gini, HHI, Nakamoto, sniper, bundler, and insider supply shares in real time.',
   },
   {
     question: 'How does wash-trading volume decomposition work?',

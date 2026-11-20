@@ -202,8 +202,8 @@ export function CommandPalette() {
     },
     {
       id: 'cmd_intelligence',
-      label: 'Go to Blockchain Intelligence & InsightX',
-      description: 'Inspect InsightX cluster maps, insider wallet connections, and risk audits',
+      label: 'Go to Blockchain Intelligence & Cluster Maps',
+      description: 'Inspect wallet cluster maps, insider connections, and risk audits',
       icon: BrainCircuit,
       action: () => handleSelectNav('intelligence'),
       shortcut: 'G I',

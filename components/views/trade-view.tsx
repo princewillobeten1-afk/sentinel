@@ -8,7 +8,6 @@ import {
   Globe,
   Users,
   Search,
-  Shield,
   Eye,
   EyeOff,
   Layers,
@@ -439,7 +438,7 @@ export function TradeView({
 
           {/* 1. Leftmost DEX / Platform Icon Button */}
           <a
-            href={currentToken.dexUrl || `https://dexscreener.com/${activeChain}/${currentToken.mint}`}
+            href={currentToken.dexUrl || getExplorerTokenUrl(activeChain, currentToken.mint)}
             target="_blank"
             rel="noopener noreferrer"
             className="shrink-0 w-8 h-8 rounded-[6px] border border-[#1E222D] bg-[#11141B] hover:bg-[#1C202B] hover:border-[#526FFF]/50 transition-all flex items-center justify-center group"
@@ -585,18 +584,6 @@ export function TradeView({
                   title="Official Website"
                 >
                   <Globe className="h-3 w-3" />
-                </a>
-              )}
-              {/* Optional RugCheck (Solana only) */}
-              {!isRobinhood && (
-                <a
-                  href={`https://rugcheck.xyz/tokens/${activeMint}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-0.5 rounded hover:bg-[#1C202B] text-[#828598] hover:text-[#AC68FF] transition-colors"
-                  title="RugCheck Audit"
-                >
-                  <Shield className="h-3 w-3" />
                 </a>
               )}
             </div>

@@ -74,7 +74,7 @@ export function LandingFooter() {
               </li>
               <li>
                 <Link href="/intelligence" className="hover:text-white transition-colors">
-                  InsightX Atlas Maps
+                  Holder Cluster Maps
                 </Link>
               </li>
               <li>

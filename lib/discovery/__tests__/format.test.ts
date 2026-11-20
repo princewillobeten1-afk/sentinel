@@ -8,13 +8,28 @@ import {
   shortenAddress,
   buyPressurePct,
   formatDisplaySource,
+  sanitizeProviderText,
 } from '../format';
 
-describe('provider provenance', () => {
-  it('shows each provider in a composed measured source', () => {
+describe('provider provenance white-labeling', () => {
+  it('maps raw API vendor slugs to provider-neutral labels', () => {
     expect(formatDisplaySource('rugcheck-report+solana-rpc-supply'))
-      .toBe('Rugcheck + Solana RPC');
-    expect(formatDisplaySource('birdeye-holder-profile')).toBe('Birdeye holders');
+      .toBe('Security audit + On-chain RPC');
+    expect(formatDisplaySource('birdeye-holder-profile')).toBe('Holder analysis');
+    expect(formatDisplaySource('nansen+insightx')).toBe('Smart Money + Cluster graph');
+    expect(formatDisplaySource('jupiter-token-api')).toBe('Market feed');
+  });
+
+  it('strips API vendor names and env key names from user-facing reason text', () => {
+    expect(sanitizeProviderText('Rugcheck public is cooling down after a quota limit.')).toBe(
+      'Data feed public is cooling down after a quota limit.',
+    );
+    expect(sanitizeProviderText('Add NANSEN_API_KEY to .env')).toBe(
+      'Data service is not configured for this feed.',
+    );
+    expect(sanitizeProviderText('No trade source could be reached (jupiter: HTTP 400 from datapi.jup.ag).')).not.toMatch(
+      /jupiter|datapi\.jup\.ag/i,
+    );
   });
 });
 

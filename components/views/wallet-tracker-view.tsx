@@ -329,7 +329,7 @@ export function WalletTrackerView() {
         <div className="max-w-full overflow-x-auto">
           <Tabs
             tabs={[
-              { id: 'nansen', label: 'Nansen Smart Money' },
+              { id: 'nansen', label: 'Smart Money' },
               { id: 'leaderboard', label: `Leaderboard (${filteredSmartWallets.length})` },
               { id: 'my-tracked', label: `My Tracked Wallets (${trackedWallets.length})` },
               { id: 'live-feed', label: 'Live Alpha Feed' },
@@ -444,16 +444,16 @@ export function WalletTrackerView() {
               if (isTracked(item.address)) return;
               await addTrackedWallet({
                 address: item.address,
-                label: item.address_label || `Nansen Smart Trader ${item.address.slice(0, 6)}`,
+                label: item.address_label || `Smart Trader ${item.address.slice(0, 6)}`,
                 category: 'SMART_MONEY',
-                notes: `Added from Nansen Smart Money Leaderboard (${walletChain}).`,
+                notes: `Added from Smart Money Leaderboard (${walletChain}).`,
                 winRate: typeof item.win_rate === 'number' ? Number((item.win_rate * 100).toFixed(1)) : 0,
                 totalRealizedPnlUsd: Math.round(item.realized_pnl_usd ?? item.total_pnl_usd ?? 0),
                 totalTradesCount: item.n_trades ?? 0,
               });
               addNotification({
                 title: 'Wallet Tracked',
-                message: `Now tracking ${item.address_label || item.address} from Nansen Smart Money.`,
+                message: `Now tracking ${item.address_label || item.address} from Smart Money.`,
                 type: 'system',
               });
             }}
@@ -467,7 +467,7 @@ export function WalletTrackerView() {
           {isLoadingLeaderboard && smartWallets.length === 0 ? (
             <div className="flex items-center justify-center py-20 text-slate-400 text-xs font-mono">
               <RefreshCw className="w-4 h-4 animate-spin mr-2 text-sky-400" />
-              Scanning on-chain alpha traders & Jupiter pools...
+              Scanning on-chain alpha traders & DEX pools...
             </div>
           ) : filteredSmartWallets.length === 0 ? (
             <div className="text-center py-20 text-slate-500 text-xs font-mono">

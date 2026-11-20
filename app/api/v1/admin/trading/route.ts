@@ -12,7 +12,7 @@ const mockTradingOps = {
   failedRatePct: 0.009,
   routerDistribution: [
     { router: 'Raydium CPMM', volumePct: 48.2, latencyMs: 110 },
-    { router: 'Jupiter Smart Router', volumePct: 36.4, latencyMs: 145 },
+    { router: 'Phivex Smart Router', volumePct: 36.4, latencyMs: 145 },
     { router: 'Orca Whirlpool', volumePct: 11.2, latencyMs: 125 },
     { router: 'Uniswap v3 (Base)', volumePct: 4.2, latencyMs: 180 },
   ],

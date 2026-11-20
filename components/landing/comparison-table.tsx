@@ -5,9 +5,9 @@ import { Check, X, ShieldCheck, Zap } from 'lucide-react';
 
 const COMPARISON_ROWS = [
   {
-    feature: 'InsightX Atlas Cluster Mapping',
-    description: 'Powered by InsightX Atlas Live to map co-funded wallets, bundlers, and entity labels',
-    phivex: 'Real-time InsightX Atlas Live',
+    feature: 'Real-Time Holder Cluster Mapping',
+    description: 'Maps co-funded wallets, snipers, bundlers, and entity labels in an interactive graph',
+    phivex: 'Real-time interactive cluster map',
     standard: 'Flat holder list only',
     phivexHas: true,
     standardHas: false,

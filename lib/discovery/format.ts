@@ -232,21 +232,51 @@ export function formatDisplaySource(source?: string | null): string {
   if (!source) return 'On-chain';
   const label = (part: string): string => {
     const s = part.toLowerCase().trim();
-    if (s.includes('birdeye') && s.includes('holder')) return 'Birdeye holders';
-    if (s.includes('birdeye')) return 'Birdeye';
-    if (s.includes('insightx')) return 'InsightX';
-    if (s.includes('nansen')) return 'Nansen';
-    if (s.includes('rugcheck')) return 'Rugcheck';
-    if (s.includes('quicknode')) return 'QuickNode';
-    if (s.includes('helius')) return 'Helius';
-    if (s.includes('solana-rpc') || s === 'rpc-supply') return 'Solana RPC';
+    if (!s) return 'On-chain';
+    if (s.includes('birdeye') && s.includes('holder')) return 'Holder analysis';
+    if (
+      s.includes('birdeye') ||
+      s.includes('dexscreener') ||
+      s.includes('geckoterminal') ||
+      s.includes('jupiter') ||
+      s.includes('coingecko') ||
+      s.includes('solana-tracker') ||
+      s.includes('solanatracker')
+    ) {
+      return 'Market feed';
+    }
+    if (s.includes('insightx') || s.includes('atlas')) return 'Cluster graph';
+    if (s.includes('nansen')) return 'Smart Money';
+    if (s.includes('rugcheck') || s.includes('goplus')) return 'Security audit';
+    if (s.includes('quicknode') || s.includes('helius') || s.includes('solana-rpc') || s === 'rpc-supply') {
+      return 'On-chain RPC';
+    }
     if (s.includes('pump')) return 'Pump.fun';
     if (s.includes('raydium')) return 'Raydium';
     if (s.includes('meteora')) return 'Meteora';
-    if (s.includes('jupiter')) return 'Jupiter';
     if (s === 'fixture' || s === 'mock' || s === 'test') return 'On-chain';
     if (s.includes('-') || s.includes('_')) return 'On-chain analysis';
     return part;
   };
   return [...new Set(source.split('+').map(label))].join(' + ');
+}
+
+const PROVIDER_ENV_KEY_RE =
+  /\b(?:NANSEN_API_KEY|INSIGHTX_API_KEY|BIRDEYE_API_KEY|SOLANA_TRACKER_API_KEY|HELIUS_API_KEY|RUGCHECK_API_KEY|RUGCHECK_SHIELD_KEY|QUICKNODE_SOLANA_[A-Z_]+|JUPITER_API_KEY|GEMINI_API_KEY|NVIDIA_API_KEY)\b/i;
+
+const PROVIDER_URL_OR_NAME_RE =
+  /\b(?:datapi\.jup\.ag|api\.geckoterminal\.com|api\.dexscreener\.com|api\.rugcheck\.xyz|shield\.rugcheck\.xyz|public-api\.birdeye\.so|api\.nansen\.ai|api\.insightx\.network|embed\.insightx\.network|Nansen|Birdeye|InsightX|Atlas Live|GeckoTerminal|DexScreener|Helius(?: Wallet API)?|QuickNode|Rugcheck|GoPlus(?: Security)?|Solana\s*Tracker|Jupiter|CoinGecko|Gemini|Claude|Anthropic|OpenAI|GPT-?4o?|NVIDIA|Nemotron)\b/gi;
+
+/**
+ * Strips third-party API vendor names, hostnames, and env var identifiers from
+ * error/status strings before displaying them in frontend UI tooltips or notices.
+ */
+export function sanitizeProviderText(text?: string | null): string | undefined {
+  if (!text) return undefined;
+  if (PROVIDER_ENV_KEY_RE.test(text)) {
+    return 'Data service is not configured for this feed.';
+  }
+  const cleaned = text.replace(PROVIDER_URL_OR_NAME_RE, 'data feed').replace(/\s{2,}/g, ' ').trim();
+  if (!cleaned) return undefined;
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }

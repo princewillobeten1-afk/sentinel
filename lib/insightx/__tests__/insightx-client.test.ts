@@ -355,6 +355,6 @@ describe('InsightX integration', () => {
     expect((await fetchInsightXClusters('solana', 'MintCached'))?.totalClusterPct).toBe(5);
     expect(fetch429Spy).toHaveBeenCalledTimes(2);
 
-    expect(formatDisplaySource('insightx+rugcheck')).toBe('InsightX + Rugcheck');
+    expect(formatDisplaySource('insightx+rugcheck')).toBe('Cluster graph + Security audit');
   });
 });

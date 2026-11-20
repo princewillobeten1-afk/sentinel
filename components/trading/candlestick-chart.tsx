@@ -465,9 +465,9 @@ function ChartWorkspace({ symbol = '', tokenSymbol, chain = 'solana', compact = 
   const change = active && previous?.close ? (active.close / previous.close - 1) * 100 : null;
   const empty = !feed.candles.length;
   const updated = Math.max(feed.observedAt, feed.streamAt);
-  const sourceName = feed.source === 'geckoterminal-pool-ohlcv' ? 'GeckoTerminal'
-    : feed.source === 'birdeye-ohlcv-v3' ? 'Birdeye'
-      : feed.liveSource === 'quicknode' ? 'QuickNode live' : 'Provider pending';
+  const sourceName = feed.source === 'geckoterminal-pool-ohlcv' ? 'Pool feed'
+    : feed.source === 'birdeye-ohlcv-v3' ? 'Market feed'
+      : feed.liveSource === 'quicknode' ? 'Live stream' : 'Feed pending';
   const sourceLabel = feed.market === 'pool'
     ? `${sourceName} · pool ${displaySymbol(feed.poolAddress || '')} · USD`
     : `${sourceName} · token aggregate · USD`;

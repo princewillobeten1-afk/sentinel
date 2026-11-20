@@ -103,14 +103,14 @@ export function NansenSmartMoneyPanel({
         );
         if (signal?.aborted) return;
         if (!res.ok) {
-          setLoadError('Unable to reach Nansen Smart Money endpoint — click refresh to retry.');
+          setLoadError('Unable to reach Smart Money feed — click refresh to retry.');
           return;
         }
         const json = await res.json();
         if (signal?.aborted) return;
         const payload = (json?.data ?? null) as NansenTokenSmartMoneyResponse | null;
         if (!payload) {
-          setLoadError('Unable to reach Nansen Smart Money endpoint — click refresh to retry.');
+          setLoadError('Unable to reach Smart Money feed — click refresh to retry.');
           return;
         }
 
@@ -131,7 +131,7 @@ export function NansenSmartMoneyPanel({
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (!signal?.aborted) {
-          setLoadError('Unable to reach Nansen Smart Money endpoint — click refresh to retry.');
+          setLoadError('Unable to reach Smart Money feed — click refresh to retry.');
         }
       } finally {
         if (!signal?.aborted) {
@@ -210,25 +210,20 @@ export function NansenSmartMoneyPanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1">
             <Brain className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="font-mono text-xs font-bold text-white">Nansen Smart Money</span>
+            <span className="font-mono text-xs font-bold text-white">Smart Money</span>
           </div>
           <Badge variant="mono" size="sm">
             {nansenChain.toUpperCase()}
           </Badge>
           {configured === true ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] text-emerald-300">
-              Nansen Live
+              Live
             </span>
           ) : configured === false ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 px-2 py-0.5 font-mono text-[11px] text-slate-400">
-              API Key Required
+              Unavailable
             </span>
           ) : null}
-          {typeof rateLimit?.creditsRemaining === 'number' && (
-            <span className="font-mono text-[11px] text-slate-400">
-              {rateLimit.creditsRemaining.toLocaleString()} cr left
-            </span>
-          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -254,7 +249,7 @@ export function NansenSmartMoneyPanel({
             type="button"
             onClick={() => void loadDetail(timeframe, subTab)}
             disabled={loading}
-            title="Refresh Nansen Smart Money intelligence"
+            title="Refresh Smart Money intelligence"
             className="inline-flex items-center gap-1 rounded-lg border border-sentinel-800 bg-sentinel-900 px-2 py-1 font-mono text-[11px] text-slate-300 hover:border-slate-700 hover:text-white disabled:opacity-50 transition"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -266,30 +261,21 @@ export function NansenSmartMoneyPanel({
       {configured === false && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2.5 font-mono text-[11px] text-slate-200">
           <span>
-            Add <code className="text-emerald-300">NANSEN_API_KEY=</code> to{' '}
-            <code className="text-emerald-300">.env</code> to stream Nansen Smart Money net flows, top Smart Trader buyers/sellers, and labeled DEX swaps for{' '}
-            {symbol || formatShortAddr(address)}.
+            Smart Money analytics are currently unavailable for {symbol || formatShortAddr(address)}.
           </span>
         </div>
       )}
 
-      {configured && rateLimit?.insufficientCredits && (
+      {configured && (rateLimit?.insufficientCredits || rateLimit?.authFailed) && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] px-3 py-2 font-mono text-[11px] text-rose-200">
           <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
-          <span>Nansen credit balance exhausted — top up credits in your Nansen dashboard to resume live Smart Money queries.</span>
-        </div>
-      )}
-
-      {configured && rateLimit?.authFailed && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] px-3 py-2 font-mono text-[11px] text-rose-200">
-          <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
-          <span>Nansen API key rejected or missing required read scope (`data`). Check `NANSEN_API_KEY` in `.env`.</span>
+          <span>Smart Money analytics are temporarily unavailable — please check back shortly.</span>
         </div>
       )}
 
       {configured && rateLimit?.coolingDown && !rateLimit.insufficientCredits && !rateLimit.authFailed && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-mono text-[11px] text-amber-200">
-          Nansen rate limit active — cached snapshots remain available and live requests will resume automatically.
+          Smart Money feed is temporarily rate-limited — cached snapshots remain available and live requests will resume automatically.
         </div>
       )}
 
@@ -360,9 +346,6 @@ export function NansenSmartMoneyPanel({
         >
           <Users className="h-3.5 w-3.5" />
           <span>Smart Holders</span>
-          <span className="rounded bg-sentinel-900 px-1.5 py-px text-[10px] text-amber-300 border border-amber-500/25">
-            5 cr
-          </span>
         </button>
       </div>
 
@@ -384,9 +367,9 @@ export function NansenSmartMoneyPanel({
                 <tr>
                   <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
                     {configured === false
-                      ? 'Add NANSEN_API_KEY to load Smart Money buyers.'
+                      ? 'Smart Money buyers are currently unavailable.'
                       : loading
-                        ? 'Loading Smart Money buyers from Nansen…'
+                        ? 'Loading Smart Money buyers…'
                         : 'No Smart Money buyers recorded for this window.'}
                   </td>
                 </tr>
@@ -444,7 +427,7 @@ export function NansenSmartMoneyPanel({
         <div className="space-y-3">
           {dexTradesRestricted && (
             <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 font-mono text-[11px] text-amber-200">
-              Nansen DEX trade filtering restricts native gas tokens and Solana USDC; Smart Sellers below remains active where supported.
+              DEX trade filtering restricts native gas tokens and Solana USDC; Smart Sellers below remains active where supported.
             </div>
           )}
 
@@ -583,7 +566,7 @@ export function NansenSmartMoneyPanel({
                 {smartHolders.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
-                      {loading ? 'Loading Smart Money holders from Nansen…' : 'No Smart Money holders returned for this token.'}
+                      {loading ? 'Loading Smart Money holders…' : 'No Smart Money holders returned for this token.'}
                     </td>
                   </tr>
                 ) : (

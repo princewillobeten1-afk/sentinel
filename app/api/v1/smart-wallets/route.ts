@@ -158,7 +158,7 @@ export async function GET(request: Request) {
             id: `nansen_${item.address}`,
             address: `${item.address.slice(0, 4)}...${item.address.slice(-4)}`,
             fullAddress: item.address,
-            label: item.address_label || `Nansen Smart Trader #${idx + 1}`,
+            label: item.address_label || `Smart Trader #${idx + 1}`,
             category: 'SMART_MONEY' as const,
             source: 'nansen',
             scoreOverall,

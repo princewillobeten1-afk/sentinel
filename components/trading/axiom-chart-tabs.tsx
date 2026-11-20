@@ -970,7 +970,7 @@ export function AxiomChartTabs({
       }
 
       const received = Number(quote.outputAmount).toLocaleString(undefined, { maximumFractionDigits: 4 });
-      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Jupiter';
+      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Smart Router';
       const impact =
         quote.priceImpactPct === null || quote.priceImpactPct === undefined
           ? 'impact unknown'
@@ -1045,7 +1045,7 @@ export function AxiomChartTabs({
       }
 
       const received = Number(quote.outputAmount).toLocaleString(undefined, { maximumFractionDigits: 6 });
-      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Jupiter';
+      const venue = Array.isArray(quote.route) && quote.route.length ? quote.route.join(' -> ') : 'Smart Router';
 
       setInstantQuote({
         side: 'sell',
@@ -1249,7 +1249,7 @@ export function AxiomChartTabs({
             )}
           </button>
 
-          {/* InsightX Tab (Atlas Live Cluster Map & DEX Metrics) */}
+          {/* Clusters Tab (Holder Cluster Map & DEX Metrics) */}
           <button
             onClick={() => setActiveTab('insightx')}
             aria-pressed={activeTab === 'insightx'}
@@ -1260,7 +1260,7 @@ export function AxiomChartTabs({
             }`}
           >
             <Network className="h-3.5 w-3.5 text-[#52C5FF]" />
-            <span>InsightX</span>
+            <span>Clusters</span>
           </button>
 
           {/* Smart Money Tab (Nansen Flow Intelligence, Buyers/Sellers, Swaps & Holders) */}
@@ -2259,7 +2259,7 @@ export function AxiomChartTabs({
                     ? 'Not available'
                     : `${(insightxTop10Pct ?? holdersTop10Pct)!.toFixed(2)}% Supply`}
                 </span>
-                <span className="text-2xs text-slate-500 block">From InsightX / on-chain holders.</span>
+                <span className="text-2xs text-slate-500 block">From on-chain holders &amp; cluster analysis.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
                 <span className="text-slate-400 font-mono text-2xs uppercase block">Total Holders</span>
@@ -2267,7 +2267,7 @@ export function AxiomChartTabs({
                 <span className="text-2xs text-slate-500 block">From on-chain token accounts.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">InsightX Clusters</span>
+                <span className="text-slate-400 font-mono text-2xs uppercase block">Wallet Clusters</span>
                 {insightxClusterStats.count !== null ? (
                   <>
                     <span
@@ -2281,19 +2281,19 @@ export function AxiomChartTabs({
                     </span>
                     <span className="text-2xs text-slate-500 block">
                       {insightxClusterStats.clusterPct !== null
-                        ? `${insightxClusterStats.clusterPct.toFixed(2)}% supply in InsightX clusters.`
-                        : 'InsightX cluster & funding analysis.'}
+                        ? `${insightxClusterStats.clusterPct.toFixed(2)}% supply in linked clusters.`
+                        : 'Cluster & funding analysis.'}
                     </span>
                   </>
                 ) : (
                   <>
                     <span className="text-sm font-bold text-slate-400 block font-mono">
-                      Atlas Live Interactive
+                      Interactive Map
                     </span>
                     <span className="text-2xs text-slate-500 block">
                       {insightxClusterStats.configured
                         ? 'No cluster summary returned.'
-                        : 'Explore wallet links in InsightX Atlas or add INSIGHTX_API_KEY.'}
+                        : 'Explore linked wallet clusters in the interactive map below.'}
                     </span>
                   </>
                 )}
@@ -2567,7 +2567,7 @@ export function AxiomChartTabs({
                 chip where nothing checks the claim, never a green one. */}
             <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3.5 space-y-2.5 text-xs">
               <span className="text-2xs font-bold text-white font-mono uppercase tracking-wider block">
-                {normalizedChain === 'robinhood' ? 'EVM Contract & On-Chain Security (GoPlus)' : 'Contract & On-Chain Security'}
+                {normalizedChain === 'robinhood' ? 'EVM Contract & On-Chain Security' : 'Contract & On-Chain Security'}
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-2xs">
                 {(normalizedChain === 'robinhood'
@@ -2630,7 +2630,7 @@ export function AxiomChartTabs({
               </div>
               <p className="text-2xs text-slate-500 font-mono">
                 {normalizedChain === 'robinhood'
-                  ? 'EVM contract verification, ownership, minting, tax, honeypot, and pause/blacklist flags are queried live from GoPlus Security (Chain ID 4663).'
+                  ? 'EVM contract verification, ownership, minting, tax, honeypot, and pause/blacklist flags are queried live on-chain (Chain ID 4663).'
                   : 'Mint and freeze authority are read from the mint account. LP-burn status and honeypot/tax behavior are not checked by this platform -- they show "Not verified" rather than an assumed pass.'}
               </p>
             </div>

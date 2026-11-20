@@ -142,7 +142,7 @@ export async function GET(
       // No trust score. "98/100 Tier 1 Verified" was a rating nothing computed.
       trustScore: null,
       coverage:
-        'Deployer identity and mint history from Jupiter. Per-wallet transaction timeline is not reconstructed.',
+        'Deployer identity and mint history from on-chain registries. Per-wallet transaction timeline is not reconstructed.',
       timestamp: new Date().toISOString(),
     };
 

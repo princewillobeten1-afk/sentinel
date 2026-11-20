@@ -1,3 +1,5 @@
+import { sanitizeProviderText } from '@/lib/discovery/format';
+
 /**
  * Four states for a numeric field, because one em-dash cannot carry them.
  *
@@ -81,6 +83,6 @@ export function describeState(state: ValueState<number>, label: string): string 
     case 'pending':
       return `${label} is still being computed`;
     case 'unavailable':
-      return state.reason ?? `${label} could not be computed for this token`;
+      return sanitizeProviderText(state.reason) ?? `${label} could not be computed for this token`;
   }
 }

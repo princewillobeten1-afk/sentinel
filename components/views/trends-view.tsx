@@ -392,7 +392,7 @@ export function TrendsView() {
         <div className="py-24 flex flex-col items-center justify-center text-neutral-500 font-mono text-xs gap-3 rounded-2xl border border-neutral-850 bg-[#0A0A0A]">
           <RefreshCw className="w-7 h-7 animate-spin text-sky-400" />
           <span className="font-bold text-neutral-300">Scanning viral meme feeds across TikTok, 𝕏, and on-chain DEX contracts...</span>
-          <span className="text-3xs text-neutral-500">Cross-referencing token addresses with DexScreener</span>
+          <span className="text-3xs text-neutral-500">Cross-referencing token addresses with live market pairs</span>
         </div>
       ) : error ? (
         <div className="p-8 rounded-2xl border border-sell-500/30 bg-sell-500/10 text-sell-300 text-xs font-mono text-center space-y-3">

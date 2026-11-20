@@ -175,7 +175,7 @@ export async function POST(request: Request) {
         totalFeeUsd: 0,
       },
       expiresAt: new Date(Date.now() + 20_000).toISOString(),
-      provider: quote.route.length ? `Jupiter (${quote.route.join(' → ')})` : 'Jupiter',
+      provider: quote.route.length ? quote.route.join(' → ') : 'Smart Router',
       isValid: true,
     };
 

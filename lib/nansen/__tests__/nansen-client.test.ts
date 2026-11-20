@@ -313,6 +313,6 @@ describe('Nansen API v1 integration', () => {
     expect(getNansenRateLimitStatus().authFailed).toBe(false);
     expect(getNansenRateLimitStatus().insufficientCredits).toBe(false);
 
-    expect(formatDisplaySource('nansen+insightx')).toBe('Nansen + InsightX');
+    expect(formatDisplaySource('nansen+insightx')).toBe('Smart Money + Cluster graph');
   });
 });

@@ -146,7 +146,7 @@ export async function GET(
         poolAddress: rh.poolAddress,
         coverage:
           rh.trades.length > 0
-            ? 'Recent on-chain swaps from GeckoTerminal (Robinhood Chain), newest first.'
+            ? 'Recent on-chain swaps (Robinhood Chain), newest first.'
             : 'No recent trades indexed for this Robinhood Chain token.',
         trades: rh.trades,
       });
@@ -169,7 +169,7 @@ export async function GET(
       .slice(0, limit);
 
     const sources = [
-      history.source ? `${history.source === 'jupiter' ? 'Jupiter' : 'GeckoTerminal'} trade index` : null,
+      history.source ? 'on-chain trade index' : null,
       captured.trades.length > 0 ? `this platform's live stream${captured.fromMemory ? ' (in-memory; Postgres unavailable)' : ''}` : null,
     ].filter(Boolean);
 
@@ -182,7 +182,7 @@ export async function GET(
         sources.length > 0
           ? `Recent trades from ${sources.join(' and ')}, newest first.`
           : history.error
-            ? `No trade source could be reached (${history.error}).`
+            ? 'Live trade feed is temporarily unavailable. Please retry.'
             : 'No trades found for this token in the indexers or the live stream.',
       trades,
     });

@@ -184,11 +184,11 @@ export function LandingView() {
 
               <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#526FFF]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">InsightX Forensics</p>
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Cluster Forensics</p>
                   <Layers className="h-3.5 w-3.5 text-[#52C5FF]" />
                 </div>
-                <p className="text-base sm:text-lg font-bold text-[#52C5FF] tracking-tight">InsightX Atlas</p>
-                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Live wallet clusters, sniper & bundler supply, and entity labels</p>
+                <p className="text-base sm:text-lg font-bold text-[#52C5FF] tracking-tight">Live Cluster Map</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Live wallet clusters, sniper &amp; bundler supply, and entity labels</p>
               </div>
 
               <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#2FE3AC]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
@@ -230,18 +230,18 @@ export function LandingView() {
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 3: INSIGHTX ATLAS LIVE CLUSTER ENGINE */}
+        {/* SECTION 3: INTERACTIVE HOLDER CLUSTER ENGINE */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
           <div className="text-center space-y-2 mb-10">
             <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-sky-400">
-              INSIGHTX ATLAS LIVE // WALLET CLUSTER & RISK INTELLIGENCE
+              PHIVEX CLUSTER ENGINE // WALLET CLUSTER &amp; RISK INTELLIGENCE
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
-              Interactive InsightX Cluster Maps Built Into Phivex
+              Interactive Holder Cluster Maps Built Into Phivex
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              Powered by live InsightX Atlas intelligence across Solana and Robinhood Chain. Switch tokens or paste any contract address below to inspect wallet clusters, distribution inequality, snipers, bundlers, and entity labels live.
+              Built-in real-time holder cluster intelligence across Solana and Robinhood Chain. Switch tokens or paste any contract address below to inspect wallet clusters, distribution inequality, snipers, bundlers, and entity labels live.
             </p>
           </div>
 
@@ -311,7 +311,7 @@ export function LandingView() {
                   Natural Language Forensics. Ask Anything About Any Mint.
                 </h3>
                 <p className="text-xs sm:text-sm text-neutral-300 font-sans leading-relaxed">
-                  Audit smart contract authorities, query creator launch history, simulate large trade slippage, and review wallet clustering in plain English. Powered by dedicated Gemini financial reasoning models grounded directly in real Solana transaction graphs.
+                  Audit smart contract authorities, query creator launch history, simulate large trade slippage, and review wallet clustering in plain English. Powered by dedicated financial reasoning models grounded directly in real Solana transaction graphs.
                 </p>
 
                 <div className="pt-2 flex flex-wrap items-center gap-3">

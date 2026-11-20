@@ -40,7 +40,7 @@ export async function GET(
     return jsonResponse(intelligence as unknown as Record<string, unknown>);
   } catch (error) {
     return errorResponse(
-      error instanceof Error ? error : new ApiError('Failed to fetch InsightX intelligence', 500),
+      error instanceof Error ? error : new ApiError('Failed to fetch cluster intelligence', 500),
     );
   }
 }

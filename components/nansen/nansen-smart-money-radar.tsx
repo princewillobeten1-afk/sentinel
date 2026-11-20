@@ -28,12 +28,12 @@ export interface NansenSmartMoneyRadarProps {
 
 type ChainFilter = 'solana' | 'robinhood' | 'all';
 
-const VIEW_TABS: Array<{ id: NansenRadarView; label: string; credits: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: 'screener', label: 'Smart Screener', credits: '1 cr', icon: Brain },
-  { id: 'netflow', label: 'Netflows', credits: '5 cr', icon: TrendingUp },
-  { id: 'holdings', label: 'Holdings', credits: '5 cr', icon: Layers },
-  { id: 'dex-trades', label: 'Live DEX Trades', credits: '5 cr', icon: ArrowLeftRight },
-  { id: 'leaderboard', label: 'PnL Leaderboard', credits: '5 cr', icon: Trophy },
+const VIEW_TABS: Array<{ id: NansenRadarView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'screener', label: 'Smart Screener', icon: Brain },
+  { id: 'netflow', label: 'Netflows', icon: TrendingUp },
+  { id: 'holdings', label: 'Holdings', icon: Layers },
+  { id: 'dex-trades', label: 'Live DEX Trades', icon: ArrowLeftRight },
+  { id: 'leaderboard', label: 'PnL Leaderboard', icon: Trophy },
 ];
 
 function fmtUsdSigned(val: number | null | undefined): string {
@@ -118,7 +118,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-bold text-emerald-300">
             <Brain className="h-4 w-4" />
-            <span>Nansen Smart Money</span>
+            <span>Smart Money</span>
           </div>
 
           {/* Chain Toggle */}
@@ -144,12 +144,6 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               </button>
             ))}
           </div>
-
-          {typeof rateLimit?.creditsRemaining === 'number' && (
-            <span className="font-mono text-xs text-[#828598]">
-              Credits remaining: <strong className="text-white">{rateLimit.creditsRemaining.toLocaleString()}</strong>
-            </span>
-          )}
         </div>
 
         <button
@@ -181,9 +175,6 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
             >
               <Icon className="h-3.5 w-3.5" />
               <span>{tab.label}</span>
-              <span className="rounded bg-[#06070B] px-1.5 py-px text-[10px] text-slate-400">
-                {tab.credits}
-              </span>
             </button>
           );
         })}
@@ -192,22 +183,14 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
       {/* Status Notices */}
       {data && !data.configured && (
         <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 font-mono text-xs text-slate-200">
-          Add <code className="text-emerald-300">NANSEN_API_KEY=</code> to{' '}
-          <code className="text-emerald-300">.env</code> to stream live Nansen Smart Money Screener tokens, 1h/24h/7d/30d netflows, holdings, DEX swaps, and PnL leaderboards across Solana and Robinhood Chain.
+          Smart Money analytics are currently unavailable for this environment.
         </div>
       )}
 
-      {data?.configured && rateLimit?.insufficientCredits && (
+      {data?.configured && (rateLimit?.insufficientCredits || rateLimit?.authFailed) && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3 font-mono text-xs text-rose-200">
           <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
-          <span>Nansen credit balance is exhausted — top up credits in your Nansen dashboard to resume live Smart Money queries.</span>
-        </div>
-      )}
-
-      {data?.configured && rateLimit?.authFailed && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3 font-mono text-xs text-rose-200">
-          <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
-          <span>Nansen API key rejected (`401`/`403`). Verify `NANSEN_API_KEY` in `.env` has the `data` scope.</span>
+          <span>Smart Money analytics are temporarily unavailable — please check back shortly.</span>
         </div>
       )}
 
@@ -230,7 +213,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               {!data || data.screener.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-[#828598]">
-                    {loading ? 'Loading Nansen Smart Screener…' : data?.configured ? 'No Smart Money screener rows returned.' : 'Awaiting NANSEN_API_KEY.'}
+                    {loading ? 'Loading Smart Screener…' : data?.configured ? 'No Smart Money screener rows returned.' : 'Smart Money screener is currently unavailable.'}
                   </td>
                 </tr>
               ) : (
@@ -285,7 +268,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               {!data || data.netflows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-[#828598]">
-                    {loading ? 'Loading Nansen Netflows…' : data?.configured ? 'No Smart Money netflows returned.' : 'Awaiting NANSEN_API_KEY.'}
+                    {loading ? 'Loading Netflows…' : data?.configured ? 'No Smart Money netflows returned.' : 'Smart Money netflows are currently unavailable.'}
                   </td>
                 </tr>
               ) : (
@@ -336,7 +319,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               {!data || data.holdings.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-[#828598]">
-                    {loading ? 'Loading Nansen Smart Money Holdings…' : data?.configured ? 'No Smart Money holdings returned.' : 'Awaiting NANSEN_API_KEY.'}
+                    {loading ? 'Loading Smart Money Holdings…' : data?.configured ? 'No Smart Money holdings returned.' : 'Smart Money holdings are currently unavailable.'}
                   </td>
                 </tr>
               ) : (
@@ -393,7 +376,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               {!data || data.dexTrades.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-[#828598]">
-                    {loading ? 'Loading Nansen Live DEX Trades…' : data?.configured ? 'No Smart Money DEX trades returned.' : 'Awaiting NANSEN_API_KEY.'}
+                    {loading ? 'Loading Live DEX Trades…' : data?.configured ? 'No Smart Money DEX trades returned.' : 'Smart Money DEX trades are currently unavailable.'}
                   </td>
                 </tr>
               ) : (
@@ -441,7 +424,7 @@ export function NansenSmartMoneyRadar({ onTrackWallet, isTracked }: NansenSmartM
               {!data || data.leaderboard.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-[#828598]">
-                    {loading ? 'Loading Nansen Smart Money Leaderboard…' : data?.configured ? 'No leaderboard entries returned.' : 'Awaiting NANSEN_API_KEY.'}
+                    {loading ? 'Loading Smart Money Leaderboard…' : data?.configured ? 'No leaderboard entries returned.' : 'Smart Money leaderboard is currently unavailable.'}
                   </td>
                 </tr>
               ) : (

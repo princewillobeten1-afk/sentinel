@@ -132,7 +132,7 @@ export function TradeSidebarInfo({ data, loading, error, refresh, chain = 'solan
         evidence={data.ownershipEvidence?.status === 'measured' || data.ownershipEvidence?.status === 'stale'
           ? data.ownershipEvidence : data.marketEvidence ?? data.ownershipEvidence} loading={loading} />
       <AuditTile label="Pro Traders" value={clampHolders(data.proTradersCount)} icon={Trophy} percent={false} evidence={data.ownershipEvidence} loading={loading} />
-      <LegendTooltip label="Dex Paid" className="w-full" definition="Whether the project team paid DexScreener for an approved token profile order (not a temporary boost).">
+      <LegendTooltip label="Dex Paid" className="w-full" definition="Whether the project team paid for an approved token profile order (not a temporary boost).">
         <div className="flex w-full min-w-0 flex-col items-center gap-1 rounded-[6px] border border-[#1E222D] px-1.5 py-2 text-[11px] bg-[#090B10]" title="Approved token profile order; not a boost.">
           <span className={`flex items-center gap-1 font-numeric ${data.isDexPaid === true ? 'text-[#2FE3AC]' : data.isDexPaid === false ? 'text-[#EC397A]' : 'text-[#828598]'}`}>
             <BadgeDollarSign className="h-3 w-3 shrink-0" />

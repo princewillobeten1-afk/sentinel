@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     'Solana Screener',
     'Pump.fun',
     'Raydium',
-    'Jupiter Swap',
+    'Solana DEX Swaps',
     'Crypto Security',
   ],
   authors: [{ name: 'Phivex Team' }],

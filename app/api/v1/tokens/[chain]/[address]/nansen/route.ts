@@ -49,7 +49,7 @@ export async function GET(
     return jsonResponse(result as unknown as Record<string, unknown>);
   } catch (error) {
     return errorResponse(
-      error instanceof Error ? error : new ApiError('Failed to fetch Nansen token Smart Money data', 500),
+      error instanceof Error ? error : new ApiError('Failed to fetch token Smart Money data', 500),
     );
   }
 }

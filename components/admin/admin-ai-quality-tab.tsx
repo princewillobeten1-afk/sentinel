@@ -99,9 +99,9 @@ export function AdminAiQualityTab({ currentRole }: AdminAiQualityTabProps) {
               onChange={(e) => setPrimaryModel(e.target.value)}
               className="w-full bg-sentinel-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-sky-400 font-bold font-mono"
             >
-              <option value="gemini-3.7-flash">Gemini 3.7 Flash (High Performance)</option>
-              <option value="gemini-3.5-pro">Gemini 3.5 Pro (Deep Reasoning)</option>
-              <option value="claude-3-7-sonnet">Claude 3.7 Sonnet</option>
+              <option value="gemini-3.7-flash">Phivex Fast (High Performance)</option>
+              <option value="gemini-3.5-pro">Phivex Pro (Deep Reasoning)</option>
+              <option value="claude-3-7-sonnet">Phivex Precision</option>
             </select>
           </div>
 
@@ -112,8 +112,8 @@ export function AdminAiQualityTab({ currentRole }: AdminAiQualityTabProps) {
               onChange={(e) => setFallbackModel(e.target.value)}
               className="w-full bg-sentinel-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono"
             >
-              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Ultra-Fast)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
+              <option value="gemini-3.5-flash">Phivex Lite (Ultra-Fast)</option>
+              <option value="gpt-4o-mini">Phivex Compact</option>
             </select>
           </div>
 

@@ -592,7 +592,7 @@ export function IntelligenceWorkspace() {
                 </div>
 
                 <div className="flex items-center justify-between text-2xs font-mono text-slate-400 pt-2 border-t border-sentinel-800">
-                  <span>Routing: Raydium / Jupiter API</span>
+                  <span>Routing: Raydium / Smart Router</span>
                   <span>MEV Protection: Enabled</span>
                 </div>
 
@@ -860,7 +860,7 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
         ? 'DRAIN' 
         : `${cabalRadarData?.collectiveCabalSharePct?.toFixed(0) ?? 15}%` 
     },
-    { id: 'insightx', label: 'InsightX Atlas & Clusters', icon: Layers, badge: report?.ownershipDistribution?.clusters?.length },
+    { id: 'insightx', label: 'Cluster Map & Entities', icon: Layers, badge: report?.ownershipDistribution?.clusters?.length },
     { id: 'insiders', label: 'Insider & Snipers', icon: Zap, badge: report?.insiders?.candidates?.length },
     { id: 'ownership', label: 'Supply & Ownership', icon: Users, badge: `${report?.ownershipDistribution?.top10Percentage?.toFixed(0) ?? 28}%` },
     { id: 'creator', label: 'Creator Track Record', icon: UserCheck, badge: report?.creatorProfile?.totalLaunches },
@@ -1004,15 +1004,13 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
             <span>Solscan Explorer</span>
             <ExternalLink className="h-3 w-3" />
           </a>
-          <a
-            href={`https://birdeye.so/token/${mint}?chain=solana`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href={`/trade/solana/${mint}`}
             className="inline-flex items-center gap-1 text-sky-400 hover:underline"
           >
-            <span>Birdeye Chart</span>
+            <span>Open Pro Chart</span>
             <ExternalLink className="h-3 w-3" />
-          </a>
+          </Link>
         </div>
       </header>
 

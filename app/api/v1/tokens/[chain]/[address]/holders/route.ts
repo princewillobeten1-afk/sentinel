@@ -143,7 +143,7 @@ export async function GET(
         };
       }),
       coverage: insightxLabels.length > 0
-        ? 'Top 20 token accounts by balance, aggregated to owning wallets and enriched with InsightX labels.'
+        ? 'Top 20 token accounts by balance, aggregated to owning wallets with entity labels.'
         : 'Top 20 token accounts by balance, aggregated to owning wallets.',
       timestamp: new Date().toISOString(),
     };

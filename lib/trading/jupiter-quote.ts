@@ -133,7 +133,7 @@ export function toSwapQuote(
 async function getJson(url: string): Promise<unknown> {
   if (Date.now() < quotePausedUntil) {
     const retryAfterMs = quotePausedUntil - Date.now();
-    throw new ApiError('Jupiter is rate-limiting quotes. Please retry shortly; no trade has been submitted.',
+    throw new ApiError('Quote router is rate-limiting requests. Please retry shortly; no trade has been submitted.',
       503, 'QUOTE_RATE_LIMITED', { retryAfterMs });
   }
   const controller = new AbortController();
@@ -148,10 +148,10 @@ async function getJson(url: string): Promise<unknown> {
         Number.isFinite(seconds) && seconds > 0 ? seconds * 1000
           : Number.isFinite(retryAt) ? retryAt - Date.now() : 15_000));
       quotePausedUntil = Date.now() + retryAfterMs;
-      throw new ApiError('Jupiter is rate-limiting quotes. Please retry shortly; no trade has been submitted.',
+      throw new ApiError('Quote router is rate-limiting requests. Please retry shortly; no trade has been submitted.',
         503, 'QUOTE_RATE_LIMITED', { retryAfterMs });
     }
-    if (!res.ok) throw new ApiError(`Jupiter quote provider is unavailable (HTTP ${res.status}).`,
+    if (!res.ok) throw new ApiError(`Quote router is unavailable (HTTP ${res.status}).`,
       503, 'QUOTE_PROVIDER_UNAVAILABLE');
     return await res.json();
   } finally {
@@ -183,7 +183,7 @@ export async function getSwapTransaction(params: {
     error?: string;
   } | null;
   if (!response.ok || !body?.swapTransaction || !Number.isSafeInteger(body.lastValidBlockHeight) || (body.lastValidBlockHeight as number) <= 0) {
-    throw new Error(`Jupiter swap preparation failed (${response.status})`);
+    throw new Error(`Swap router preparation failed (${response.status})`);
   }
   return {
     swapTransaction: body.swapTransaction,
@@ -264,7 +264,7 @@ export async function getSwapQuote(params: {
   if (!raw?.outAmount || raw.inputMint !== inputMint || raw.outputMint !== outputMint || raw.inAmount !== atomic.toString()
     || raw.swapMode !== 'ExactIn' || raw.slippageBps !== slippageBps || !/^[1-9]\d*$/.test(raw.outAmount)
     || !/^[1-9]\d*$/.test(raw.otherAmountThreshold) || BigInt(raw.otherAmountThreshold) > BigInt(raw.outAmount))
-    throw new Error('Jupiter returned no valid matching route for this pair');
+    throw new Error('Swap router returned no valid matching route for this pair');
 
   return toSwapQuote(raw, inputDecimals, outputDecimals);
 }
