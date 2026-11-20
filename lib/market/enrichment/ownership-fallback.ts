@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { HolderProfile } from './holder-profile';
+import { fetchInsightXOwnershipProfile, isInsightXConfigured } from '@/lib/insightx/client';
 import { fetchTrackerOwnership, trackerConfigured } from '@/lib/trading/solana-tracker';
 import { fetchRugcheckOwnership } from '@/lib/trading/rugcheck-ownership';
 import { fetchOnChainOwnership } from '@/lib/trading/onchain-ownership';
@@ -63,10 +64,11 @@ export function hasOwnershipFallback(): boolean {
 
 /**
  * Resolves and joins complementary ownership measurements in priority order:
- * 1. Solana Tracker (if API key is configured)
- * 2. Rugcheck report (public API, provides holder concentration and
+ * 1. InsightX DEX Metrics (if INSIGHTX_API_KEY is configured)
+ * 2. Solana Tracker (if API key is configured)
+ * 3. Rugcheck report (public API, provides holder concentration and
  *    creator percentage only when the creator is in the returned list)
- * 3. On-chain Solana RPC (supply and creator balance only; not enough
+ * 4. On-chain Solana RPC (supply and creator balance only; not enough
  *    information to identify unique top holders)
  */
 export async function resolveOwnershipFallback(
@@ -76,8 +78,18 @@ export async function resolveOwnershipFallback(
   if (!mint) return null;
 
   let result: HolderProfile | null = null;
-  // 1. Solana Tracker if configured
-  if (trackerConfigured()) {
+  // 1. InsightX DEX Metrics when explicitly opted in for background enrichment
+  if (isInsightXConfigured() && process.env.INSIGHTX_BACKGROUND_ENRICHMENT === 'true') {
+    try {
+      const insightx = await fetchInsightXOwnershipProfile('sol', mint);
+      result = mergeOwnershipProfiles(result, insightx);
+    } catch {
+      // Fall through to next provider
+    }
+  }
+
+  // 2. Solana Tracker if configured
+  if (trackerConfigured() && needsMore(result, devAddress)) {
     try {
       const tracker = await fetchTrackerOwnership(mint);
       result = mergeOwnershipProfiles(result, tracker);
@@ -86,13 +98,13 @@ export async function resolveOwnershipFallback(
     }
   }
 
-  // 2. Rugcheck public API
+  // 3. Rugcheck public API
   if (needsMore(result, devAddress)) {
     try { result = mergeOwnershipProfiles(result, await fetchRugcheckOwnership(mint)); }
     catch { /* Continue with independent providers. */ }
   }
 
-  // 3. Direct on-chain Solana RPC
+  // 4. Direct on-chain Solana RPC
   if (needsMore(result, devAddress)) {
     try { result = mergeOwnershipProfiles(result, await fetchOnChainOwnership(mint, devAddress)); }
     catch { /* Continue with independent providers. */ }

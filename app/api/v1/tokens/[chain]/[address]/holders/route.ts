@@ -4,6 +4,13 @@ import { fetchHolderConcentration } from '@/lib/tokens/holder-analysis';
 import { getTokenCardPatch } from '@/lib/market/live/card-cache';
 import { getRobinhoodTokenHolders } from '@/lib/market/robinhood-token-service';
 import { isEvmAddress } from '@/lib/chains/chain-config';
+import {
+  buildInsightXLabelMap,
+  fetchInsightXLabels,
+  hasInsightXQuotaHeadroom,
+  isInsightXConfigured,
+  lookupInsightXLabel,
+} from '@/lib/insightx/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +102,15 @@ export async function GET(
       throw new ApiError('Holder data is unavailable for this token right now', 503);
     }
 
+    const insightxLabels =
+      isInsightXConfigured() && hasInsightXQuotaHeadroom(2) && concentration.holders.length > 0
+        ? await fetchInsightXLabels(
+            'sol',
+            concentration.holders.map((h) => h.address),
+          ).catch(() => [])
+        : [];
+    const labelMap = buildInsightXLabelMap(insightxLabels, 'sol');
+
     const payload = {
       token: address,
       chain: chain.toLowerCase(),
@@ -103,11 +119,14 @@ export async function GET(
       top10IncludingPoolsPct: concentration.top10IncludingPoolsPct,
       totalSupply: concentration.totalSupply,
       holders: concentration.holders.map((holder) => {
+        const labelInfo = lookupInsightXLabel(labelMap, holder.address, 'sol');
         let tag = holder.poolLabel;
         if (!tag && detectedDev && holder.address.toLowerCase() === detectedDev.toLowerCase()) {
           tag = 'Dev 👨‍💻';
         } else if (!tag && holder.percent !== null && holder.percent >= 2) {
           tag = 'Whale 🐋';
+        } else if (!tag && labelInfo?.label) {
+          tag = labelInfo.label;
         } else if (!tag) {
           tag = 'Trader';
         }
@@ -119,9 +138,13 @@ export async function GET(
           percent: holder.percent,
           tag,
           isContract: holder.isPool,
+          insightxLabel: labelInfo?.label ?? null,
+          insightxTags: labelInfo?.tags ?? [],
         };
       }),
-      coverage: 'Top 20 token accounts by balance, aggregated to owning wallets.',
+      coverage: insightxLabels.length > 0
+        ? 'Top 20 token accounts by balance, aggregated to owning wallets and enriched with InsightX labels.'
+        : 'Top 20 token accounts by balance, aggregated to owning wallets.',
       timestamp: new Date().toISOString(),
     };
 

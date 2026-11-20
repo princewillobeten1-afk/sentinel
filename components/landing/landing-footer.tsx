@@ -73,8 +73,8 @@ export function LandingFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/discover" className="hover:text-white transition-colors">
-                  Cluster Graph Resolver
+                <Link href="/intelligence" className="hover:text-white transition-colors">
+                  InsightX Atlas Maps
                 </Link>
               </li>
               <li>

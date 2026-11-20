@@ -5,6 +5,11 @@ import { withApiGateway } from '@/lib/server/api-gateway';
 import { DiscoveryToken } from '@/lib/discovery/types';
 import { computeFilterFingerprint, resolveOffset, nextCursorFor } from '@/lib/discovery/cursor';
 import { getLiveDiscoveryTokens } from '@/lib/discovery/live-solana-feed';
+import { toNansenChain } from '@/lib/nansen/chains';
+import {
+  fetchNansenSmartMoneyScreener,
+  isNansenConfigured,
+} from '@/lib/nansen/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +22,54 @@ export const GET = withApiGateway(
       const fingerprint = computeFilterFingerprint({ section: 'smart-money', chain: params.chain, timeWindow: params.timeWindow });
       const offset = resolveOffset(params.offset, params.cursor, fingerprint);
 
-      const allTokens = await getLiveDiscoveryTokens({ ...queryToFilter(params), section: 'smart-money' });
+      const [rawTokens, nansenRes] = await Promise.all([
+        getLiveDiscoveryTokens({ ...queryToFilter(params), section: 'smart-money' }),
+        isNansenConfigured()
+          ? fetchNansenSmartMoneyScreener({
+              chains: [toNansenChain(params.chain)],
+              timeframe: '24h',
+              perPage: 30,
+            }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      let allTokens = rawTokens;
+      if (nansenRes && nansenRes.data.length > 0) {
+        const byAddress = new Map(
+          nansenRes.data.map((item) => [item.token_address.toLowerCase(), item]),
+        );
+
+        const enriched = rawTokens.map((token) => {
+          const match = byAddress.get(token.mint.toLowerCase());
+          if (!match) return { token, rankFlow: null as number | null };
+          const smartMoneyCount =
+            typeof match.nof_traders === 'number' && Number.isFinite(match.nof_traders)
+              ? match.nof_traders
+              : token.smartMoneyCount;
+          const smartMoneyNetFlowUsd =
+            typeof match.netflow === 'number' && Number.isFinite(match.netflow)
+              ? match.netflow
+              : token.smartMoneyNetFlowUsd;
+          return {
+            token: {
+              ...token,
+              smartMoneyCount,
+              smartMoneyNetFlowUsd,
+            },
+            rankFlow: smartMoneyNetFlowUsd ?? 0,
+          };
+        });
+
+        enriched.sort((a, b) => {
+          if (a.rankFlow !== null && b.rankFlow !== null) return b.rankFlow - a.rankFlow;
+          if (a.rankFlow !== null) return -1;
+          if (b.rankFlow !== null) return 1;
+          return 0;
+        });
+
+        allTokens = enriched.map((entry) => entry.token);
+      }
+
       const mappedTokens: DiscoveryToken[] = allTokens.slice(offset, offset + params.limit);
 
       const nextCursor = nextCursorFor(

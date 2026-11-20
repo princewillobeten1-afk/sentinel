@@ -11,9 +11,9 @@ interface FaqItem {
 
 const FAQS: FaqItem[] = [
   {
-    question: 'How does Phivex detect hidden holder funding clusters?',
+    question: 'How does Phivex map hidden holder funding clusters with InsightX?',
     answer:
-      'Rather than analyzing token balances in isolation, Phivex traces the funding roots of top holders backwards across multiple transaction hops. We identify when multiple "independent" wallets were originally funded with SOL from the same centralized exchange deposit address, intermediary mixer, or dispenser wallet within a narrow time window. When 15 wallets controlling 35% of supply share a common progenitor, Phivex flags it as a coordinated cabal.',
+      'Phivex integrates InsightX Atlas Live and InsightX DEX Metrics directly across Solana and Robinhood Chain. Instead of inspecting top holders in isolation, InsightX maps co-funded wallet clusters, tags exchanges, volume bots, team wallets, and funding addresses, and computes Gini, HHI, Nakamoto, sniper, bundler, and insider supply shares in real time.',
   },
   {
     question: 'How does wash-trading volume decomposition work?',

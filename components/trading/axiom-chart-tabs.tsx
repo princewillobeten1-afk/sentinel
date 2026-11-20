@@ -39,6 +39,7 @@ import {
   Layers,
   ArrowLeftRight,
   ShieldAlert,
+  Brain,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,13 +52,17 @@ import { useAppState, useAppActions } from '@/lib/store';
 import { useSentinelWS } from '@/lib/hooks/use-sentinel-ws';
 import { mapLiveTradeFields } from '@/lib/market/trade-history-mappers';
 import { getExplorerTxUrl, getExplorerAddressUrl } from '@/lib/chains/chain-config';
+import { AtlasLivePanel } from '@/components/insightx/atlas-live-panel';
+import { NansenSmartMoneyPanel } from '@/components/nansen/nansen-smart-money-panel';
+import type { InsightXTokenIntelligence } from '@/lib/insightx/types';
 
 export type AxiomTabType =
   | 'trades'
   | 'positions'
   | 'orders'
   | 'dev-activity'
-  | 'maps'
+  | 'insightx'
+  | 'smart-money'
   | 'liquidity'
   | 'audit'
   | 'holders'
@@ -132,27 +137,6 @@ export interface LiquidityProvider {
   valueUsd: string;
   lockStatus: 'Burned 🔥' | 'Locked 🔒' | 'Unlocked ⚠️';
   lockExpiry?: string;
-}
-
-export interface MapClusterNode {
-  id: string;
-  label: string;
-  // `/bubble-map` only ever distinguishes a pool account from any other
-  // holder -- see the legend fix above. `dev`/`whale`/`insider`/`sniper`
-  // were never actually assigned by the backend.
-  tag: 'dex' | 'holder' | 'dev';
-  address: string;
-  balanceTokens: string;
-  supplyPct: number | null;
-  /** Always null: this endpoint reads balances, not prices. */
-  valueUsd: string | null;
-  x: number;
-  y: number;
-  r: number;
-  /** Always null: funding relationships between wallets are not mapped. */
-  fundingSource: string | null;
-  color: string;
-  borderColor: string;
 }
 
 export interface AxiomChartTabsProps {
@@ -318,6 +302,8 @@ export function AxiomChartTabs({
   currentPriceRef.current = currentPrice;
   const safePriceRef = useRef(safePrice);
   safePriceRef.current = safePrice;
+  const onPriceUpdateRef = useRef(onPriceUpdate);
+  onPriceUpdateRef.current = onPriceUpdate;
 
   const [activeTab, setActiveTab] = useState<AxiomTabType>('trades');
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'SOL'>('USD');
@@ -387,9 +373,6 @@ export function AxiomChartTabs({
    * here starts unknown and is filled only by what `/audit` measured.
    */
   const { data: auditData, error: auditError, refreshing: auditRefreshing, refresh: refreshAudit } = useTokenAudit(safeMint, activeTab === 'audit', normalizedChain);
-
-  // Selected Map Node for Bubble Map Inspector
-  const [selectedMapNode, setSelectedMapNode] = useState<MapClusterNode | null>(null);
 
   /**
    * Instant Trade popout.
@@ -476,6 +459,7 @@ export function AxiomChartTabs({
   const tradesRequestRef = useRef(0);
   const tradesAppliedRef = useRef(0);
   const tradesInFlightRef = useRef(false);
+  const loadedTabsRef = useRef<Set<string>>(new Set());
   const [topTradersMeta, setTopTradersMeta] = useState<{ trades: number } | null>(null);
 
   /**
@@ -490,24 +474,26 @@ export function AxiomChartTabs({
   const [devActivities, setDevActivities] = useState<DevActivityEvent[]>([]);
 
   /**
-   * Filled by `/bubble-map`, which now derives nodes from chain state.
-   *
-   * The seed was a fixed picture for every token: a "Raydium CPMM Pool" at
-   * address 5xRydm99qP88x12kL0z1 holding 18.42%, a "Dev Creator Wallet" at
-   * 0.85%, and retail at 67.21% — the same split on Wrapped SOL as on a token
-   * minted a minute earlier.
+   * InsightX tab metrics populated via `AtlasLivePanel` (`onIntelligenceLoaded`).
    */
-  const [mapClusterNodes, setMapClusterNodes] = useState<MapClusterNode[]>([]);
+  const [insightxTop10Pct, setInsightxTop10Pct] = useState<number | null>(null);
+  const [insightxClusterStats, setInsightxClusterStats] = useState<{
+    count: number | null;
+    clusterPct: number | null;
+    configured: boolean;
+  }>({ count: null, clusterPct: null, configured: false });
 
-  /**
-   * The Maps tab's stats bar, from the same `/bubble-map` call above.
-   *
-   * The bar over it read "89/100 (Safe)" Decentralization Health, "2 Wallets
-   * (0.85%)" Dev Connected Wallets and "2.94% (4 Wallets)" Sniper Supply for
-   * every token -- none of that is measured anywhere in this platform. Only
-   * top-10 concentration is real; the rest stays null rather than invented.
-   */
-  const [mapTop10ConcentrationPct, setMapTop10ConcentrationPct] = useState<number | null>(null);
+  const handleInsightXLoaded = useCallback((intel: InsightXTokenIntelligence) => {
+    setInsightxClusterStats({
+      count: intel.clusters?.suspiciousClusterCount ?? null,
+      clusterPct: intel.metrics?.cluster_pct ?? intel.clusters?.totalClusterPct ?? null,
+      configured: intel.configured,
+    });
+    const resolvedTop10 = intel.metrics?.top10_pct ?? intel.distribution?.top10Pct ?? null;
+    if (typeof resolvedTop10 === 'number') {
+      setInsightxTop10Pct((prev) => prev ?? resolvedTop10);
+    }
+  }, []);
 
   /**
    * Starts empty and is filled by `/liquidity`.
@@ -610,13 +596,17 @@ export function AxiomChartTabs({
    * Reads `/live-trades` (indexer history merged with live capture) and
    * polls at high frequency (1.5s) while the Trades tab is open.
    */
-  const loadTrades = useCallback(async () => {
+  const loadTrades = useCallback(async (signal?: AbortSignal) => {
     const request = ++tradesRequestRef.current;
     const sideParam = tradeFilter === 'buy' ? '&side=BUY' : tradeFilter === 'sell' ? '&side=SELL' : '';
     tradesInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/live-trades?limit=50${sideParam}`);
+      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/live-trades?limit=50${sideParam}`, {
+        signal,
+      });
+      if (signal?.aborted) return;
       const body = res.ok ? await res.json() : null;
+      if (signal?.aborted) return;
       // Stale only if fresher rows already landed.
       if (request <= tradesAppliedRef.current) return;
       const rows = body?.data?.trades;
@@ -629,36 +619,43 @@ export function AxiomChartTabs({
         const topTrade = rows[0];
         const topPrice = Number(topTrade?.price_usd ?? topTrade?.priceUsd);
         if (Number.isFinite(topPrice) && topPrice > 0) {
-          onPriceUpdate?.(topPrice);
+          onPriceUpdateRef.current?.(topPrice);
         }
       }
       setTrades(rows.map(tapeRow).filter((row): row is TradeTransaction => row !== null));
       setTradesCoverage(body?.data?.coverage ?? null);
       setTradesState('loaded');
-    } catch {
+    } catch (err) {
+      if ((err instanceof DOMException && err.name === 'AbortError') || signal?.aborted) return;
       if (request > tradesAppliedRef.current) setTradesState('error');
     } finally {
       tradesInFlightRef.current = false;
     }
-  }, [safeMint, normalizedChain, tradeFilter, onPriceUpdate]);
+  }, [safeMint, normalizedChain, tradeFilter]);
 
-  const loadTopTraders = useCallback(async () => {
-    if (normalizedChain === 'robinhood') return;
+  const loadTopTraders = useCallback(async (signal?: AbortSignal): Promise<boolean> => {
+    if (normalizedChain === 'robinhood') return true;
     try {
-      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/top-traders?limit=15`);
-      const body = res.ok ? await res.json() : null;
-      if (!Array.isArray(body?.data?.topTraders)) return;
+      const res = await fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/top-traders?limit=15`, {
+        signal,
+      });
+      if (signal?.aborted || !res.ok) return false;
+      const body = await res.json();
+      if (signal?.aborted || !Array.isArray(body?.data?.topTraders)) return false;
       setTopTraders(body.data.topTraders);
       setTopTradersMeta(
         typeof body.data.tradesConsidered === 'number' ? { trades: body.data.tradesConsidered } : null,
       );
+      return true;
     } catch {
       // The table keeps its last rows; the next poll retries.
+      return false;
     }
   }, [safeMint, normalizedChain]);
 
   // A different token starts from nothing, not from the last token's tape.
   useEffect(() => {
+    loadedTabsRef.current.clear();
     setTrades([]);
     setTradesState('loading');
     setTradesCoverage(null);
@@ -669,7 +666,21 @@ export function AxiomChartTabs({
     setTopTraders([]);
     setTopTradersMeta(null);
     setDevActivities([]);
-  }, [safeMint]);
+    setTopHolders([]);
+    setHoldersTop10Pct(null);
+    setHoldersDisplay(null);
+    setLiquidityPools([]);
+    setTotalLiquidityDisplay(null);
+    setDevProfile({
+      creatorWallet: null,
+      devMints: null,
+      devMigrations: null,
+      migrationRatePct: null,
+      mintAuthorityDisabled: null,
+      freezeAuthorityDisabled: null,
+      currentHoldingSupplyPct: null,
+    });
+  }, [safeMint, normalizedChain]);
 
   // Live while visible: the tape every 1.5s on the Trades tab (Axiom parity), rankings every
   // 20s on Top Traders. A hidden tab polls nothing.
@@ -723,10 +734,10 @@ export function AxiomChartTabs({
   }, [safeMint, normalizedChain, devProfile.creatorWallet]);
 
   // ---------------------------------------------------------------------------
-  // API ROUTING: Fetch Data Dynamically from API Endpoints
+  // API ROUTING: Focus + Core Tape on Mount; Secondary Tabs Load Lazily
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    let isMounted = true;
+    const controller = new AbortController();
 
     // 0. Aim the live Solana stream at this token for as long as the page is open.
     if (normalizedChain === 'solana') {
@@ -734,131 +745,20 @@ export function AxiomChartTabs({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({ mint: safeMint }),
       }).catch(() => {});
     }
 
     // 1. Trade tape — see `loadTrades`.
-    void loadTrades();
+    void loadTrades(controller.signal);
 
-    // 2. Fetch Dev Activity (Solana only)
-    if (normalizedChain === 'solana') {
-      fetch(`/api/v1/tokens/solana/${safeMint}/dev-activity?filter=${devFilter}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          const profile = data?.data;
-          if (profile && isMounted) {
-            setDevProfile({
-              creatorWallet: profile.creatorAddress ?? null,
-              devMints: typeof profile.devMints === 'number' ? profile.devMints : null,
-              devMigrations: typeof profile.devMigrations === 'number' ? profile.devMigrations : null,
-              migrationRatePct:
-                typeof profile.migrationRatePct === 'number' ? profile.migrationRatePct : null,
-              mintAuthorityDisabled: profile.mintAuthorityDisabled ?? null,
-              freezeAuthorityDisabled: profile.freezeAuthorityDisabled ?? null,
-              currentHoldingSupplyPct:
-                typeof profile.devBalancePct === 'number' ? profile.devBalancePct : null,
-            });
-          }
-        })
-        .catch(() => {});
-
-      // 3. Fetch Bubble Map (Solana only)
-      fetch(`/api/v1/tokens/solana/${safeMint}/bubble-map`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          const payload = data?.data;
-          if (!payload || !isMounted) return;
-          if (payload.nodes) setMapClusterNodes(payload.nodes);
-          setMapTop10ConcentrationPct(
-            typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
-          );
-        })
-        .catch(() => {});
-    }
-
-    // 4. Fetch Liquidity Pools
-    fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/liquidity`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.data?.pools && isMounted) {
-          setLiquidityPools(data.data.pools);
-        }
-        // `/liquidity` returns no per-provider breakdown by design -- see the
-        // `topLiquidityProviders` state comment -- so there is nothing to set
-        // here. The table below renders its own "not available" state.
-        if (data?.data?.totalLiquidityUsd && isMounted) {
-          const n = Number(data.data.totalLiquidityUsd);
-          setTotalLiquidityDisplay(
-            Number.isFinite(n)
-              ? n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B`
-                : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M`
-                : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K`
-                : `$${n.toFixed(2)}`
-              : null,
-          );
-        }
-      })
-      .catch(() => {});
-
-    // 5. Fetch Holders
-    // Real concentration from chain state. The endpoint returns raw numbers,
-    // so formatting happens here rather than rendering 7193508364031.43106.
-    fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/holders`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const payload = data?.data;
-        if (!payload?.holders || !isMounted) return;
-
-        const compact = (n: number) =>
-          n >= 1e9 ? `${(n / 1e9).toFixed(2)}B`
-          : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M`
-          : n >= 1e3 ? `${(n / 1e3).toFixed(2)}K`
-          : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
-
-        const formatUsd = (val: number | null) => {
-          if (val === null || !Number.isFinite(val) || val <= 0) return '—';
-          if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`;
-          if (val >= 1e3) return `${(val / 1e3).toFixed(2)}K`;
-          if (val >= 1) return `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-          if (val >= 0.0001) return `${val.toFixed(4)}`;
-          return '<$0.0001';
-        };
-
-        setTopHolders(
-          payload.holders.map((h: any) => {
-            const rawBal = Number(h.balance) || 0;
-            const cp = currentPriceRef.current;
-            const sp = safePriceRef.current;
-            const usd = typeof cp === 'number' && cp > 0 ? rawBal * cp : (sp > 0 ? rawBal * sp : null);
-            return {
-              rank: h.rank,
-              address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
-              fullAddress: h.address,
-              tag: h.tag ?? '—',
-              balance: compact(rawBal),
-              percent: h.percent === null ? '—' : `${Number(h.percent).toFixed(2)}%`,
-              valueUsd: formatUsd(usd),
-              isContract: h.isContract,
-            };
-          }),
-        );
-
-        setHoldersTop10Pct(
-          typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
-        );
-        const total = typeof payload.totalHoldersCount === 'number' ? payload.totalHoldersCount : null;
-        setHoldersDisplay(
-          total !== null ? compact(total) : null,
-        );
-      })
-      .catch(() => {});
-
-    // 6. Top Traders — see `loadTopTraders`.
-    void loadTopTraders();
+    // 2. Reset InsightX tab metrics on token/chain change (fetched live by AtlasLivePanel)
+    setInsightxTop10Pct(null);
+    setInsightxClusterStats({ count: null, clusterPct: null, configured: false });
 
     return () => {
-      isMounted = false;
+      controller.abort();
       if (normalizedChain === 'solana') {
         // Hand the budget back to the market-wide sweep.
         void fetch('/api/v1/market/live/focus', {
@@ -869,7 +769,144 @@ export function AxiomChartTabs({
         }).catch(() => {});
       }
     };
-  }, [safeMint, normalizedChain, tradeFilter, devFilter, loadTrades, loadTopTraders]);
+  }, [safeMint, normalizedChain, loadTrades]);
+
+  // Lazy-load heavy secondary tab endpoints only when their tab is active,
+  // preventing HTTP/1.1 6-connection pool starvation on `/trade` initial load.
+  useEffect(() => {
+    const controller = new AbortController();
+    let isMounted = true;
+
+    if ((activeTab === 'dev-activity' || activeTab === 'dev-tokens') && normalizedChain === 'solana') {
+      const key = `dev:${devFilter}`;
+      if (!loadedTabsRef.current.has(key)) {
+        fetch(`/api/v1/tokens/solana/${safeMint}/dev-activity?filter=${devFilter}`, {
+          signal: controller.signal,
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            const profile = data?.data;
+            if (profile && isMounted && !controller.signal.aborted) {
+              loadedTabsRef.current.add(key);
+              setDevProfile({
+                creatorWallet: profile.creatorAddress ?? null,
+                devMints: typeof profile.devMints === 'number' ? profile.devMints : null,
+                devMigrations: typeof profile.devMigrations === 'number' ? profile.devMigrations : null,
+                migrationRatePct:
+                  typeof profile.migrationRatePct === 'number' ? profile.migrationRatePct : null,
+                mintAuthorityDisabled: profile.mintAuthorityDisabled ?? null,
+                freezeAuthorityDisabled: profile.freezeAuthorityDisabled ?? null,
+                currentHoldingSupplyPct:
+                  typeof profile.devBalancePct === 'number' ? profile.devBalancePct : null,
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    } else if (activeTab === 'liquidity') {
+      const key = 'liquidity';
+      if (!loadedTabsRef.current.has(key)) {
+        fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/liquidity`, {
+          signal: controller.signal,
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (!isMounted || controller.signal.aborted || !data?.data) return;
+            loadedTabsRef.current.add(key);
+            if (data.data.pools) {
+              setLiquidityPools(data.data.pools);
+            }
+            // `/liquidity` returns no per-provider breakdown by design -- see the
+            // `topLiquidityProviders` state comment -- so there is nothing to set
+            // here. The table below renders its own "not available" state.
+            if (data.data.totalLiquidityUsd) {
+              const n = Number(data.data.totalLiquidityUsd);
+              setTotalLiquidityDisplay(
+                Number.isFinite(n)
+                  ? n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B`
+                    : n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M`
+                    : n >= 1e3 ? `$${(n / 1e3).toFixed(1)}K`
+                    : `$${n.toFixed(2)}`
+                  : null,
+              );
+            }
+          })
+          .catch(() => {});
+      }
+    } else if (activeTab === 'holders') {
+      const key = 'holders';
+      if (!loadedTabsRef.current.has(key)) {
+        // Real concentration from chain state. The endpoint returns raw numbers,
+        // so formatting happens here rather than rendering 7193508364031.43106.
+        fetch(`/api/v1/tokens/${normalizedChain}/${safeMint}/holders`, {
+          signal: controller.signal,
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            const payload = data?.data;
+            if (!payload?.holders || !isMounted || controller.signal.aborted) return;
+            loadedTabsRef.current.add(key);
+
+            const compact = (n: number) =>
+              n >= 1e9 ? `${(n / 1e9).toFixed(2)}B`
+              : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M`
+              : n >= 1e3 ? `${(n / 1e3).toFixed(2)}K`
+              : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+
+            const formatUsd = (val: number | null) => {
+              if (val === null || !Number.isFinite(val) || val <= 0) return '—';
+              if (val >= 1e6) return `${(val / 1e6).toFixed(2)}M`;
+              if (val >= 1e3) return `${(val / 1e3).toFixed(2)}K`;
+              if (val >= 1) return `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              if (val >= 0.0001) return `${val.toFixed(4)}`;
+              return '<$0.0001';
+            };
+
+            setTopHolders(
+              payload.holders.map((h: any) => {
+                const rawBal = Number(h.balance) || 0;
+                const cp = currentPriceRef.current;
+                const sp = safePriceRef.current;
+                const usd = typeof cp === 'number' && cp > 0 ? rawBal * cp : (sp > 0 ? rawBal * sp : null);
+                return {
+                  rank: h.rank,
+                  address: `${String(h.address).slice(0, 4)}...${String(h.address).slice(-4)}`,
+                  fullAddress: h.address,
+                  tag: h.tag ?? '—',
+                  balance: compact(rawBal),
+                  percent: h.percent === null ? '—' : `${Number(h.percent).toFixed(2)}%`,
+                  valueUsd: formatUsd(usd),
+                  isContract: h.isContract,
+                };
+              }),
+            );
+
+            setHoldersTop10Pct(
+              typeof payload.top10ConcentrationPct === 'number' ? payload.top10ConcentrationPct : null,
+            );
+            const total = typeof payload.totalHoldersCount === 'number' ? payload.totalHoldersCount : null;
+            setHoldersDisplay(
+              total !== null ? compact(total) : null,
+            );
+          })
+          .catch(() => {});
+      }
+    } else if (activeTab === 'top-traders') {
+      const key = 'top-traders';
+      if (!loadedTabsRef.current.has(key)) {
+        void loadTopTraders(controller.signal).then((ok) => {
+          if (ok && isMounted && !controller.signal.aborted) {
+            loadedTabsRef.current.add(key);
+          }
+        });
+      }
+    }
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [activeTab, safeMint, normalizedChain, devFilter, loadTopTraders]);
 
   // Calculate live expected output
   const solNum = parseFloat(instantSolAmount) || 0;
@@ -1212,18 +1249,32 @@ export function AxiomChartTabs({
             )}
           </button>
 
-          {/* Maps Tab (Bubble Maps / Cluster Graphs) */}
+          {/* InsightX Tab (Atlas Live Cluster Map & DEX Metrics) */}
           <button
-            onClick={() => setActiveTab('maps')}
-            aria-pressed={activeTab === 'maps'}
+            onClick={() => setActiveTab('insightx')}
+            aria-pressed={activeTab === 'insightx'}
             className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
-              activeTab === 'maps'
+              activeTab === 'insightx'
                 ? 'bg-[#526FFF]/15 text-[#F7F8F9] border border-[#526FFF]/35 font-semibold'
                 : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
             }`}
           >
             <Network className="h-3.5 w-3.5 text-[#52C5FF]" />
-            <span>Maps</span>
+            <span>InsightX</span>
+          </button>
+
+          {/* Smart Money Tab (Nansen Flow Intelligence, Buyers/Sellers, Swaps & Holders) */}
+          <button
+            onClick={() => setActiveTab('smart-money')}
+            aria-pressed={activeTab === 'smart-money'}
+            className={`relative inline-flex items-center gap-1.5 px-3 py-1 rounded-[6px] text-xs font-medium transition-all whitespace-nowrap ${
+              activeTab === 'smart-money'
+                ? 'bg-[#2FE3AC]/15 text-[#F7F8F9] border border-[#2FE3AC]/35 font-semibold'
+                : 'text-[#828598] hover:text-[#F7F8F9] hover:bg-white/[0.04] border border-transparent'
+            }`}
+          >
+            <Brain className="h-3.5 w-3.5 text-[#2FE3AC]" />
+            <span>Smart Money</span>
           </button>
 
           {/* Liquidity Providers & DEX Pools Tab */}
@@ -2196,21 +2247,19 @@ export function AxiomChartTabs({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 5: MAPS (Routed to /api/v1/tokens/.../bubble-map)                      */}
+        {/* TAB 5: INSIGHTX (Atlas Live Cluster Map & DEX Metrics)                     */}
         {/* ========================================================================= */}
-        {activeTab === 'maps' && (
+        {activeTab === 'insightx' && (
           <div className="space-y-3">
-            {/* Cluster Stats Bar -- was four fixed numbers ("89/100 Safe",
-                "2 Wallets (0.85%)", "2.94% (4 Wallets)") for every token,
-                none of them computed. Only top-10 concentration and holder
-                count are actually measured; the rest say so plainly. */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs font-numeric">
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
                 <span className="text-slate-400 font-mono text-2xs uppercase block">Top 10 Concentration</span>
                 <span className="text-sm font-bold text-white block font-mono">
-                  {mapTop10ConcentrationPct === null ? 'Not available' : `${mapTop10ConcentrationPct.toFixed(2)}% Supply`}
+                  {(insightxTop10Pct ?? holdersTop10Pct) === null
+                    ? 'Not available'
+                    : `${(insightxTop10Pct ?? holdersTop10Pct)!.toFixed(2)}% Supply`}
                 </span>
-                <span className="text-2xs text-slate-500 block">Of the top 20 token accounts.</span>
+                <span className="text-2xs text-slate-500 block">From InsightX / on-chain holders.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
                 <span className="text-slate-400 font-mono text-2xs uppercase block">Total Holders</span>
@@ -2218,208 +2267,60 @@ export function AxiomChartTabs({
                 <span className="text-2xs text-slate-500 block">From on-chain token accounts.</span>
               </div>
               <div className="p-2.5 rounded-xl border border-sentinel-800 bg-sentinel-950/80">
-                <span className="text-slate-400 font-mono text-2xs uppercase block">Suspicious Clusters</span>
-                <span className="text-sm font-bold text-slate-500 block font-mono">Not determined</span>
-                <span className="text-2xs text-slate-500 block">Wallet-funding links are not mapped.</span>
-              </div>
-            </div>
-
-            {/* Bubble Maps Visual Canvas & Inspector Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              
-              {/* Left 2 Cols: Interactive SVG Bubble Canvas */}
-              <div className="lg:col-span-2 rounded-xl border border-sentinel-800 bg-sentinel-950/90 p-3 relative overflow-hidden flex flex-col justify-between min-h-[220px]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white font-mono">🗺️ Interactive Bubble Map</span>
-                    <span className="text-2xs font-mono text-slate-500">(Live /api/v1/tokens/.../bubble-map)</span>
-                  </div>
-                  {/* Only two categories are actually distinguishable on-chain
-                      here -- a pool account versus any other holder. "Dev",
-                      "Whales" and "Snipers" swatches used to sit alongside
-                      these with no wallet ever classified into them. */}
-                  <div className="flex items-center gap-2 text-2xs font-mono text-slate-400">
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-400" /> DEX Pool</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-purple-400" /> Dev / Creator</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" /> Holder</span>
-                  </div>
-                </div>
-
-                {/* SVG Visual Clusters */}
-                <div className="w-full flex items-center justify-center py-2">
-                  <svg viewBox="0 0 580 260" className="w-full h-auto max-h-[220px] select-none">
-                    <defs>
-                      <pattern id="grid_tabs" width="20" height="20" patternUnits="userSpaceOnUse">
-                        <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                      </pattern>
-                      <marker id="inflow_arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                        <path d="M 0 1 L 8 5 L 0 9 z" fill="#a855f7" />
-                      </marker>
-                    </defs>
-                    <rect width="100%" height="100%" fill="url(#grid_tabs)" />
-
-                    {/* Real Genesis Inflow Vectors for Funded Wallets */}
-                    {mapClusterNodes.filter((n) => Boolean(n.fundingSource)).map((node) => (
-                      <g key={`inflow_${node.id}`} className="transition-opacity hover:opacity-100">
-                        <line
-                          x1={node.x - 48}
-                          y1={node.y - 36}
-                          x2={node.x - (node.r + 3)}
-                          y2={node.y - 3}
-                          stroke="#a855f7"
-                          strokeWidth="1.5"
-                          strokeDasharray="4 3"
-                          markerEnd="url(#inflow_arrow)"
-                          className="opacity-75 animate-pulse"
-                        />
-                        <circle cx={node.x - 48} cy={node.y - 36} r="3" fill="#a855f7" />
-                        <text
-                          x={node.x - 50}
-                          y={node.y - 42}
-                          fill="#c084fc"
-                          fontSize="7.5"
-                          fontWeight="bold"
-                          fontFamily="monospace"
-                          textAnchor="middle"
-                        >
-                          Genesis Inflow
-                        </text>
-                      </g>
-                    ))}
-
-                    {/* Render Cluster Bubbles */}
-                    {mapClusterNodes.map((node) => {
-                      const isSelected = selectedMapNode?.id === node.id;
-                      return (
-                        <g
-                          key={node.id}
-                          onClick={() => setSelectedMapNode(node)}
-                          className="cursor-pointer transition-transform hover:scale-105"
-                        >
-                          <circle
-                            cx={node.x}
-                            cy={node.y}
-                            r={node.r}
-                            fill={node.color}
-                            stroke={node.borderColor}
-                            strokeWidth={isSelected ? 3 : 1.5}
-                            className={`transition-all duration-200 ${isSelected ? 'filter drop-shadow-[0_0_12px_rgba(56,189,248,0.8)]' : ''}`}
-                          />
-                          <text
-                            x={node.x}
-                            y={node.y - 4}
-                            textAnchor="middle"
-                            fill="#ffffff"
-                            fontSize="9"
-                            fontWeight="bold"
-                            fontFamily="monospace"
-                          >
-                            {node.supplyPct === null || node.supplyPct === undefined
-                              ? '—'
-                              : `${node.supplyPct}%`}
-                          </text>
-                          <text
-                            x={node.x}
-                            y={node.y + 7}
-                            textAnchor="middle"
-                            fill="#98A3B3"
-                            fontSize="7.5"
-                            fontFamily="sans-serif"
-                          >
-                            {node.tag.toUpperCase()}
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                </div>
-              </div>
-
-              {/* Right Col: Node Inspector Panel */}
-              <div className="rounded-xl border border-sentinel-800 bg-sentinel-850 p-3 flex flex-col justify-between text-xs">
-                <div>
-                  <span className="text-2xs font-mono text-slate-400 uppercase tracking-wider block border-b border-sentinel-750 pb-1 mb-2">
-                    Cluster Node Inspector
-                  </span>
-
-                  {selectedMapNode ? (
-                    <div className="space-y-2.5 animate-in fade-in">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-white text-sm">{selectedMapNode.label}</span>
-                        <Badge variant="mono" size="sm">{selectedMapNode.tag.toUpperCase()}</Badge>
-                      </div>
-
-                      <div className="space-y-1 text-2xs font-mono">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Address:</span>
-                          <span className="text-sky-300 font-bold">{selectedMapNode.address.slice(0, 8)}...</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Supply Share:</span>
-                          <span className="text-emerald-400 font-bold">
-                            {selectedMapNode.supplyPct === null ? '—' : `${selectedMapNode.supplyPct}%`}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Token Balance:</span>
-                          <span className="text-white font-bold">{selectedMapNode.balanceTokens}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Value (USD):</span>
-                          <span className="text-slate-500 font-bold">{selectedMapNode.valueUsd ?? 'Not available'}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-1 border-t border-sentinel-800">
-                          <span className="text-slate-400">Inflow Route:</span>
-                          {selectedMapNode.fundingSource ? (
-                            <span className="text-purple-300 font-mono text-2xs font-bold inline-flex items-center gap-1">
-                              <span>{selectedMapNode.fundingSource.slice(0, 4)}…{selectedMapNode.fundingSource.slice(-4)}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(selectedMapNode.fundingSource!)}
-                                className="hover:text-white transition"
-                                title="Copy genesis funder address"
-                              >
-                                {copiedAddress === selectedMapNode.fundingSource ? (
-                                  <Check className="h-2.5 w-2.5 text-emerald-400" />
-                                ) : (
-                                  <Copy className="h-2.5 w-2.5 text-slate-400 hover:text-white" />
-                                )}
-                              </button>
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 text-2xs">Not mapped</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-6 text-center text-slate-400 text-xs">
-                      <Network className="h-8 w-8 text-slate-600 mx-auto mb-2" />
-                      <p className="font-mono">Select any bubble to inspect wallet holdings, funding source, and insider ties.</p>
-                    </div>
-                  )}
-                </div>
-
-                {selectedMapNode && (
-                  <div className="pt-2 border-t border-sentinel-750 flex items-center gap-2">
-                    <button
-                      onClick={() => handleCopy(selectedMapNode.address)}
-                      className="flex-1 py-1 px-2 rounded-lg bg-sentinel-900 hover:bg-sentinel-800 text-sky-300 font-mono text-2xs border border-sentinel-750 transition text-center"
+                <span className="text-slate-400 font-mono text-2xs uppercase block">InsightX Clusters</span>
+                {insightxClusterStats.count !== null ? (
+                  <>
+                    <span
+                      className={`text-sm font-bold block font-mono ${
+                        insightxClusterStats.count > 0 ? 'text-amber-300' : 'text-emerald-400'
+                      }`}
                     >
-                      Copy Address
-                    </button>
-                    <a
-                      href={getExplorerAddressUrl(normalizedChain, selectedMapNode.address)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 py-1 px-2 rounded-lg bg-sentinel-900 hover:bg-sentinel-800 text-slate-300 hover:text-white font-mono text-2xs border border-sentinel-750 transition text-center flex items-center justify-center gap-1"
-                    >
-                      {normalizedChain === 'robinhood' ? 'Explorer' : 'Solscan'} <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  </div>
+                      {insightxClusterStats.count === 0
+                        ? '0 Detected'
+                        : `${insightxClusterStats.count} Cluster${insightxClusterStats.count === 1 ? '' : 's'}`}
+                    </span>
+                    <span className="text-2xs text-slate-500 block">
+                      {insightxClusterStats.clusterPct !== null
+                        ? `${insightxClusterStats.clusterPct.toFixed(2)}% supply in InsightX clusters.`
+                        : 'InsightX cluster & funding analysis.'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-bold text-slate-400 block font-mono">
+                      Atlas Live Interactive
+                    </span>
+                    <span className="text-2xs text-slate-500 block">
+                      {insightxClusterStats.configured
+                        ? 'No cluster summary returned.'
+                        : 'Explore wallet links in InsightX Atlas or add INSIGHTX_API_KEY.'}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
+
+            <AtlasLivePanel
+              chain={normalizedChain}
+              address={safeMint}
+              symbol={tokenSymbol}
+              compact
+              onIntelligenceLoaded={handleInsightXLoaded}
+            />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 5B: NANSEN SMART MONEY (Flow Intelligence, Buyers/Sellers & Holders)  */}
+        {/* ========================================================================= */}
+        {activeTab === 'smart-money' && (
+          <div className="space-y-3">
+            <NansenSmartMoneyPanel
+              chain={normalizedChain}
+              address={safeMint}
+              symbol={tokenSymbol}
+              compact
+            />
           </div>
         )}
 

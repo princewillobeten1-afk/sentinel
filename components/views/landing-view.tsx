@@ -27,7 +27,7 @@ import dynamic from 'next/dynamic';
 import { LandingHeader } from '@/components/landing/landing-header';
 import { TerminalChartFlow } from '@/components/landing/terminal-chart-flow';
 import { PipelineFlowDiagram } from '@/components/landing/pipeline-flow-diagram';
-import { ClusterAttackFlow } from '@/components/landing/cluster-attack-flow';
+import { InsightXShowcase } from '@/components/landing/insightx-showcase';
 import { ExitabilityDepthFlow } from '@/components/landing/exitability-depth-flow';
 import { LiveMarketRadar } from '@/components/landing/live-market-radar';
 import { ComparisonTable } from '@/components/landing/comparison-table';
@@ -184,11 +184,11 @@ export function LandingView() {
 
               <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#526FFF]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">Holder Forensics</p>
+                  <p className="text-[10px] uppercase text-[#828598] font-semibold tracking-wider">InsightX Forensics</p>
                   <Layers className="h-3.5 w-3.5 text-[#52C5FF]" />
                 </div>
-                <p className="text-base sm:text-lg font-bold text-[#52C5FF] tracking-tight">Cabal Mapping</p>
-                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Uncovers multi-hop wallet genealogies and insider rings</p>
+                <p className="text-base sm:text-lg font-bold text-[#52C5FF] tracking-tight">InsightX Atlas</p>
+                <p className="text-[11px] text-[#828598] font-sans leading-relaxed">Live wallet clusters, sniper & bundler supply, and entity labels</p>
               </div>
 
               <div className="p-3.5 rounded-[10px] bg-[#0D1015]/90 border border-[#1E222D] backdrop-blur-sm space-y-1 hover:border-[#2FE3AC]/40 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
@@ -230,22 +230,22 @@ export function LandingView() {
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 3: FORENSIC CLUSTER RADAR (ATTACK VS MITIGATION) */}
+        {/* SECTION 3: INSIGHTX ATLAS LIVE CLUSTER ENGINE */}
         {/* ========================================================================= */}
         <section className="px-4 sm:px-6 max-w-7xl mx-auto">
           <div className="text-center space-y-2 mb-10">
-            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-rose-400">
-              SYBIL RADAR // FORENSIC GRAPH ANALYSIS
+            <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-sky-400">
+              INSIGHTX ATLAS LIVE // WALLET CLUSTER & RISK INTELLIGENCE
             </span>
             <h2 className="font-heading text-3xl sm:text-4xl font-black text-white tracking-tight">
-              Expose Coordinated Cartels Before The Dump
+              Interactive InsightX Cluster Maps Built Into Phivex
             </h2>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-xl mx-auto font-sans">
-              Token creators don&apos;t hold 50% in one public wallet anymore. They splinter it across fresh addresses funded in the same 20-minute window. Toggle below to compare standard block explorer views against Phivex&apos;s 4-hop genealogy graph.
+              Powered by live InsightX Atlas intelligence across Solana and Robinhood Chain. Switch tokens or paste any contract address below to inspect wallet clusters, distribution inequality, snipers, bundlers, and entity labels live.
             </p>
           </div>
 
-          <ClusterAttackFlow />
+          <InsightXShowcase />
         </section>
 
         {/* ========================================================================= */}

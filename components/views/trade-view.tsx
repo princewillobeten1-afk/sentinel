@@ -722,7 +722,7 @@ export function TradeView({
             tokenMint={currentToken.mint}
             chain={activeChain}
             onOpenLimitBuilder={() => setShowLimitBuilder(true)}
-            onPriceUpdate={(p) => setLivePrice(p)}
+            onPriceUpdate={setLivePrice}
             onQuickTrade={(type, amt) => {
               setOrderType(type);
               setSolAmount(amt.toString());

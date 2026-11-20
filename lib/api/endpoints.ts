@@ -128,9 +128,12 @@ export const endpoints = {
     trades: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/trades`,
     liquidity: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/liquidity`,
     topTraders: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/top-traders`,
-    bubbleMap: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/bubble-map`,
+    insightx: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/insightx`,
+    nansen: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/nansen`,
     devActivity: (chain: string, address: string) => `/v1/tokens/${seg(chain)}/${seg(address)}/dev-activity`,
   },
+
+  nansenSmartMoney: '/v1/nansen/smart-money',
 
   intelligence: {
     token: (chain: string, token: string) => `/v1/intelligence/${seg(chain)}/${seg(token)}`,

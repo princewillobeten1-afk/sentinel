@@ -234,6 +234,8 @@ export function formatDisplaySource(source?: string | null): string {
     const s = part.toLowerCase().trim();
     if (s.includes('birdeye') && s.includes('holder')) return 'Birdeye holders';
     if (s.includes('birdeye')) return 'Birdeye';
+    if (s.includes('insightx')) return 'InsightX';
+    if (s.includes('nansen')) return 'Nansen';
     if (s.includes('rugcheck')) return 'Rugcheck';
     if (s.includes('quicknode')) return 'QuickNode';
     if (s.includes('helius')) return 'Helius';

@@ -2,8 +2,13 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { fetchJupiterFeed } from '@/lib/discovery/jupiter-feed';
+import { toNansenChain } from '@/lib/nansen/chains';
+import {
+  fetchNansenSmartMoneyLeaderboard,
+  isNansenConfigured,
+} from '@/lib/nansen/client';
 
-// Curated high-reputation Solana alpha wallets as baseline seed
+// Curated high-reputation Solana alpha wallets as baseline fallback when Nansen is unconfigured
 const CURATED_SOLANA_ALPHA = [
   {
     id: 'wallet_alpha_01',
@@ -122,7 +127,74 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get('sortBy') || 'scoreOverall';
     const category = searchParams.get('category');
-    const limit = parseInt(searchParams.get('limit') || '15', 10);
+    const chainParam = searchParams.get('chain') || 'solana';
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '15', 10) || 15));
+
+    // Prefer live Nansen Smart Money PnL Leaderboard when NANSEN_API_KEY is configured
+    if (isNansenConfigured() && (!category || category === 'ALL' || category === 'SMART_MONEY')) {
+      const nansenChain = toNansenChain(chainParam);
+      const nansenRes = await fetchNansenSmartMoneyLeaderboard({
+        chains: [nansenChain],
+        timeframe: 30,
+        perPage: limit,
+      }).catch(() => null);
+
+      if (nansenRes && nansenRes.data.length > 0) {
+        const mapped = nansenRes.data.map((item, idx) => {
+          const topToken = item.top_traded_tokens_info?.[0] as
+            | { token_symbol?: string; token_address?: string }
+            | undefined;
+          const winRatePct =
+            typeof item.win_rate === 'number' && Number.isFinite(item.win_rate)
+              ? Number((item.win_rate * 100).toFixed(1))
+              : 0;
+          const realized = Math.round(item.realized_pnl_usd ?? 0);
+          const totalPnl = Math.round(item.total_pnl_usd ?? realized);
+          const scoreOverall = Math.min(
+            99,
+            Math.max(50, Math.round(70 + (winRatePct > 0 ? Math.min(20, winRatePct / 5) : 10) - Math.min(idx, 10))),
+          );
+          return {
+            id: `nansen_${item.address}`,
+            address: `${item.address.slice(0, 4)}...${item.address.slice(-4)}`,
+            fullAddress: item.address,
+            label: item.address_label || `Nansen Smart Trader #${idx + 1}`,
+            category: 'SMART_MONEY' as const,
+            source: 'nansen',
+            scoreOverall,
+            scoreConsistency: Math.min(99, Math.max(50, Math.round(winRatePct || 75))),
+            scoreRisk: 25,
+            winRate: winRatePct,
+            totalRealizedPnl: realized,
+            pnl7d: totalPnl,
+            pnl30d: totalPnl,
+            tradeCount: item.n_trades ?? 0,
+            avgHoldingTime: `${item.n_tokens ?? 1} tokens`,
+            copyableScore: Math.min(99, Math.max(50, Math.round(scoreOverall * 0.95))),
+            styleClassification: item.open_trades > 0 ? 'Active Smart Trader' : 'Smart Trader',
+            confidenceLevel: 'HIGH' as const,
+            tokenSymbol: topToken?.token_symbol,
+            tokenMint: topToken?.token_address,
+            lastAnalyzedAt: new Date().toISOString(),
+          };
+        });
+
+        const sortedNansen = [...mapped].sort((a, b) => {
+          if (sortBy === 'totalRealizedPnl') return b.totalRealizedPnl - a.totalRealizedPnl;
+          if (sortBy === 'pnl7d') return (b.pnl7d || 0) - (a.pnl7d || 0);
+          if (sortBy === 'winRate') return b.winRate - a.winRate;
+          if (sortBy === 'tradeCount') return b.tradeCount - a.tradeCount;
+          return b.scoreOverall - a.scoreOverall;
+        });
+
+        return NextResponse.json({
+          success: true,
+          source: 'nansen',
+          data: sortedNansen.slice(0, limit),
+          count: sortedNansen.length,
+        });
+      }
+    }
 
     // Fetch live trending Solana tokens to discover fresh top maker addresses
     const tokens = await fetchJupiterFeed('toptrending', { limit: 10 }).catch(() => []);

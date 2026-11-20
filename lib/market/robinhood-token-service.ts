@@ -28,6 +28,13 @@ import {
 } from '@/lib/discovery/robinhood-feed';
 import { formatAge } from '@/lib/discovery/format';
 import {
+  buildInsightXLabelMap,
+  fetchInsightXLabels,
+  hasInsightXQuotaHeadroom,
+  isInsightXConfigured,
+  lookupInsightXLabel,
+} from '@/lib/insightx/client';
+import {
   getCachedPonsLaunchAudit,
   hydratePonsLaunchAuditsFromRedis,
   queuePonsLaunchAudit,
@@ -1214,14 +1221,26 @@ export async function getRobinhoodTokenHolders(address: string) {
 
   const rawHolders = sec?.holders ?? [];
   const creatorLower = sec?.creator_address?.toLowerCase();
+  const insightxLabels =
+    isInsightXConfigured() && hasInsightXQuotaHeadroom(2) && rawHolders.length > 0
+      ? await fetchInsightXLabels(
+          'robinhood',
+          rawHolders.map((h) => h.address),
+        ).catch(() => [])
+      : [];
+  const labelMap = buildInsightXLabelMap(insightxLabels, 'robinhood');
+
   const holders = rawHolders.map((h, index) => {
     const pct = Number(h.percent ?? 0) * 100;
     const isContract = Boolean(h.is_contract);
+    const labelInfo = lookupInsightXLabel(labelMap, h.address, 'robinhood');
     let tag = isContract ? 'Contract / Pool' : 'Trader';
     if (creatorLower && h.address.toLowerCase() === creatorLower) {
       tag = 'Dev 👨‍💻';
     } else if (!isContract && pct >= 2) {
       tag = 'Whale 🐋';
+    } else if (tag === 'Trader' && labelInfo?.label) {
+      tag = labelInfo.label;
     }
     return {
       rank: index + 1,
@@ -1231,6 +1250,8 @@ export async function getRobinhoodTokenHolders(address: string) {
       percent: Number.isFinite(pct) ? Number(pct.toFixed(4)) : null,
       tag,
       isContract,
+      insightxLabel: labelInfo?.label ?? null,
+      insightxTags: labelInfo?.tags ?? [],
     };
   });
 
@@ -1245,12 +1266,15 @@ export async function getRobinhoodTokenHolders(address: string) {
   return {
     token: norm,
     chain: 'robinhood',
+    creatorAddress: sec?.creator_address ?? null,
     totalHoldersCount: sec?.holder_count ? Number(sec.holder_count) : null,
     top10ConcentrationPct,
     top10IncludingPoolsPct,
     totalSupply: sec?.total_supply ? Number(sec.total_supply) : meta.totalSupply ?? null,
     holders,
-    coverage: 'GoPlus EVM Top Holders (Robinhood Chain #4663).',
+    coverage: insightxLabels.length > 0
+      ? 'GoPlus EVM Top Holders + InsightX wallet labels (Robinhood Chain #4663).'
+      : 'GoPlus EVM Top Holders (Robinhood Chain #4663).',
     timestamp: new Date().toISOString(),
   };
 }

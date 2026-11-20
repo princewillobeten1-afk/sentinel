@@ -35,6 +35,12 @@ export const env = {
   RUGCHECK_API_ENDPOINT: process.env.RUGCHECK_API_ENDPOINT ?? '',
   // Rugcheck Shield key or full https://shield.rugcheck.xyz?key=... URL (server-only).
   RUGCHECK_SHIELD_KEY: process.env.RUGCHECK_SHIELD_KEY ?? '',
+  // InsightX Network REST API key (server-only, X-API-Key header).
+  INSIGHTX_API_KEY: process.env.INSIGHTX_API_KEY ?? '',
+  INSIGHTX_API_BASE_URL: process.env.INSIGHTX_API_BASE_URL ?? 'https://api.insightx.network',
+  // Nansen API v1 key (server-only, apikey header).
+  NANSEN_API_KEY: process.env.NANSEN_API_KEY ?? '',
+  NANSEN_API_BASE_URL: process.env.NANSEN_API_BASE_URL ?? 'https://api.nansen.ai',
   HELIUS_WS_URL: process.env.HELIUS_WS_URL ?? 'wss://devnet.helius-rpc.com',
   // Mainnet RPC for the parsed-transaction enricher. Separate from
   // NEXT_PUBLIC_SOLANA_RPC_URL, which stays on devnet because wallet transfers

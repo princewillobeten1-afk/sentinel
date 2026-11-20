@@ -49,7 +49,7 @@ import { ExecutiveVerdictCard } from './executive-verdict-card';
 import { InteractiveExitSimulator } from './interactive-exit-simulator';
 import { CabalRadarCard } from './cabal-radar-card';
 import { OwnershipPanel } from './ownership-panel';
-import { OwnershipGraph } from './ownership-graph';
+import { AtlasLivePanel } from '@/components/insightx/atlas-live-panel';
 import { InsiderPanel } from './insider-panel';
 import { CreatorPanel } from './creator-panel';
 import { ActivityQualityCard } from './activity-quality-card';
@@ -860,7 +860,7 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
         ? 'DRAIN' 
         : `${cabalRadarData?.collectiveCabalSharePct?.toFixed(0) ?? 15}%` 
     },
-    { id: 'bubble_map', label: 'Bubble Map & Clusters', icon: Layers, badge: report?.ownershipDistribution?.clusters?.length },
+    { id: 'insightx', label: 'InsightX Atlas & Clusters', icon: Layers, badge: report?.ownershipDistribution?.clusters?.length },
     { id: 'insiders', label: 'Insider & Snipers', icon: Zap, badge: report?.insiders?.candidates?.length },
     { id: 'ownership', label: 'Supply & Ownership', icon: Users, badge: `${report?.ownershipDistribution?.top10Percentage?.toFixed(0) ?? 28}%` },
     { id: 'creator', label: 'Creator Track Record', icon: UserCheck, badge: report?.creatorProfile?.totalLaunches },
@@ -1225,12 +1225,13 @@ export function IntelligenceReportView({ chain, mint }: { chain: string; mint: s
             </div>
           )}
 
-          {/* TAB 2: BUBBLE MAP & CLUSTERS */}
-          {activeTab === 'bubble_map' && (
+          {/* TAB 2: INSIGHTX ATLAS & CLUSTERS */}
+          {activeTab === 'insightx' && (
             <div className="space-y-5">
-              <OwnershipGraph
-                entities={(effectiveOwnershipData?.entities as any) ?? []}
-                edges={(report.ownershipDistribution?.graphEdges as any) ?? []}
+              <AtlasLivePanel
+                chain="solana"
+                address={mint}
+                symbol={report.token.symbol}
               />
             </div>
           )}

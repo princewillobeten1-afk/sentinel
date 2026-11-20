@@ -5,9 +5,9 @@ import { Check, X, ShieldCheck, Zap } from 'lucide-react';
 
 const COMPARISON_ROWS = [
   {
-    feature: 'Wallet Funding Cluster Genealogy',
-    description: 'Traces exchange hot wallet splits & co-funded addresses across top 50 holders',
-    phivex: 'Real-time 4-hop graph',
+    feature: 'InsightX Atlas Cluster Mapping',
+    description: 'Powered by InsightX Atlas Live to map co-funded wallets, bundlers, and entity labels',
+    phivex: 'Real-time InsightX Atlas Live',
     standard: 'Flat holder list only',
     phivexHas: true,
     standardHas: false,

@@ -40,8 +40,9 @@ import { TrackWalletModal } from '@/components/wallet-tracker/track-wallet-modal
 import { SmartMoneyCard, SmartMoneyTrader } from '@/components/wallet-tracker/smart-money-card';
 import { SmartMoneyTable } from '@/components/wallet-tracker/smart-money-table';
 import { WalletDetailModal } from '@/components/wallet-tracker/wallet-detail-modal';
+import { NansenSmartMoneyRadar } from '@/components/nansen/nansen-smart-money-radar';
 
-type TrackerTab = 'leaderboard' | 'my-tracked' | 'live-feed' | 'copy-trading';
+type TrackerTab = 'nansen' | 'leaderboard' | 'my-tracked' | 'live-feed' | 'copy-trading';
 type SortField = 'scoreOverall' | 'totalRealizedPnl' | 'winRate' | 'pnl7d' | 'tradeCount';
 
 export function WalletTrackerView() {
@@ -49,7 +50,7 @@ export function WalletTrackerView() {
     useTrackedWallets();
   const { setQuickBuyOpen, addNotification } = useAppActions();
 
-  const [activeTab, setActiveTab] = useState<TrackerTab>('leaderboard');
+  const [activeTab, setActiveTab] = useState<TrackerTab>('nansen');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortField>('scoreOverall');
@@ -328,6 +329,7 @@ export function WalletTrackerView() {
         <div className="max-w-full overflow-x-auto">
           <Tabs
             tabs={[
+              { id: 'nansen', label: 'Nansen Smart Money' },
               { id: 'leaderboard', label: `Leaderboard (${filteredSmartWallets.length})` },
               { id: 'my-tracked', label: `My Tracked Wallets (${trackedWallets.length})` },
               { id: 'live-feed', label: 'Live Alpha Feed' },
@@ -432,6 +434,32 @@ export function WalletTrackerView() {
           </button>
         ))}
       </div>
+
+      {/* Tab 0: Nansen Multi-Chain Smart Money Radar */}
+      {activeTab === 'nansen' && (
+        <div className="flex-none p-5 sm:p-6">
+          <NansenSmartMoneyRadar
+            isTracked={(addr) => isTracked(addr)}
+            onTrackWallet={async (item, walletChain) => {
+              if (isTracked(item.address)) return;
+              await addTrackedWallet({
+                address: item.address,
+                label: item.address_label || `Nansen Smart Trader ${item.address.slice(0, 6)}`,
+                category: 'SMART_MONEY',
+                notes: `Added from Nansen Smart Money Leaderboard (${walletChain}).`,
+                winRate: typeof item.win_rate === 'number' ? Number((item.win_rate * 100).toFixed(1)) : 0,
+                totalRealizedPnlUsd: Math.round(item.realized_pnl_usd ?? item.total_pnl_usd ?? 0),
+                totalTradesCount: item.n_trades ?? 0,
+              });
+              addNotification({
+                title: 'Wallet Tracked',
+                message: `Now tracking ${item.address_label || item.address} from Nansen Smart Money.`,
+                type: 'system',
+              });
+            }}
+          />
+        </div>
+      )}
 
       {/* Tab 1: Smart Money Leaderboard */}
       {activeTab === 'leaderboard' && (
